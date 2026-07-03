@@ -8,6 +8,10 @@ gaps             = 8
 rounding         = 10           # corner radius in px
 opacity          = 0.95         # 0.0..1.0
 
+# startup: run once when the compositor starts (bar, wallpaper, terminal, ...)
+exec-once = foot
+# exec-once = waybar
+
 # keybinds: bind = MODS, KEY, action[, arg]
 #   MODS: SUPER SHIFT CTRL ALT (space-separated)
 #   actions: exec, killactive, exit, focusnext, focusprev, togglelayout

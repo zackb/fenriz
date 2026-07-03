@@ -32,6 +32,7 @@ namespace fenriz {
         int rounding = 10;
         float opacity = 1.0f;
         std::vector<Bind> binds;
+        std::vector<std::string> exec_once; // commands to run once at startup
 
         // Parse from a config string. Unknown/malformed lines are ignored.
         static Config parse(const std::string& text);

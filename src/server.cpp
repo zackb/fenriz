@@ -2,6 +2,7 @@
 
 #include <csignal>
 #include <cstdlib>
+#include <unistd.h>
 
 #include "cursor.hpp"
 #include "keyboard.hpp"
@@ -26,6 +27,15 @@ namespace fenriz {
         }
 
     } // namespace
+
+    void spawn(const std::string& cmd) {
+        if (cmd.empty())
+            return;
+        if (fork() == 0) {
+            execl("/bin/sh", "/bin/sh", "-c", cmd.c_str(), (char*)nullptr);
+            _exit(1);
+        }
+    }
 
     Server::Server() {
         config = Config::load();
@@ -98,6 +108,12 @@ namespace fenriz {
 
         setenv("WAYLAND_DISPLAY", socket, true);
         wlr_log(WLR_INFO, "fenriz running on WAYLAND_DISPLAY=%s", socket);
+
+        // Run startup commands now that the socket is live and WAYLAND_DISPLAY is set,
+        // so the spawned clients connect to us.
+        for (const std::string& cmd : config.exec_once)
+            spawn(cmd);
+
         return true;
     }
 

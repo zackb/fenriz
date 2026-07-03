@@ -38,10 +38,14 @@ target_link_libraries(fenriz PRIVATE
     PkgConfig::GLESV2
 )
 
-install(TARGETS fenriz RUNTIME DESTINATION bin)
+include(GNUInstallDirs)
+install(TARGETS fenriz RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 # Wayland session entry so greeters (greetd/tuigreet, gtkgreet, SDDM, GDM) can list fenriz.
-install(FILES fenriz.desktop DESTINATION share/wayland-sessions)
+# Generated so Exec is an absolute path to the installed binary (no reliance on PATH).
+configure_file(fenriz.desktop.in fenriz.desktop @ONLY)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/fenriz.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions)
 
 # Self-checks (built, not installed). Pure logic, deliberately decoupled from the
 # wlroots compositor stack so they build and run without a display.

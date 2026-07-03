@@ -113,6 +113,12 @@ namespace fenriz {
                 continue;
             }
 
+            if (key == "exec-once") {
+                if (!val.empty())
+                    cfg.exec_once.push_back(val);
+                continue;
+            }
+
             if (key == "border_width")
                 cfg.border_width = parse_int(val, cfg.border_width);
             else if (key == "border_active")

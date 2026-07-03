@@ -1,7 +1,6 @@
 #include "keyboard.hpp"
 
 #include <algorithm>
-#include <unistd.h>
 
 #include "config.hpp"
 #include "cursor.hpp"
@@ -40,16 +39,6 @@ namespace fenriz {
                 --it;
             }
             focus_view(server, *it);
-        }
-
-        void spawn(const std::string& cmd) {
-            if (cmd.empty())
-                return;
-            if (fork() == 0) {
-                execl("/bin/sh", "/bin/sh", "-c", cmd.c_str(), (char*)nullptr);
-                _exit(1);
-            }
-            // ponytail: relies on SIGCHLD=SIG_IGN (set in Server::start) to reap children.
         }
 
         void keyboard_handle_modifiers(wl_listener* listener, void* data) {

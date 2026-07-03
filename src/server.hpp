@@ -18,6 +18,11 @@ namespace fenriz {
     class Server;
     class View;
 
+    // Launch a shell command detached (`/bin/sh -c cmd`); no-op on empty. Used for
+    // keybind `exec` actions and `exec-once` startup commands. Children are reaped via
+    // SIGCHLD=SIG_IGN (set in Server::start).
+    void spawn(const std::string& cmd);
+
     // POD wrapper so wl_container_of recovers the owning Server without taking an
     // offsetof into a non-standard-layout class.
     struct SignalListener {
