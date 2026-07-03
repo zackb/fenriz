@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=fenriz
+Comment=Minimal tiling Wayland compositor
+Exec=fenriz
+Type=Application

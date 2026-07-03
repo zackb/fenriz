@@ -1,0 +1,19 @@
+# fenriz config — copy to ~/.config/fenriz/fenriz.conf
+
+# settings: key = value
+border_width     = 2
+border_active    = 0x33ccffff   # RGBA hex
+border_inactive  = 0x444444ff
+gaps             = 8
+rounding         = 10           # corner radius in px
+opacity          = 0.95         # 0.0..1.0
+
+# keybinds: bind = MODS, KEY, action[, arg]
+#   MODS: SUPER SHIFT CTRL ALT (space-separated)
+#   actions: exec, killactive, exit, focusnext, focusprev, togglelayout
+bind = SUPER,       Return, exec, foot
+bind = SUPER,       Q,      killactive
+bind = SUPER SHIFT, E,      exit
+bind = SUPER,       J,      focusnext
+bind = SUPER,       K,      focusprev
+bind = SUPER,       Space,  togglelayout
