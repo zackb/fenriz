@@ -13,7 +13,7 @@ namespace fenriz::output {
 
         // Desktop background / gap color. Shared with the corner-rounding pass so the
         // rounded-off corners blend seamlessly into the gaps between tiles.
-        constexpr float BG[4] = { 0.1f, 0.1f, 0.12f, 1.0f };
+        constexpr float BG[4] = {0.1f, 0.1f, 0.12f, 1.0f};
 
         // Per-output state. Standard-layout, so wl_container_of recovers it cleanly.
         struct Output {
@@ -27,8 +27,8 @@ namespace fenriz::output {
         // Passed through wlr_xdg_surface_for_each_surface while rendering a view.
         struct RenderContext {
             wlr_render_pass* pass;
-            int x, y;            // view origin in output-local coordinates
-            const float* alpha;  // per-window opacity, or nullptr for opaque
+            int x, y;           // view origin in output-local coordinates
+            const float* alpha; // per-window opacity, or nullptr for opaque
         };
 
         wlr_render_color color_from_u32(uint32_t c) {
@@ -47,7 +47,7 @@ namespace fenriz::output {
                 return;
             wlr_render_texture_options opts = {};
             opts.texture = texture;
-            opts.dst_box = { ctx->x + sx, ctx->y + sy, (int)texture->width, (int)texture->height };
+            opts.dst_box = {ctx->x + sx, ctx->y + sy, (int)texture->width, (int)texture->height};
             opts.alpha = ctx->alpha;
             wlr_render_pass_add_texture(ctx->pass, &opts);
         }
@@ -58,10 +58,10 @@ namespace fenriz::output {
                 return;
             wlr_render_color color = color_from_u32(rgba);
             const wlr_box rects[4] = {
-                { box.x, box.y, box.width, bw },                              // top
-                { box.x, box.y + box.height - bw, box.width, bw },            // bottom
-                { box.x, box.y + bw, bw, box.height - 2 * bw },               // left
-                { box.x + box.width - bw, box.y + bw, bw, box.height - 2 * bw }, // right
+                {box.x, box.y, box.width, bw},                                 // top
+                {box.x, box.y + box.height - bw, box.width, bw},               // bottom
+                {box.x, box.y + bw, bw, box.height - 2 * bw},                  // left
+                {box.x + box.width - bw, box.y + bw, bw, box.height - 2 * bw}, // right
             };
             for (const wlr_box& r : rects) {
                 wlr_render_rect_options opts = {};
@@ -89,8 +89,8 @@ namespace fenriz::output {
             wlr_render_pass* pass = wlr_output_begin_render_pass(output->handle, &state, nullptr);
             if (pass) {
                 wlr_render_rect_options bg = {};
-                bg.box = { 0, 0, output->handle->width, output->handle->height };
-                bg.color = { BG[0], BG[1], BG[2], BG[3] };
+                bg.box = {0, 0, output->handle->width, output->handle->height};
+                bg.color = {BG[0], BG[1], BG[2], BG[3]};
                 wlr_render_pass_add_rect(pass, &bg);
 
                 // Content (with opacity) + borders, bottom -> top. Rounded corners are
@@ -98,7 +98,7 @@ namespace fenriz::output {
                 for (View* view : server.views) {
                     if (!view->mapped)
                         continue;
-                    RenderContext ctx = { pass, view->box.x, view->box.y, &cfg.opacity };
+                    RenderContext ctx = {pass, view->box.x, view->box.y, &cfg.opacity};
                     wlr_xdg_surface_for_each_surface(view->toplevel->base, render_surface, &ctx);
                     uint32_t border = (view == server.focused_view) ? cfg.border_active : cfg.border_inactive;
                     draw_border(pass, view->box, border, cfg.border_width);

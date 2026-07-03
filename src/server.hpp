@@ -31,7 +31,7 @@ namespace fenriz {
     };
 
     class Server {
-      public:
+    public:
         Server();
         ~Server();
 
@@ -40,7 +40,7 @@ namespace fenriz {
         void stop();
 
         Config config;
-        std::list<View*> views;      // bottom -> top
+        std::list<View*> views; // bottom -> top
         View* focused_view = nullptr;
 
         wl_display* display = nullptr;

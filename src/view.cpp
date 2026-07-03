@@ -66,8 +66,8 @@ namespace fenriz {
         wlr_xdg_toplevel_set_activated(view->toplevel, true);
 
         if (wlr_keyboard* kb = wlr_seat_get_keyboard(server.seat))
-            wlr_seat_keyboard_notify_enter(server.seat, view->toplevel->base->surface, kb->keycodes,
-                                           kb->num_keycodes, &kb->modifiers);
+            wlr_seat_keyboard_notify_enter(
+                server.seat, view->toplevel->base->surface, kb->keycodes, kb->num_keycodes, &kb->modifiers);
     }
 
     View* view_at(Server& server, double lx, double ly, wlr_surface** surface, double* sx, double* sy) {
@@ -77,8 +77,8 @@ namespace fenriz {
             if (!view->mapped)
                 continue;
             double subx, suby;
-            wlr_surface* s = wlr_xdg_surface_surface_at(view->toplevel->base, lx - view->box.x,
-                                                        ly - view->box.y, &subx, &suby);
+            wlr_surface* s =
+                wlr_xdg_surface_surface_at(view->toplevel->base, lx - view->box.x, ly - view->box.y, &subx, &suby);
             if (s) {
                 *surface = s;
                 *sx = subx;
@@ -89,9 +89,7 @@ namespace fenriz {
         return nullptr;
     }
 
-    View::View(Server& server, wlr_xdg_toplevel* toplevel)
-        : server(&server)
-        , toplevel(toplevel) {
+    View::View(Server& server, wlr_xdg_toplevel* toplevel) : server(&server), toplevel(toplevel) {
         wlr_surface* surface = toplevel->base->surface;
 
         map.notify = view_handle_map;

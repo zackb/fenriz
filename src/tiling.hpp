@@ -25,13 +25,13 @@ namespace fenriz {
             const int uw = aw - 2 * gap, uh = ah - 2 * gap;
 
             if (n == 1) {
-                out.push_back({ ux, uy, uw, uh });
+                out.push_back({ux, uy, uw, uh});
                 return out;
             }
 
             const int master_w = (uw - gap) / 2;
             const int stack_w = uw - gap - master_w;
-            out.push_back({ ux, uy, master_w, uh });
+            out.push_back({ux, uy, master_w, uh});
 
             const int stack_x = ux + master_w + gap;
             const int stack_n = n - 1;
@@ -40,7 +40,7 @@ namespace fenriz {
                 const int y = uy + i * (each_h + gap);
                 // Last tile absorbs the rounding remainder so the column reaches the edge.
                 const int h = (i == stack_n - 1) ? (uy + uh - y) : each_h;
-                out.push_back({ stack_x, y, stack_w, h });
+                out.push_back({stack_x, y, stack_w, h});
             }
             return out;
         }

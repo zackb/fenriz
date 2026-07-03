@@ -22,11 +22,11 @@ int main() {
     // n=3: two tiles stacked in the right column, each_h=(980-10)/2=485, 10px between.
     std::vector<Rect> c = layout(0, 0, 1000, 1000, 10, 3);
     assert(c.size() == 3);
-    assert(c[0].w == 485 && c[0].h == 980);       // master unchanged
+    assert(c[0].w == 485 && c[0].h == 980); // master unchanged
     assert(c[1].x == 505 && c[1].y == 10 && c[1].h == 485);
-    assert(c[2].y == 505);                          // 10 + 485 + 10
-    assert(c[1].y + c[1].h + 10 == c[2].y);         // exactly one gap between tiles
-    assert(c[2].y + c[2].h == 990);                 // last tile reaches usable bottom edge
+    assert(c[2].y == 505);                  // 10 + 485 + 10
+    assert(c[1].y + c[1].h + 10 == c[2].y); // exactly one gap between tiles
+    assert(c[2].y + c[2].h == 990);         // last tile reaches usable bottom edge
 
     std::printf("tiling layout: all assertions passed\n");
     return 0;

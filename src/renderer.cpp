@@ -117,8 +117,8 @@ namespace fenriz::renderer {
                 float x1 = 2.0f * (b.x + b.width) / W - 1.0f;
                 float y0 = 1.0f - 2.0f * b.y / H;
                 float y1 = 1.0f - 2.0f * (b.y + b.height) / H;
-                const GLfloat pos[] = { x0, y0, x1, y0, x1, y1, x0, y0, x1, y1, x0, y1 };
-                const GLfloat loc[] = { 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1 };
+                const GLfloat pos[] = {x0, y0, x1, y0, x1, y1, x0, y0, x1, y1, x0, y1};
+                const GLfloat loc[] = {0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1};
 
                 glUniform2f(u_size, (float)b.width, (float)b.height);
                 glVertexAttribPointer(a_pos, 2, GL_FLOAT, GL_FALSE, 0, pos);

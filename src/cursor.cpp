@@ -71,8 +71,12 @@ namespace fenriz::cursor {
         void cursor_axis(wl_listener* listener, void* data) {
             Cursor* c = wl_container_of(listener, c, axis);
             auto* event = static_cast<wlr_pointer_axis_event*>(data);
-            wlr_seat_pointer_notify_axis(c->server->seat, event->time_msec, event->orientation,
-                                         event->delta, event->delta_discrete, event->source,
+            wlr_seat_pointer_notify_axis(c->server->seat,
+                                         event->time_msec,
+                                         event->orientation,
+                                         event->delta,
+                                         event->delta_discrete,
+                                         event->source,
                                          event->relative_direction);
         }
 

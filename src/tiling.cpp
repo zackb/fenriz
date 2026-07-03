@@ -19,7 +19,7 @@ namespace fenriz::tiling {
         int i = 0;
         for (View* view : server.views) {
             const Rect& r = rects[i++];
-            view->box = { r.x, r.y, r.w, r.h };
+            view->box = {r.x, r.y, r.w, r.h};
             wlr_xdg_toplevel_set_size(view->toplevel, r.w, r.h);
         }
     }

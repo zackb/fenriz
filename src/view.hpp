@@ -12,7 +12,7 @@ namespace fenriz {
     // A managed window: wraps an xdg_toplevel and its tiled geometry. Standard-layout
     // (pointers + POD + wl_listener only) so wl_container_of recovers it cleanly.
     class View {
-      public:
+    public:
         View(Server& server, wlr_xdg_toplevel* toplevel);
 
         struct Box {

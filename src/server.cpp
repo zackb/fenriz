@@ -37,9 +37,7 @@ namespace fenriz {
         }
     }
 
-    Server::Server() {
-        config = Config::load();
-    }
+    Server::Server() { config = Config::load(); }
 
     Server::~Server() {
         if (display) {
@@ -117,9 +115,7 @@ namespace fenriz {
         return true;
     }
 
-    void Server::run() {
-        wl_display_run(display);
-    }
+    void Server::run() { wl_display_run(display); }
 
     void Server::stop() {
         if (display)
