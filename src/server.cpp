@@ -6,6 +6,7 @@
 
 #include "cursor.hpp"
 #include "decoration.hpp"
+#include "ipc.hpp"
 #include "keyboard.hpp"
 #include "layer.hpp"
 #include "output.hpp"
@@ -26,6 +27,38 @@ namespace fenriz {
         void on_new_input(wl_listener* listener, void* data) {
             SignalListener* sl = wl_container_of(listener, sl, listener);
             handle_new_input(*sl->server, static_cast<wlr_input_device*>(data));
+        }
+
+        // Clipboard: a client with keyboard focus asks to own the selection. Honor it so
+        // copy/paste works between clients. Same shape for the primary (middle-click) one.
+        void on_set_selection(wl_listener* listener, void* data) {
+            SignalListener* sl = wl_container_of(listener, sl, listener);
+            auto* ev = static_cast<wlr_seat_request_set_selection_event*>(data);
+            wlr_seat_set_selection(sl->server->seat, ev->source, ev->serial);
+        }
+
+        void on_set_primary_selection(wl_listener* listener, void* data) {
+            SignalListener* sl = wl_container_of(listener, sl, listener);
+            auto* ev = static_cast<wlr_seat_request_set_primary_selection_event*>(data);
+            wlr_seat_set_primary_selection(sl->server->seat, ev->source, ev->serial);
+        }
+
+        void on_request_start_drag(wl_listener* listener, void* data) {
+            SignalListener* sl = wl_container_of(listener, sl, listener);
+            auto* ev = static_cast<wlr_seat_request_start_drag_event*>(data);
+            wlr_seat* seat = sl->server->seat;
+            if (wlr_seat_validate_pointer_grab_serial(seat, ev->origin, ev->serial))
+                wlr_seat_start_pointer_drag(seat, ev->drag, ev->serial);
+            else if (ev->drag->source)
+                wlr_data_source_destroy(ev->drag->source);
+        }
+
+        void on_set_gamma(wl_listener* listener, void* data) {
+            SignalListener* sl = wl_container_of(listener, sl, listener);
+            auto* ev = static_cast<wlr_gamma_control_manager_v1_set_gamma_event*>(data);
+            (void)sl;
+            // Applied on the next frame (output.cpp); just wake the output.
+            wlr_output_schedule_frame(ev->output);
         }
 
     } // namespace
@@ -99,6 +132,31 @@ namespace fenriz {
         l_new_input.listener.notify = on_new_input;
         wl_signal_add(&backend->events.new_input, &l_new_input.listener);
 
+        // Clipboard / selection: data_device_manager (above) needs these seat handlers to
+        // actually move selections between clients, plus the primary (middle-click) manager
+        // and data-control (wl-clipboard / clipboard managers).
+        l_set_selection.server = this;
+        l_set_selection.listener.notify = on_set_selection;
+        wl_signal_add(&seat->events.request_set_selection, &l_set_selection.listener);
+        l_set_primary_selection.server = this;
+        l_set_primary_selection.listener.notify = on_set_primary_selection;
+        wl_signal_add(&seat->events.request_set_primary_selection, &l_set_primary_selection.listener);
+        l_start_drag.server = this;
+        l_start_drag.listener.notify = on_request_start_drag;
+        wl_signal_add(&seat->events.request_start_drag, &l_start_drag.listener);
+        wlr_primary_selection_v1_device_manager_create(display);
+        wlr_data_control_manager_v1_create(display);
+        wlr_ext_data_control_manager_v1_create(display, 1);
+
+        // Let external tools see the display and windows, grab screenshots, tune gamma.
+        wlr_xdg_output_manager_v1_create(display, output_layout);
+        wlr_screencopy_manager_v1_create(display);
+        foreign_toplevel_manager = wlr_foreign_toplevel_manager_v1_create(display);
+        gamma_control_manager = wlr_gamma_control_manager_v1_create(display);
+        l_set_gamma.server = this;
+        l_set_gamma.listener.notify = on_set_gamma;
+        wl_signal_add(&gamma_control_manager->events.set_gamma, &l_set_gamma.listener);
+
         cursor::init(*this);
 
         layer::init(*this);
@@ -116,6 +174,10 @@ namespace fenriz {
 
         setenv("WAYLAND_DISPLAY", socket, true);
         wlr_log(WLR_INFO, "fenriz running on WAYLAND_DISPLAY=%s", socket);
+
+        // Control socket (FENRIZ_SOCKET) — needs WAYLAND_DISPLAY set, and must be up before
+        // exec_once so bars/tools spawned below inherit the env and can connect immediately.
+        ipc::init(*this);
 
         // Run startup commands now that the socket is live and WAYLAND_DISPLAY is set,
         // so the spawned clients connect to us.

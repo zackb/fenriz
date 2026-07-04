@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdlib>
 
+#include "ipc.hpp"
 #include "server.hpp"
 #include "tiling.hpp"
 #include "wlr.hpp"
@@ -34,8 +35,20 @@ namespace fenriz {
                 wlr_surface_send_enter(surface, server.output);
             wlr_fractional_scale_v1_notify_scale(surface, server.config.scale);
 
+            // Publish this window to the foreign-toplevel (taskbar) protocol.
+            if (server.foreign_toplevel_manager) {
+                view->foreign_handle = wlr_foreign_toplevel_handle_v1_create(server.foreign_toplevel_manager);
+                if (view->toplevel->title)
+                    wlr_foreign_toplevel_handle_v1_set_title(view->foreign_handle, view->toplevel->title);
+                if (view->toplevel->app_id)
+                    wlr_foreign_toplevel_handle_v1_set_app_id(view->foreign_handle, view->toplevel->app_id);
+                if (server.output)
+                    wlr_foreign_toplevel_handle_v1_output_enter(view->foreign_handle, server.output);
+            }
+
             tiling::arrange(server);
             focus_view(server, view);
+            ipc::publish(server);
         }
 
         void view_handle_unmap(wl_listener* listener, void* data) {
@@ -44,12 +57,17 @@ namespace fenriz {
             Server& server = *view->server;
             view->mapped = false;
             server.views.remove(view);
+            if (view->foreign_handle) {
+                wlr_foreign_toplevel_handle_v1_destroy(view->foreign_handle);
+                view->foreign_handle = nullptr;
+            }
             if (server.focused_view == view)
                 server.focused_view = nullptr;
             tiling::arrange(server);
             // Move focus to another visible window so the keyboard isn't left dangling.
             if (!server.focused_view)
                 focus_view(server, topmost_visible(server));
+            ipc::publish(server);
         }
 
         void view_handle_commit(wl_listener* listener, void* data) {
@@ -61,6 +79,24 @@ namespace fenriz {
                 wlr_xdg_toplevel_set_size(view->toplevel, 0, 0);
         }
 
+        void view_handle_set_title(wl_listener* listener, void* data) {
+            View* view = wl_container_of(listener, view, set_title);
+            (void)data;
+            if (view->foreign_handle && view->toplevel->title)
+                wlr_foreign_toplevel_handle_v1_set_title(view->foreign_handle, view->toplevel->title);
+            if (view->focused)
+                ipc::publish(*view->server); // refresh activeWindow.title in the feed
+        }
+
+        void view_handle_set_app_id(wl_listener* listener, void* data) {
+            View* view = wl_container_of(listener, view, set_app_id);
+            (void)data;
+            if (view->foreign_handle && view->toplevel->app_id)
+                wlr_foreign_toplevel_handle_v1_set_app_id(view->foreign_handle, view->toplevel->app_id);
+            if (view->focused)
+                ipc::publish(*view->server);
+        }
+
         void view_handle_destroy(wl_listener* listener, void* data) {
             View* view = wl_container_of(listener, view, destroy);
             (void)data;
@@ -68,6 +104,8 @@ namespace fenriz {
             wl_list_remove(&view->unmap.link);
             wl_list_remove(&view->commit.link);
             wl_list_remove(&view->destroy.link);
+            wl_list_remove(&view->set_title.link);
+            wl_list_remove(&view->set_app_id.link);
             delete view;
         }
 
@@ -86,22 +124,30 @@ namespace fenriz {
         if (server.focused_view) {
             wlr_xdg_toplevel_set_activated(server.focused_view->toplevel, false);
             server.focused_view->focused = false;
+            if (server.focused_view->foreign_handle)
+                wlr_foreign_toplevel_handle_v1_set_activated(server.focused_view->foreign_handle, false);
         }
 
         server.focused_view = view;
         view->focused = true;
         wlr_xdg_toplevel_set_activated(view->toplevel, true);
+        if (view->foreign_handle)
+            wlr_foreign_toplevel_handle_v1_set_activated(view->foreign_handle, true);
 
         focus_surface(server, view->toplevel->base->surface);
+        ipc::publish(server);
     }
 
     void clear_focus(Server& server) {
         if (server.focused_view) {
             wlr_xdg_toplevel_set_activated(server.focused_view->toplevel, false);
             server.focused_view->focused = false;
+            if (server.focused_view->foreign_handle)
+                wlr_foreign_toplevel_handle_v1_set_activated(server.focused_view->foreign_handle, false);
             server.focused_view = nullptr;
         }
         wlr_seat_keyboard_notify_clear_focus(server.seat);
+        ipc::publish(server);
     }
 
     void focus_direction(Server& server, int dx, int dy) {
@@ -144,6 +190,7 @@ namespace fenriz {
             focus_view(server, v);
         else
             clear_focus(server);
+        ipc::publish(server); // active workspace changed even if focus didn't
     }
 
     void move_focused_to_workspace(Server& server, int n) {
@@ -157,6 +204,7 @@ namespace fenriz {
             focus_view(server, next);
         else
             clear_focus(server);
+        ipc::publish(server); // occupancy of workspace n changed
     }
 
     View* view_at(Server& server, double lx, double ly, wlr_surface** surface, double* sx, double* sy) {
@@ -192,6 +240,10 @@ namespace fenriz {
         wl_signal_add(&surface->events.commit, &commit);
         destroy.notify = view_handle_destroy;
         wl_signal_add(&toplevel->base->events.destroy, &destroy);
+        set_title.notify = view_handle_set_title;
+        wl_signal_add(&toplevel->events.set_title, &set_title);
+        set_app_id.notify = view_handle_set_app_id;
+        wl_signal_add(&toplevel->events.set_app_id, &set_app_id);
     }
 
 } // namespace fenriz

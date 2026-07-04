@@ -4,6 +4,7 @@
 
 struct wlr_xdg_toplevel;
 struct wlr_surface;
+struct wlr_foreign_toplevel_handle_v1;
 
 namespace fenriz {
 
@@ -26,10 +27,15 @@ namespace fenriz {
         bool mapped = false;
         bool focused = false;
 
+        // wlr-foreign-toplevel handle (taskbar/window-list protocol); live while mapped.
+        wlr_foreign_toplevel_handle_v1* foreign_handle = nullptr;
+
         wl_listener map;
         wl_listener unmap;
         wl_listener commit;
         wl_listener destroy;
+        wl_listener set_title;
+        wl_listener set_app_id;
     };
 
     // Route seat keyboard input to a surface (notify_enter with the current keyboard

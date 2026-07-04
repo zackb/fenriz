@@ -117,6 +117,16 @@ namespace fenriz::output {
             wlr_output_state state;
             wlr_output_state_init(&state);
 
+            // Apply any client-set gamma LUT (wlsunset/gammastep) on this commit. Routing it
+            // through the single frame path avoids a separate gamma commit racing the render.
+            // ponytail: reapplied each frame (a cheap LUT copy) rather than tracking dirty.
+            if (server.gamma_control_manager) {
+                wlr_gamma_control_v1* gamma =
+                    wlr_gamma_control_manager_v1_get_control(server.gamma_control_manager, output->handle);
+                if (gamma)
+                    wlr_gamma_control_v1_apply(gamma, &state);
+            }
+
             wlr_render_pass* pass = wlr_output_begin_render_pass(output->handle, &state, nullptr);
             if (pass) {
                 wlr_render_rect_options bg = {};
