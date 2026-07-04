@@ -39,6 +39,7 @@ add_executable(fenriz
     src/config.cpp
     src/renderer.cpp
     src/layer.cpp
+    src/decoration.cpp
     ${LAYER_SHELL_HEADER}
 )
 

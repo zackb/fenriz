@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include "cursor.hpp"
+#include "decoration.hpp"
 #include "keyboard.hpp"
 #include "layer.hpp"
 #include "output.hpp"
@@ -101,6 +102,7 @@ namespace fenriz {
         cursor::init(*this);
 
         layer::init(*this);
+        decoration::init(*this);
 
         const char* socket = wl_display_add_socket_auto(display);
         if (!socket) {

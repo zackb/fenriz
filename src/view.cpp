@@ -86,8 +86,11 @@ namespace fenriz {
             if (!view->mapped)
                 continue;
             double subx, suby;
-            wlr_surface* s =
-                wlr_xdg_surface_surface_at(view->toplevel->base, lx - view->box.x, ly - view->box.y, &subx, &suby);
+            // Match the render offset: content geometry origin sits at the tile origin, so
+            // shift the hit-test into surface-local coords by the same geometry offset.
+            const wlr_box& geo = view->toplevel->base->geometry;
+            wlr_surface* s = wlr_xdg_surface_surface_at(
+                view->toplevel->base, lx - view->box.x + geo.x, ly - view->box.y + geo.y, &subx, &suby);
             if (s) {
                 *surface = s;
                 *sx = subx;

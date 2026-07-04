@@ -15,6 +15,7 @@ struct wlr_xdg_shell;
 struct wlr_cursor;
 struct wlr_layer_shell_v1;
 struct wlr_idle_notifier_v1;
+struct wlr_xdg_decoration_manager_v1;
 
 namespace fenriz {
 
@@ -58,6 +59,7 @@ namespace fenriz {
         wlr_xdg_shell* xdg_shell = nullptr;
         wlr_layer_shell_v1* layer_shell = nullptr;
         wlr_idle_notifier_v1* idle_notifier = nullptr;
+        wlr_xdg_decoration_manager_v1* xdg_decoration_manager = nullptr;
         wlr_cursor* cursor = nullptr;
 
         // Tiling region left after layer-shell exclusive zones (bars) are subtracted.
@@ -69,6 +71,7 @@ namespace fenriz {
         SignalListener l_new_toplevel;
         SignalListener l_new_input;
         SignalListener l_new_layer_surface;
+        SignalListener l_new_decoration;
     };
 
 } // namespace fenriz

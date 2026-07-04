@@ -1,6 +1,7 @@
 #include "output.hpp"
 
 #include <ctime>
+#include <pixman.h>
 
 #include "layer.hpp"
 #include "renderer.hpp"
@@ -28,9 +29,10 @@ namespace fenriz::output {
         // Passed through wlr_xdg_surface_for_each_surface while rendering a view.
         struct RenderContext {
             wlr_render_pass* pass;
-            int x, y;           // view origin in logical output-local coordinates
-            float scale;        // output scale: logical -> physical buffer pixels
-            const float* alpha; // per-window opacity, or nullptr for opaque
+            int x, y;                        // surface origin in logical output-local coords
+            float scale;                     // output scale: logical -> physical buffer pixels
+            const float* alpha;              // per-window opacity, or nullptr for opaque
+            const pixman_region32_t* clip;   // physical-pixel clip (tile), or nullptr
         };
 
         // Scale a logical box into physical buffer pixels.
@@ -60,6 +62,7 @@ namespace fenriz::output {
             opts.dst_box = {(int)((ctx->x + sx) * s), (int)((ctx->y + sy) * s),
                             (int)(surface->current.width * s), (int)(surface->current.height * s)};
             opts.alpha = ctx->alpha;
+            opts.clip = ctx->clip; // keep CSD shadow from bleeding past the tile
             wlr_render_pass_add_texture(ctx->pass, &opts);
         }
 
@@ -91,7 +94,7 @@ namespace fenriz::output {
             for (LayerSurface* ls : server.layer_surfaces) {
                 if (!ls->mapped || ls->handle->current.layer != (uint32_t)lyr)
                     continue;
-                RenderContext ctx = {pass, ls->geo.x, ls->geo.y, scale, nullptr};
+                RenderContext ctx = {pass, ls->geo.x, ls->geo.y, scale, nullptr, nullptr};
                 wlr_layer_surface_v1_for_each_surface(ls->handle, render_surface, &ctx);
             }
         }
@@ -128,8 +131,17 @@ namespace fenriz::output {
                 for (View* view : server.views) {
                     if (!view->mapped)
                         continue;
-                    RenderContext ctx = {pass, view->box.x, view->box.y, scale, &cfg.opacity};
+                    // Honor the client's window geometry: align its geometry origin to the
+                    // tile (CSD apps put a shadow margin at negative offset) and clip the
+                    // surface tree to the tile so that shadow doesn't bleed into gaps.
+                    const wlr_box& geo = view->toplevel->base->geometry;
+                    const wlr_box tile = scale_box({view->box.x, view->box.y, view->box.width, view->box.height},
+                                                   scale);
+                    pixman_region32_t clip;
+                    pixman_region32_init_rect(&clip, tile.x, tile.y, tile.width, tile.height);
+                    RenderContext ctx = {pass, view->box.x - geo.x, view->box.y - geo.y, scale, &cfg.opacity, &clip};
                     wlr_xdg_surface_for_each_surface(view->toplevel->base, render_surface, &ctx);
+                    pixman_region32_fini(&clip);
                     uint32_t border = (view == server.focused_view) ? cfg.border_active : cfg.border_inactive;
                     draw_border(pass, view->box, border, cfg.border_width, scale);
                 }
