@@ -2,6 +2,7 @@
 
 #include "server.hpp"
 #include "tiling.hpp"
+#include "view.hpp"
 #include "wlr.hpp"
 
 namespace fenriz::layer {
@@ -11,8 +12,13 @@ namespace fenriz::layer {
         // Subtract a surface's exclusive zone from the usable area, based on which single
         // edge (or full-width/height edge triplet) it anchors to. Mirrors the reference
         // wlroots layer-shell arrangement.
-        void apply_exclusive(wlr_box& usable, uint32_t anchor, int32_t exclusive, int32_t margin_top,
-                             int32_t margin_right, int32_t margin_bottom, int32_t margin_left) {
+        void apply_exclusive(wlr_box& usable,
+                             uint32_t anchor,
+                             int32_t exclusive,
+                             int32_t margin_top,
+                             int32_t margin_right,
+                             int32_t margin_bottom,
+                             int32_t margin_left) {
             if (exclusive <= 0)
                 return;
             const uint32_t T = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
@@ -96,8 +102,13 @@ namespace fenriz::layer {
             }
 
             ls->geo = {box.x, box.y, box.width, box.height};
-            apply_exclusive(usable, state.anchor, state.exclusive_zone, state.margin.top, state.margin.right,
-                            state.margin.bottom, state.margin.left);
+            apply_exclusive(usable,
+                            state.anchor,
+                            state.exclusive_zone,
+                            state.margin.top,
+                            state.margin.right,
+                            state.margin.bottom,
+                            state.margin.left);
             wlr_layer_surface_v1_configure(layer, box.width, box.height);
         }
 
@@ -110,14 +121,25 @@ namespace fenriz::layer {
             if (ls->handle->output)
                 wlr_surface_send_enter(surface, ls->handle->output);
             wlr_fractional_scale_v1_notify_scale(surface, ls->server->config.scale);
+
+            if (ls->handle->current.keyboard_interactive != ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE)
+                focus_surface(*ls->server, surface);
             arrange(*ls->server);
         }
 
         void on_unmap(wl_listener* listener, void* data) {
             LayerSurface* ls = wl_container_of(listener, ls, unmap);
             (void)data;
+            Server& server = *ls->server;
             ls->mapped = false;
-            arrange(*ls->server);
+            // If this surface held the keyboard, hand it back to the focused window.
+            if (server.seat->keyboard_state.focused_surface == ls->handle->surface) {
+                if (server.focused_view)
+                    focus_surface(server, server.focused_view->toplevel->base->surface);
+                else
+                    wlr_seat_keyboard_notify_clear_focus(server.seat);
+            }
+            arrange(server);
         }
 
         void on_commit(wl_listener* listener, void* data) {
@@ -173,8 +195,10 @@ namespace fenriz::layer {
         wlr_box usable = full;
 
         // Exclusive pass first (top -> bottom) so bars reserve space, then the rest.
-        const int order[] = {ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, ZWLR_LAYER_SHELL_V1_LAYER_TOP,
-                             ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM, ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND};
+        const int order[] = {ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
+                             ZWLR_LAYER_SHELL_V1_LAYER_TOP,
+                             ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM,
+                             ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND};
         for (bool exclusive : {true, false})
             for (int lyr : order)
                 for (LayerSurface* ls : server.layer_surfaces)

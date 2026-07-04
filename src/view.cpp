@@ -72,6 +72,12 @@ namespace fenriz {
 
     } // namespace
 
+    void focus_surface(Server& server, wlr_surface* surface) {
+        if (wlr_keyboard* kb = wlr_seat_get_keyboard(server.seat))
+            wlr_seat_keyboard_notify_enter(
+                server.seat, surface, kb->keycodes, kb->num_keycodes, &kb->modifiers);
+    }
+
     void focus_view(Server& server, View* view) {
         if (!view || server.focused_view == view)
             return;
@@ -85,9 +91,7 @@ namespace fenriz {
         view->focused = true;
         wlr_xdg_toplevel_set_activated(view->toplevel, true);
 
-        if (wlr_keyboard* kb = wlr_seat_get_keyboard(server.seat))
-            wlr_seat_keyboard_notify_enter(
-                server.seat, view->toplevel->base->surface, kb->keycodes, kb->num_keycodes, &kb->modifiers);
+        focus_surface(server, view->toplevel->base->surface);
     }
 
     void clear_focus(Server& server) {

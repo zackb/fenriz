@@ -32,6 +32,10 @@ namespace fenriz {
         wl_listener destroy;
     };
 
+    // Route seat keyboard input to a surface (notify_enter with the current keyboard
+    // state). Used by focus_view and by layer surfaces that grab the keyboard.
+    void focus_surface(Server& server, wlr_surface* surface);
+
     // Give a view keyboard focus: activate it, deactivate the previous focus, and route
     // keyboard input to its surface. No-op if view is null or already focused.
     void focus_view(Server& server, View* view);
