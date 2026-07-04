@@ -170,6 +170,9 @@ namespace fenriz {
             case Action::Fullscreen:
                 toggle_fullscreen(server);
                 break;
+            case Action::ToggleFloat:
+                toggle_floating(server);
+                break;
             case Action::Workspace:
             case Action::MoveToWorkspace: {
                 int n = 0;

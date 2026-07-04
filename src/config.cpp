@@ -90,6 +90,8 @@ namespace fenriz {
             return Action::ToggleLayout;
         if (s == "fullscreen")
             return Action::Fullscreen;
+        if (s == "togglefloating")
+            return Action::ToggleFloat;
         if (s == "workspace")
             return Action::Workspace;
         if (s == "movetoworkspace")

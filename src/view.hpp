@@ -27,6 +27,7 @@ namespace fenriz {
         bool mapped = false;
         bool focused = false;
         bool fullscreen = false;
+        bool floating = false; // escaped the BSP tree; free move/resize, drawn above tiles
 
         // wlr-foreign-toplevel handle (taskbar/window-list protocol); live while mapped.
         wlr_foreign_toplevel_handle_v1* foreign_handle = nullptr;
@@ -56,6 +57,10 @@ namespace fenriz {
     void set_fullscreen(Server& server, View* view, bool on);
     // Toggle fullscreen on the currently focused view.
     void toggle_fullscreen(Server& server);
+
+    // Toggle floating on the currently focused view: pull it out of the tiling tree (or
+    // return it), so it can be freely moved/resized with the mouse.
+    void toggle_floating(Server& server);
 
     // Focus the nearest visible view whose center lies in direction (dx,dy), each in
     // {-1,0,1}: left (-1,0), right (1,0), up (0,-1), down (0,1). No-op if none.

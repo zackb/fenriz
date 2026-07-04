@@ -17,7 +17,7 @@ exec-once = foot
 #   MODS: SUPER SHIFT CTRL ALT (space-separated)
 #   actions: exec, killactive, exit, focusnext, focusprev,
 #            focusleft, focusright, focusup, focusdown, togglelayout,
-#            fullscreen, workspace <1-10>, movetoworkspace <1-10>
+#            fullscreen, togglefloating, workspace <1-10>, movetoworkspace <1-10>
 bind = SUPER,       Return, exec, foot
 bind = SUPER,       Q,      killactive
 bind = SUPER SHIFT, E,      exit
@@ -29,6 +29,11 @@ bind = SUPER,       up,     focusup
 bind = SUPER,       down,   focusdown
 bind = SUPER,       Space,  togglelayout
 bind = SUPER,       F,      fullscreen
+bind = SUPER,       V,      togglefloating
+
+# mouse (hardcoded): SUPER + drag moves a window, SUPER + SHIFT + drag resizes it.
+#   tiled:    drag swaps it with the tile it's dropped on; SHIFT+drag drags the split.
+#   floating: drag moves it freely; SHIFT+drag resizes it freely.
 
 # workspaces: SUPER+<n> switches, SUPER+SHIFT+<n> sends the focused window there (0 = 10)
 bind = SUPER,       1, workspace, 1

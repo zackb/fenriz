@@ -1,14 +1,22 @@
 #include "cursor.hpp"
 
+#include <algorithm>
+#include <linux/input-event-codes.h>
+
 #include "layer.hpp"
 #include "lock.hpp"
 #include "server.hpp"
+#include "tiling.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
 
 namespace fenriz::cursor {
 
     namespace {
+
+        // Interactive drag mode. Move/resize of a floating window is free; a tiled window is
+        // swapped with the tile it's dropped on, or has its split ratio dragged.
+        enum class Grab { None, MoveFloat, ResizeFloat, Swap, ResizeTile };
 
         // Singleton cursor state, allocated once in init() and kept for the session.
         struct Cursor {
@@ -22,7 +30,56 @@ namespace fenriz::cursor {
             wl_listener frame;
             wl_listener request_set_cursor;
             wl_listener request_set_shape;
+
+            Grab grab = Grab::None;
+            View* grabbed = nullptr;
         };
+
+        // The singleton, so forget_view() can reach the grab state (init() sets it).
+        Cursor* g_cursor = nullptr;
+
+        // Topmost visible view whose tile box contains the point. Unlike view_at this hits
+        // borders/gaps too, so a drag started on a window's frame still grabs it.
+        View* view_box_at(Server& server, double lx, double ly) {
+            for (auto it = server.views.rbegin(); it != server.views.rend(); ++it) {
+                View* v = *it;
+                if (!view_visible(server, v))
+                    continue;
+                const auto& b = v->box;
+                if (lx >= b.x && lx < b.x + b.width && ly >= b.y && ly < b.y + b.height)
+                    return v;
+            }
+            return nullptr;
+        }
+
+        // Apply an interactive drag by a cursor delta (px). Returns true if a grab consumed
+        // the motion (so passthrough pointer handling is skipped).
+        bool process_grab(Cursor* c, double dx, double dy) {
+            Server& server = *c->server;
+            View* v = c->grabbed;
+            switch (c->grab) {
+            case Grab::None:
+                return false;
+            case Grab::Swap:
+                return true; // swap resolves on release
+            case Grab::MoveFloat:
+                v->box.x += (int)dx;
+                v->box.y += (int)dy;
+                return true;
+            case Grab::ResizeFloat: {
+                v->box.width = std::max(1, v->box.width + (int)dx);
+                v->box.height = std::max(1, v->box.height + (int)dy);
+                const int bw = server.config.border_width;
+                wlr_xdg_toplevel_set_size(
+                    v->toplevel, std::max(1, v->box.width - 2 * bw), std::max(1, v->box.height - 2 * bw));
+                return true;
+            }
+            case Grab::ResizeTile:
+                tiling::resize_split(server, v, dx, dy);
+                return true;
+            }
+            return false;
+        }
 
         // Update pointer focus + cursor image for the surface under the cursor.
         void process_motion(Cursor* c, uint32_t time) {
@@ -57,14 +114,20 @@ namespace fenriz::cursor {
         void cursor_motion(wl_listener* listener, void* data) {
             Cursor* c = wl_container_of(listener, c, motion);
             auto* event = static_cast<wlr_pointer_motion_event*>(data);
+            const double ox = c->cursor->x, oy = c->cursor->y;
             wlr_cursor_move(c->cursor, &event->pointer->base, event->delta_x, event->delta_y);
+            if (process_grab(c, c->cursor->x - ox, c->cursor->y - oy))
+                return;
             process_motion(c, event->time_msec);
         }
 
         void cursor_motion_absolute(wl_listener* listener, void* data) {
             Cursor* c = wl_container_of(listener, c, motion_absolute);
             auto* event = static_cast<wlr_pointer_motion_absolute_event*>(data);
+            const double ox = c->cursor->x, oy = c->cursor->y;
             wlr_cursor_warp_absolute(c->cursor, &event->pointer->base, event->x, event->y);
+            if (process_grab(c, c->cursor->x - ox, c->cursor->y - oy))
+                return;
             process_motion(c, event->time_msec);
         }
 
@@ -73,7 +136,39 @@ namespace fenriz::cursor {
             auto* event = static_cast<wlr_pointer_button_event*>(data);
             Server& server = *c->server;
 
-            if (event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+            if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+                // End an interactive drag. A tiled move resolves into a swap with the tile the
+                // window is dropped on.
+                if (c->grab != Grab::None) {
+                    if (c->grab == Grab::Swap) {
+                        View* target = view_box_at(server, c->cursor->x, c->cursor->y);
+                        if (target && target != c->grabbed && !target->floating)
+                            tiling::swap(server, c->grabbed, target);
+                    }
+                    c->grab = Grab::None;
+                    c->grabbed = nullptr;
+                    process_motion(c, event->time_msec); // restore the passthrough cursor image
+                    return;                              // swallow the release that ended the drag
+                }
+            } else {
+                // SUPER + left button starts an interactive move; + SHIFT resizes. Floating
+                // windows move/resize freely; tiled windows swap / drag their split ratio.
+                // ponytail: SUPER is hardcoded to match the reference config; make it a
+                // configurable `bindm` (button field on Bind) if per-user mouse binds are wanted.
+                wlr_keyboard* kb = wlr_seat_get_keyboard(server.seat);
+                const uint32_t mods = kb ? wlr_keyboard_get_modifiers(kb) : 0;
+                if (event->button == BTN_LEFT && (mods & WLR_MODIFIER_LOGO)) {
+                    View* v = view_box_at(server, c->cursor->x, c->cursor->y);
+                    if (v && !v->fullscreen) {
+                        focus_view(server, v);
+                        const bool resize = mods & WLR_MODIFIER_SHIFT;
+                        c->grabbed = v;
+                        c->grab = v->floating ? (resize ? Grab::ResizeFloat : Grab::MoveFloat)
+                                              : (resize ? Grab::ResizeTile : Grab::Swap);
+                        wlr_cursor_set_xcursor(c->cursor, c->mgr, resize ? "se-resize" : "grabbing");
+                        return; // consume the press; don't forward to the client
+                    }
+                }
                 // Click-to-focus: focus the window under the cursor.
                 double sx, sy;
                 wlr_surface* surface = nullptr;
@@ -121,8 +216,16 @@ namespace fenriz::cursor {
 
     } // namespace
 
+    void forget_view(View* view) {
+        if (g_cursor && g_cursor->grabbed == view) {
+            g_cursor->grab = Grab::None;
+            g_cursor->grabbed = nullptr;
+        }
+    }
+
     void init(Server& server) {
         Cursor* c = new Cursor{};
+        g_cursor = c;
         c->server = &server;
         c->cursor = wlr_cursor_create();
         server.cursor = c->cursor;

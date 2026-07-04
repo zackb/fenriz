@@ -12,6 +12,42 @@ namespace fenriz::tiling {
 
     void remove(Server& server, View* v) { tree_remove(server.ws_roots[v->workspace], v); }
 
+    void swap(Server& server, View* a, View* b) {
+        if (a == b)
+            return;
+        Node* la = find_leaf(server.ws_roots[a->workspace], a);
+        Node* lb = find_leaf(server.ws_roots[b->workspace], b);
+        if (!la || !lb)
+            return;
+        std::swap(la->view, lb->view);
+        arrange(server);
+    }
+
+    // Nearest ancestor of `leaf` whose split orientation matches `vertical`; also reports
+    // whether leaf descends the child[0] (grow-with-positive-delta) side.
+    static Node* enclosing_split(Node* leaf, bool vertical, bool& first_side) {
+        for (Node* n = leaf; n && n->parent; n = n->parent) {
+            Node* p = n->parent;
+            if (p->vertical == vertical) {
+                first_side = (p->child[0] == n);
+                return p;
+            }
+        }
+        return nullptr;
+    }
+
+    void resize_split(Server& server, View* v, double dx, double dy) {
+        Node* leaf = find_leaf(server.ws_roots[v->workspace], v);
+        if (!leaf)
+            return;
+        bool first;
+        if (Node* h = enclosing_split(leaf, true, first); h && h->rect.w > 0)
+            h->ratio = std::clamp(h->ratio + (first ? dx : -dx) / h->rect.w, 0.1, 0.9);
+        if (Node* w = enclosing_split(leaf, false, first); w && w->rect.h > 0)
+            w->ratio = std::clamp(w->ratio + (first ? dy : -dy) / w->rect.h, 0.1, 0.9);
+        arrange(server);
+    }
+
     void arrange(Server& server) {
         Node* root = server.ws_roots[server.active_workspace];
         if (!root)

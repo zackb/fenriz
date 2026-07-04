@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdlib>
 
+#include "cursor.hpp"
 #include "ipc.hpp"
 #include "server.hpp"
 #include "tiling.hpp"
@@ -58,6 +59,7 @@ namespace fenriz {
             (void)data;
             Server& server = *view->server;
             view->mapped = false;
+            cursor::forget_view(view); // drop any in-flight mouse grab before the view is gone
             server.views.remove(view);
             tiling::remove(server, view); // sibling reclaims the freed tile
             if (view->foreign_handle) {
@@ -144,6 +146,13 @@ namespace fenriz {
                 wlr_foreign_toplevel_handle_v1_set_activated(server.focused_view->foreign_handle, false);
         }
 
+        // Raise floating windows to the top of the stack so they stay above tiles while in
+        // use. Tiled windows keep their list order (raising them would scramble cycle_focus).
+        if (view->floating) {
+            server.views.remove(view);
+            server.views.push_back(view);
+        }
+
         server.focused_view = view;
         view->focused = true;
         wlr_xdg_toplevel_set_activated(view->toplevel, true);
@@ -177,6 +186,24 @@ namespace fenriz {
     void toggle_fullscreen(Server& server) {
         if (server.focused_view)
             set_fullscreen(server, server.focused_view, !server.focused_view->fullscreen);
+    }
+
+    void toggle_floating(Server& server) {
+        View* v = server.focused_view;
+        if (!v)
+            return;
+        v->floating = !v->floating;
+        if (v->floating) {
+            // Leave the tree (its slot is reclaimed by the sibling) and keep the current tile
+            // box as the initial floating geometry; raise it above the tiles (v is already
+            // focused, so focus_view would no-op — splice directly).
+            tiling::remove(server, v);
+            server.views.remove(v);
+            server.views.push_back(v);
+        } else {
+            tiling::insert(server, v, nullptr); // re-tile at the spiral tail
+        }
+        tiling::arrange(server);
     }
 
     void focus_direction(Server& server, int dx, int dy) {

@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+#include <utility>
 
 using namespace fenriz;
 using namespace fenriz::tiling;
@@ -67,6 +68,29 @@ int main() {
         tree_remove(root, tag(2));
         place(root, {10, 10, 980, 980}, 10);
         assert(box(root, tag(1)).w == 980 && box(root, tag(1)).h == 980); // back to full area
+    }
+
+    // Split ratio: bumping the root ratio shifts the boundary. Default 0.5 gives a 485px
+    // left column; 0.75 gives (980-10)*0.75 = 727, pushing the divider right.
+    {
+        Node* root = nullptr;
+        add(root, tag(1), nullptr);
+        add(root, tag(2), tag(1)); // 1 | 2, vertical split at the root
+        root->ratio = 0.75;
+        place(root, {10, 10, 980, 980}, 10);
+        assert(box(root, tag(1)).w == 727);
+        assert(box(root, tag(2)).x == 10 + 727 + 10 && box(root, tag(2)).w == 980 - 10 - 727);
+    }
+
+    // Swap: exchanging two leaves' views trades their geometry.
+    {
+        Node* root = nullptr;
+        add(root, tag(1), nullptr);
+        add(root, tag(2), tag(1)); // 1 = left, 2 = right
+        Rect left = box(root, tag(1)), right = box(root, tag(2));
+        std::swap(find_leaf(root, tag(1))->view, find_leaf(root, tag(2))->view);
+        assert(box(root, tag(1)).x == right.x); // 1 now sits where 2 was
+        assert(box(root, tag(2)).x == left.x);
     }
 
     std::printf("tiling layout: all assertions passed\n");

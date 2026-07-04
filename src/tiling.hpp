@@ -24,6 +24,7 @@ namespace fenriz {
             Node* parent = nullptr;
             Node* child[2] = {nullptr, nullptr};
             bool vertical = true; // internal nodes: true => child[0] | child[1]
+            double ratio = 0.5;   // internal nodes: fraction of the split going to child[0]
             Rect rect{};          // last computed geometry (leaves consumed by arrange)
 
             bool leaf() const { return child[0] == nullptr; }
@@ -114,11 +115,11 @@ namespace fenriz {
             if (n->leaf())
                 return;
             if (n->vertical) {
-                const int lw = (area.w - gap) / 2;
+                const int lw = (int)((area.w - gap) * n->ratio);
                 place(n->child[0], {area.x, area.y, lw, area.h}, gap);
                 place(n->child[1], {area.x + lw + gap, area.y, area.w - gap - lw, area.h}, gap);
             } else {
-                const int th = (area.h - gap) / 2;
+                const int th = (int)((area.h - gap) * n->ratio);
                 place(n->child[0], {area.x, area.y, area.w, th}, gap);
                 place(n->child[1], {area.x, area.y + th + gap, area.w, area.h - gap - th}, gap);
             }
@@ -127,6 +128,14 @@ namespace fenriz {
         // Insert/remove a view in the tree for its own workspace (server.ws_roots).
         void insert(Server& server, View* v, View* focus);
         void remove(Server& server, View* v);
+
+        // Trade two tiled views' positions in place (swaps the leaves' view pointers),
+        // then re-arrange. No-op if either view isn't a leaf on the active workspace.
+        void swap(Server& server, View* a, View* b);
+
+        // Adjust the split ratio of `v`'s enclosing tiles by a cursor delta (px): dx nudges
+        // the nearest side-by-side ancestor, dy the nearest stacked ancestor. Re-arranges.
+        void resize_split(Server& server, View* v, double dx, double dy);
 
         // Apply the dwindle layout to server.views on the active workspace, setting each
         // View::box and requesting the toplevel resize.
