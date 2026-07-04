@@ -142,8 +142,8 @@ namespace fenriz::output {
                 // window (and shaping the border) to a rounded-rect region, so the corners
                 // reveal whatever is actually behind them.
                 for (View* view : server.views) {
-                    if (!view_visible(server, view))
-                        continue;
+                    if (!view_visible(server, view) || view->fullscreen)
+                        continue; // fullscreen windows are drawn above the top layer, below
                     // Honor the client's window geometry: align its geometry origin to the
                     // tile (CSD apps put a shadow margin at negative offset).
                     const wlr_box& geo = view->toplevel->base->geometry;
@@ -185,8 +185,22 @@ namespace fenriz::output {
                     pixman_region32_fini(&inner);
                 }
 
-                // Top bars/panels and overlays (e.g. quickshell) sit above windows.
+                // Top bars/panels sit above windows.
                 render_layer(pass, server, ZWLR_LAYER_SHELL_V1_LAYER_TOP, scale);
+
+                // A fullscreen window covers everything including the top bar, drawn with
+                // no border and no rounded clip. Still below the overlay layer so lockers
+                // and notifications stay on top.
+                for (View* view : server.views) {
+                    if (!view_visible(server, view) || !view->fullscreen)
+                        continue;
+                    const wlr_box& geo = view->toplevel->base->geometry;
+                    RenderContext ctx = {pass, view->box.x - geo.x, view->box.y - geo.y, scale,
+                                         &cfg.opacity, nullptr};
+                    wlr_xdg_surface_for_each_surface(view->toplevel->base, render_surface, &ctx);
+                }
+
+                // Overlays (e.g. quickshell) sit above everything.
                 render_layer(pass, server, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, scale);
 
                 wlr_render_pass_submit(pass);

@@ -19,6 +19,7 @@ namespace fenriz {
         FocusUp,
         FocusDown,
         ToggleLayout,
+        Fullscreen,
         Workspace,       // arg = workspace number 1..10
         MoveToWorkspace, // arg = workspace number 1..10
     };

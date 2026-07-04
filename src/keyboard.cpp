@@ -165,6 +165,9 @@ namespace fenriz {
             case Action::ToggleLayout:
                 // TODO: alternate layouts once more than master-stack exists.
                 break;
+            case Action::Fullscreen:
+                toggle_fullscreen(server);
+                break;
             case Action::Workspace:
             case Action::MoveToWorkspace: {
                 int n = 0;

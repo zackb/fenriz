@@ -97,6 +97,14 @@ namespace fenriz {
                 ipc::publish(*view->server);
         }
 
+        void view_handle_request_fullscreen(wl_listener* listener, void* data) {
+            View* view = wl_container_of(listener, view, request_fullscreen);
+            (void)data;
+            // requested.fullscreen may arrive before map; set_fullscreen just records the
+            // flag + configures, and the map handler's arrange applies the box once visible.
+            set_fullscreen(*view->server, view, view->toplevel->requested.fullscreen);
+        }
+
         void view_handle_destroy(wl_listener* listener, void* data) {
             View* view = wl_container_of(listener, view, destroy);
             (void)data;
@@ -106,6 +114,7 @@ namespace fenriz {
             wl_list_remove(&view->destroy.link);
             wl_list_remove(&view->set_title.link);
             wl_list_remove(&view->set_app_id.link);
+            wl_list_remove(&view->request_fullscreen.link);
             delete view;
         }
 
@@ -148,6 +157,19 @@ namespace fenriz {
         }
         wlr_seat_keyboard_notify_clear_focus(server.seat);
         ipc::publish(server);
+    }
+
+    void set_fullscreen(Server& server, View* view, bool on) {
+        if (!view || view->fullscreen == on)
+            return;
+        view->fullscreen = on;
+        wlr_xdg_toplevel_set_fullscreen(view->toplevel, on);
+        tiling::arrange(server);
+    }
+
+    void toggle_fullscreen(Server& server) {
+        if (server.focused_view)
+            set_fullscreen(server, server.focused_view, !server.focused_view->fullscreen);
     }
 
     void focus_direction(Server& server, int dx, int dy) {
@@ -244,6 +266,8 @@ namespace fenriz {
         wl_signal_add(&toplevel->events.set_title, &set_title);
         set_app_id.notify = view_handle_set_app_id;
         wl_signal_add(&toplevel->events.set_app_id, &set_app_id);
+        request_fullscreen.notify = view_handle_request_fullscreen;
+        wl_signal_add(&toplevel->events.request_fullscreen, &request_fullscreen);
     }
 
 } // namespace fenriz

@@ -26,6 +26,7 @@ namespace fenriz {
         int workspace = 0;
         bool mapped = false;
         bool focused = false;
+        bool fullscreen = false;
 
         // wlr-foreign-toplevel handle (taskbar/window-list protocol); live while mapped.
         wlr_foreign_toplevel_handle_v1* foreign_handle = nullptr;
@@ -36,6 +37,7 @@ namespace fenriz {
         wl_listener destroy;
         wl_listener set_title;
         wl_listener set_app_id;
+        wl_listener request_fullscreen;
     };
 
     // Route seat keyboard input to a surface (notify_enter with the current keyboard
@@ -48,6 +50,12 @@ namespace fenriz {
 
     // Drop keyboard focus entirely (e.g. switching to an empty workspace).
     void clear_focus(Server& server);
+
+    // Make a view cover the whole output (no border/gap, above the bar) or restore it
+    // to tiling. Driven by client set_fullscreen requests and the fullscreen keybind.
+    void set_fullscreen(Server& server, View* view, bool on);
+    // Toggle fullscreen on the currently focused view.
+    void toggle_fullscreen(Server& server);
 
     // Focus the nearest visible view whose center lies in direction (dx,dy), each in
     // {-1,0,1}: left (-1,0), right (1,0), up (0,-1), down (0,1). No-op if none.

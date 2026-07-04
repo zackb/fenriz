@@ -9,11 +9,24 @@
 namespace fenriz::tiling {
 
     void arrange(Server& server) {
-        // Only windows on the active workspace are tiled/shown.
+        // Only windows on the active workspace are tiled/shown. A fullscreen view is
+        // pulled out of the tiled set and sized to the whole output instead.
         std::vector<View*> visible;
+        View* fs = nullptr;
         for (View* view : server.views)
-            if (view_visible(server, view))
-                visible.push_back(view);
+            if (view_visible(server, view)) {
+                if (view->fullscreen)
+                    fs = view; // ponytail: last one wins if two are somehow fullscreen
+                else
+                    visible.push_back(view);
+            }
+
+        if (fs) {
+            wlr_box out;
+            wlr_output_layout_get_box(server.output_layout, nullptr, &out);
+            fs->box = {out.x, out.y, out.width, out.height};
+            wlr_xdg_toplevel_set_size(fs->toplevel, out.width, out.height); // no border inset
+        }
         if (visible.empty())
             return;
 
