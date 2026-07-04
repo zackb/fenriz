@@ -14,8 +14,6 @@ namespace fenriz::tiling {
         for (View* view : server.views)
             if (view_visible(server, view))
                 visible.push_back(view);
-        wlr_log(WLR_INFO, "fenriz DBG: arrange ws=%d visible=%zu total=%zu", server.active_workspace,
-                visible.size(), server.views.size());
         if (visible.empty())
             return;
 

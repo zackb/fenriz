@@ -20,6 +20,7 @@ namespace fenriz::cursor {
             wl_listener axis;
             wl_listener frame;
             wl_listener request_set_cursor;
+            wl_listener request_set_shape;
         };
 
         // Update pointer focus + cursor image for the surface under the cursor.
@@ -102,6 +103,15 @@ namespace fenriz::cursor {
                 wlr_cursor_set_surface(c->cursor, event->surface, event->hotspot_x, event->hotspot_y);
         }
 
+        // cursor-shape-v1: client requests a named shape instead of shipping its own
+        // buffer, so we draw it from our xcursor theme at the output scale.
+        void request_set_shape(wl_listener* listener, void* data) {
+            Cursor* c = wl_container_of(listener, c, request_set_shape);
+            auto* event = static_cast<wlr_cursor_shape_manager_v1_request_set_shape_event*>(data);
+            if (c->server->seat->pointer_state.focused_client == event->seat_client)
+                wlr_cursor_set_xcursor(c->cursor, c->mgr, wlr_cursor_shape_v1_name(event->shape));
+        }
+
     } // namespace
 
     void init(Server& server) {
@@ -128,6 +138,10 @@ namespace fenriz::cursor {
 
         c->request_set_cursor.notify = request_set_cursor;
         wl_signal_add(&server.seat->events.request_set_cursor, &c->request_set_cursor);
+
+        wlr_cursor_shape_manager_v1* shape_mgr = wlr_cursor_shape_manager_v1_create(server.display, 1);
+        c->request_set_shape.notify = request_set_shape;
+        wl_signal_add(&shape_mgr->events.request_set_shape, &c->request_set_shape);
     }
 
     void attach_pointer(Server& server, wlr_input_device* device) {
