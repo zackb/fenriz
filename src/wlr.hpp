@@ -21,6 +21,8 @@ extern "C" {
 #include <wlr/render/gles2.h>
 #include <wlr/render/pass.h>
 #include <wlr/render/wlr_renderer.h>
+#include <wlr/types/wlr_fractional_scale_v1.h>
+#include <wlr/types/wlr_viewporter.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_device.h>

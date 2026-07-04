@@ -31,6 +31,7 @@ namespace fenriz {
         int gaps = 8;
         int rounding = 10;
         float opacity = 1.0f;
+        float scale = 1.0f; // output scale; fractional (e.g. 1.5) supported, 1.0 = off
         std::vector<Bind> binds;
         std::vector<std::string> exec_once; // commands to run once at startup
 

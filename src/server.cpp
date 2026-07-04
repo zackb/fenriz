@@ -79,6 +79,11 @@ namespace fenriz {
         wlr_subcompositor_create(display);
         wlr_data_device_manager_create(display);
 
+        // HiDPI: viewporter + fractional-scale let clients submit correctly-sized buffers
+        // for a fractional output scale (see config.scale / layer::arrange rendering).
+        wlr_viewporter_create(display);
+        wlr_fractional_scale_manager_v1_create(display, 1);
+
         output_layout = wlr_output_layout_create(display);
         output::register_handlers(*this);
 

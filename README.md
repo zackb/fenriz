@@ -47,6 +47,9 @@ src/
   keyboard.*    xkb + keybind dispatch
   cursor.*      pointer focus
   tiling.*      master-stack layout
+  layer.*       wlr-layer-shell (bars/panels/wallpapers) + idle-notify
   config.*      Hyprland-style config parser
   renderer.*    GLES2 rounded-rect + border + alpha shader
 ```
+
+HiDPI: set `scale` in the config (fractional supported, e.g. `scale = 1.5`).

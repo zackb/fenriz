@@ -134,6 +134,11 @@ namespace fenriz {
                     cfg.opacity = std::stof(val);
                 } catch (...) {
                 }
+            } else if (key == "scale") {
+                try {
+                    cfg.scale = std::stof(val);
+                } catch (...) {
+                }
             }
         }
         return cfg;

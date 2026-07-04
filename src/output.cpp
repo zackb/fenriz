@@ -28,9 +28,15 @@ namespace fenriz::output {
         // Passed through wlr_xdg_surface_for_each_surface while rendering a view.
         struct RenderContext {
             wlr_render_pass* pass;
-            int x, y;           // view origin in output-local coordinates
+            int x, y;           // view origin in logical output-local coordinates
+            float scale;        // output scale: logical -> physical buffer pixels
             const float* alpha; // per-window opacity, or nullptr for opaque
         };
+
+        // Scale a logical box into physical buffer pixels.
+        wlr_box scale_box(const wlr_box& b, float scale) {
+            return {(int)(b.x * scale), (int)(b.y * scale), (int)(b.width * scale), (int)(b.height * scale)};
+        }
 
         wlr_render_color color_from_u32(uint32_t c) {
             return {
@@ -46,18 +52,25 @@ namespace fenriz::output {
             wlr_texture* texture = wlr_surface_get_texture(surface);
             if (!texture)
                 return;
+            // Destination is the surface's *logical* size scaled to physical pixels; the
+            // client's buffer is already rendered at the output scale, so this maps 1:1.
+            const float s = ctx->scale;
             wlr_render_texture_options opts = {};
             opts.texture = texture;
-            opts.dst_box = {ctx->x + sx, ctx->y + sy, (int)texture->width, (int)texture->height};
+            opts.dst_box = {(int)((ctx->x + sx) * s), (int)((ctx->y + sy) * s),
+                            (int)(surface->current.width * s), (int)(surface->current.height * s)};
             opts.alpha = ctx->alpha;
             wlr_render_pass_add_texture(ctx->pass, &opts);
         }
 
-        // Draw a `bw`-thick border frame just inside the edges of `box`.
-        void draw_border(wlr_render_pass* pass, const View::Box& box, uint32_t rgba, int bw) {
+        // Draw a `bw`-thick border frame just inside the edges of `box` (logical coords,
+        // scaled to physical pixels by `scale`).
+        void draw_border(wlr_render_pass* pass, const View::Box& logical, uint32_t rgba, int bw, float scale) {
             if (bw <= 0)
                 return;
             wlr_render_color color = color_from_u32(rgba);
+            const wlr_box box = scale_box({logical.x, logical.y, logical.width, logical.height}, scale);
+            bw = (int)(bw * scale);
             const wlr_box rects[4] = {
                 {box.x, box.y, box.width, bw},                                 // top
                 {box.x, box.y + box.height - bw, box.width, bw},               // bottom
@@ -74,11 +87,11 @@ namespace fenriz::output {
 
         // Render every mapped layer surface on a given layer (surface + its popups).
         // Layers are drawn opaque (alpha=nullptr); the surface's own alpha still applies.
-        void render_layer(wlr_render_pass* pass, Server& server, int lyr) {
+        void render_layer(wlr_render_pass* pass, Server& server, int lyr, float scale) {
             for (LayerSurface* ls : server.layer_surfaces) {
                 if (!ls->mapped || ls->handle->current.layer != (uint32_t)lyr)
                     continue;
-                RenderContext ctx = {pass, ls->geo.x, ls->geo.y, nullptr};
+                RenderContext ctx = {pass, ls->geo.x, ls->geo.y, scale, nullptr};
                 wlr_layer_surface_v1_for_each_surface(ls->handle, render_surface, &ctx);
             }
         }
@@ -94,6 +107,7 @@ namespace fenriz::output {
             (void)data;
             Server& server = *output->server;
             const Config& cfg = server.config;
+            const float scale = output->handle->scale;
 
             wlr_output_state state;
             wlr_output_state_init(&state);
@@ -106,29 +120,29 @@ namespace fenriz::output {
                 wlr_render_pass_add_rect(pass, &bg);
 
                 // Layer-shell backdrop (wallpapers, bottom bars) sits below windows.
-                render_layer(pass, server, ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND);
-                render_layer(pass, server, ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM);
+                render_layer(pass, server, ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND, scale);
+                render_layer(pass, server, ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM, scale);
 
                 // Content (with opacity) + borders, bottom -> top. Rounded corners are
                 // applied afterward by the GLES2 pass below.
                 for (View* view : server.views) {
                     if (!view->mapped)
                         continue;
-                    RenderContext ctx = {pass, view->box.x, view->box.y, &cfg.opacity};
+                    RenderContext ctx = {pass, view->box.x, view->box.y, scale, &cfg.opacity};
                     wlr_xdg_surface_for_each_surface(view->toplevel->base, render_surface, &ctx);
                     uint32_t border = (view == server.focused_view) ? cfg.border_active : cfg.border_inactive;
-                    draw_border(pass, view->box, border, cfg.border_width);
+                    draw_border(pass, view->box, border, cfg.border_width, scale);
                 }
 
                 // Top bars/panels and overlays (e.g. quickshell) sit above windows.
-                render_layer(pass, server, ZWLR_LAYER_SHELL_V1_LAYER_TOP);
-                render_layer(pass, server, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
+                render_layer(pass, server, ZWLR_LAYER_SHELL_V1_LAYER_TOP, scale);
+                render_layer(pass, server, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, scale);
 
                 wlr_render_pass_submit(pass);
             }
 
             // Round window corners by overdrawing the corners with BG (GLES2-only).
-            renderer::round_corners(server, state.buffer, output->handle->width, output->handle->height, BG);
+            renderer::round_corners(server, state.buffer, output->handle->width, output->handle->height, BG, scale);
 
             wlr_output_commit_state(output->handle, &state);
             wlr_output_state_finish(&state);
@@ -170,6 +184,8 @@ namespace fenriz::output {
             wlr_output_state_set_enabled(&state, true);
             if (wlr_output_mode* mode = wlr_output_preferred_mode(out))
                 wlr_output_state_set_mode(&state, mode);
+            if (server.config.scale > 0)
+                wlr_output_state_set_scale(&state, server.config.scale);
             wlr_output_commit_state(out, &state);
             wlr_output_state_finish(&state);
 

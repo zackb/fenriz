@@ -12,7 +12,8 @@ namespace fenriz {
         // that draws directly into the just-rendered output `buffer`'s FBO; it is a no-op
         // when the renderer isn't GLES2, when `buffer` is null, or when rounding is 0.
         // Must run after wlr_render_pass_submit and before wlr_output_commit_state.
-        void round_corners(Server& server, wlr_buffer* buffer, int output_w, int output_h, const float bg[4]);
+        void round_corners(Server& server, wlr_buffer* buffer, int output_w, int output_h, const float bg[4],
+                           float scale);
     } // namespace renderer
 
 } // namespace fenriz

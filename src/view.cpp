@@ -11,10 +11,19 @@ namespace fenriz {
         void view_handle_map(wl_listener* listener, void* data) {
             View* view = wl_container_of(listener, view, map);
             (void)data;
+            Server& server = *view->server;
             view->mapped = true;
-            view->server->views.push_back(view);
-            tiling::arrange(*view->server);
-            focus_view(*view->server, view);
+            server.views.push_back(view);
+
+            // HiDPI: put the surface on the output and tell it our (possibly fractional)
+            // scale so it renders a native-resolution buffer instead of a 1x one we'd blur.
+            wlr_surface* surface = view->toplevel->base->surface;
+            if (server.output)
+                wlr_surface_send_enter(surface, server.output);
+            wlr_fractional_scale_v1_notify_scale(surface, server.config.scale);
+
+            tiling::arrange(server);
+            focus_view(server, view);
         }
 
         void view_handle_unmap(wl_listener* listener, void* data) {

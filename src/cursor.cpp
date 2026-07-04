@@ -111,6 +111,9 @@ namespace fenriz::cursor {
         server.cursor = c->cursor;
         wlr_cursor_attach_output_layout(c->cursor, server.output_layout);
         c->mgr = wlr_xcursor_manager_create(nullptr, 24);
+        // Load the cursor theme at the output scale so the pointer isn't a tiny 1x sprite.
+        if (server.config.scale > 0)
+            wlr_xcursor_manager_load(c->mgr, server.config.scale);
 
         c->motion.notify = cursor_motion;
         wl_signal_add(&c->cursor->events.motion, &c->motion);

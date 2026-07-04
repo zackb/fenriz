@@ -85,7 +85,7 @@ namespace fenriz::renderer {
 
     } // namespace
 
-    void round_corners(Server& server, wlr_buffer* buffer, int W, int H, const float bg[4]) {
+    void round_corners(Server& server, wlr_buffer* buffer, int W, int H, const float bg[4], float scale) {
         if (!buffer || server.config.rounding <= 0)
             return;
         if (!wlr_renderer_is_gles2(server.renderer))
@@ -105,22 +105,25 @@ namespace fenriz::renderer {
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             glUniform4fv(u_bg, 1, bg);
-            glUniform1f(u_radius, (float)server.config.rounding);
+            // Radius and geometry are in physical pixels; W/H below are already physical.
+            glUniform1f(u_radius, server.config.rounding * scale);
 
             for (View* view : server.views) {
                 if (!view->mapped)
                     continue;
-                const View::Box& b = view->box;
-                // Map the box (output-local pixels) to NDC. Local coords run 0..1 across
-                // the quad; the SDF is corner-symmetric so vertical orientation is moot.
-                float x0 = 2.0f * b.x / W - 1.0f;
-                float x1 = 2.0f * (b.x + b.width) / W - 1.0f;
-                float y0 = 1.0f - 2.0f * b.y / H;
-                float y1 = 1.0f - 2.0f * (b.y + b.height) / H;
+                // Box in physical pixels (logical * scale) to match the output buffer.
+                const float bx = view->box.x * scale, by = view->box.y * scale;
+                const float bw = view->box.width * scale, bh = view->box.height * scale;
+                // Map the box to NDC. Local coords run 0..1 across the quad; the SDF is
+                // corner-symmetric so vertical orientation is moot.
+                float x0 = 2.0f * bx / W - 1.0f;
+                float x1 = 2.0f * (bx + bw) / W - 1.0f;
+                float y0 = 1.0f - 2.0f * by / H;
+                float y1 = 1.0f - 2.0f * (by + bh) / H;
                 const GLfloat pos[] = {x0, y0, x1, y0, x1, y1, x0, y0, x1, y1, x0, y1};
                 const GLfloat loc[] = {0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1};
 
-                glUniform2f(u_size, (float)b.width, (float)b.height);
+                glUniform2f(u_size, bw, bh);
                 glVertexAttribPointer(a_pos, 2, GL_FLOAT, GL_FALSE, 0, pos);
                 glEnableVertexAttribArray(a_pos);
                 glVertexAttribPointer(a_local, 2, GL_FLOAT, GL_FALSE, 0, loc);

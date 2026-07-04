@@ -105,6 +105,11 @@ namespace fenriz::layer {
             LayerSurface* ls = wl_container_of(listener, ls, map);
             (void)data;
             ls->mapped = true;
+            // HiDPI: render at the output's (possibly fractional) scale, not 1x.
+            wlr_surface* surface = ls->handle->surface;
+            if (ls->handle->output)
+                wlr_surface_send_enter(surface, ls->handle->output);
+            wlr_fractional_scale_v1_notify_scale(surface, ls->server->config.scale);
             arrange(*ls->server);
         }
 
