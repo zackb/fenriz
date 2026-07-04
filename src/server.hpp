@@ -45,9 +45,10 @@ namespace fenriz {
         void stop();
 
         Config config;
-        std::list<View*> views;                   // bottom -> top
+        std::list<View*> views;                   // bottom -> top (all workspaces)
         std::list<LayerSurface*> layer_surfaces;   // all layers; z-order resolved at render
         View* focused_view = nullptr;
+        int active_workspace = 0; // 0-indexed; 10 workspaces (0..9)
 
         wl_display* display = nullptr;
         wlr_backend* backend = nullptr;

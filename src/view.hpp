@@ -22,6 +22,7 @@ namespace fenriz {
         Server* server = nullptr;
         wlr_xdg_toplevel* toplevel = nullptr;
         Box box;
+        int workspace = 0;
         bool mapped = false;
         bool focused = false;
 
@@ -35,7 +36,17 @@ namespace fenriz {
     // keyboard input to its surface. No-op if view is null or already focused.
     void focus_view(Server& server, View* view);
 
-    // Topmost mapped view whose surface tree contains layout point (lx, ly). On a hit,
+    // Drop keyboard focus entirely (e.g. switching to an empty workspace).
+    void clear_focus(Server& server);
+
+    // A view is shown only when mapped and on the active workspace.
+    bool view_visible(const Server& server, const View* view);
+
+    // Switch the active workspace / send the focused window to a workspace (0-indexed).
+    void set_workspace(Server& server, int n);
+    void move_focused_to_workspace(Server& server, int n);
+
+    // Topmost visible view whose surface tree contains layout point (lx, ly). On a hit,
     // sets *surface to the specific (sub)surface and *sx,*sy to surface-local coords.
     View* view_at(Server& server, double lx, double ly, wlr_surface** surface, double* sx, double* sy);
 

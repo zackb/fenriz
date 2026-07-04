@@ -1,5 +1,7 @@
 #include "view.hpp"
 
+#include <algorithm>
+
 #include "server.hpp"
 #include "tiling.hpp"
 #include "wlr.hpp"
@@ -8,11 +10,20 @@ namespace fenriz {
 
     namespace {
 
+        // Back-most (topmost) visible view on the active workspace, or null.
+        View* topmost_visible(Server& server) {
+            for (auto it = server.views.rbegin(); it != server.views.rend(); ++it)
+                if (view_visible(server, *it))
+                    return *it;
+            return nullptr;
+        }
+
         void view_handle_map(wl_listener* listener, void* data) {
             View* view = wl_container_of(listener, view, map);
             (void)data;
             Server& server = *view->server;
             view->mapped = true;
+            view->workspace = server.active_workspace;
             server.views.push_back(view);
 
             // HiDPI: put the surface on the output and tell it our (possibly fractional)
@@ -35,9 +46,9 @@ namespace fenriz {
             if (server.focused_view == view)
                 server.focused_view = nullptr;
             tiling::arrange(server);
-            // Move focus to another window so the keyboard isn't left dangling.
-            if (!server.focused_view && !server.views.empty())
-                focus_view(server, server.views.back());
+            // Move focus to another visible window so the keyboard isn't left dangling.
+            if (!server.focused_view)
+                focus_view(server, topmost_visible(server));
         }
 
         void view_handle_commit(wl_listener* listener, void* data) {
@@ -79,11 +90,49 @@ namespace fenriz {
                 server.seat, view->toplevel->base->surface, kb->keycodes, kb->num_keycodes, &kb->modifiers);
     }
 
+    void clear_focus(Server& server) {
+        if (server.focused_view) {
+            wlr_xdg_toplevel_set_activated(server.focused_view->toplevel, false);
+            server.focused_view->focused = false;
+            server.focused_view = nullptr;
+        }
+        wlr_seat_keyboard_notify_clear_focus(server.seat);
+    }
+
+    bool view_visible(const Server& server, const View* view) {
+        return view->mapped && view->workspace == server.active_workspace;
+    }
+
+    void set_workspace(Server& server, int n) {
+        n = std::clamp(n, 0, 9);
+        if (n == server.active_workspace)
+            return;
+        server.active_workspace = n;
+        tiling::arrange(server);
+        if (View* v = topmost_visible(server))
+            focus_view(server, v);
+        else
+            clear_focus(server);
+    }
+
+    void move_focused_to_workspace(Server& server, int n) {
+        n = std::clamp(n, 0, 9);
+        View* v = server.focused_view;
+        if (!v || v->workspace == n)
+            return;
+        v->workspace = n; // now on another workspace -> hidden; we stay on the current one
+        tiling::arrange(server);
+        if (View* next = topmost_visible(server))
+            focus_view(server, next);
+        else
+            clear_focus(server);
+    }
+
     View* view_at(Server& server, double lx, double ly, wlr_surface** surface, double* sx, double* sy) {
         // Topmost first: views are rendered bottom -> top, so the back of the list is on top.
         for (auto it = server.views.rbegin(); it != server.views.rend(); ++it) {
             View* view = *it;
-            if (!view->mapped)
+            if (!view_visible(server, view))
                 continue;
             double subx, suby;
             // Match the render offset: content geometry origin sits at the tile origin, so

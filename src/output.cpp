@@ -132,7 +132,7 @@ namespace fenriz::output {
                 // window (and shaping the border) to a rounded-rect region, so the corners
                 // reveal whatever is actually behind them.
                 for (View* view : server.views) {
-                    if (!view->mapped)
+                    if (!view_visible(server, view))
                         continue;
                     // Honor the client's window geometry: align its geometry origin to the
                     // tile (CSD apps put a shadow margin at negative offset).
@@ -189,7 +189,7 @@ namespace fenriz::output {
             timespec now;
             clock_gettime(CLOCK_MONOTONIC, &now);
             for (View* view : output->server->views) {
-                if (view->mapped)
+                if (view_visible(server, view))
                     wlr_xdg_surface_for_each_surface(view->toplevel->base, send_frame_done, &now);
             }
             for (LayerSurface* ls : output->server->layer_surfaces) {

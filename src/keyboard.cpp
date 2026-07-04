@@ -1,6 +1,7 @@
 #include "keyboard.hpp"
 
 #include <algorithm>
+#include <vector>
 
 #include "config.hpp"
 #include "cursor.hpp"
@@ -22,23 +23,21 @@ namespace fenriz {
         };
 
         void cycle_focus(Server& server, int dir) {
-            auto& views = server.views;
-            if (views.size() < 2)
+            // Only cycle among windows on the active workspace.
+            std::vector<View*> vis;
+            for (View* v : server.views)
+                if (view_visible(server, v))
+                    vis.push_back(v);
+            if (vis.size() < 2)
                 return;
-            auto it = std::find(views.begin(), views.end(), server.focused_view);
-            if (it == views.end()) {
-                focus_view(server, views.front());
+            auto it = std::find(vis.begin(), vis.end(), server.focused_view);
+            if (it == vis.end()) {
+                focus_view(server, vis.front());
                 return;
             }
-            if (dir > 0) {
-                if (++it == views.end())
-                    it = views.begin();
-            } else {
-                if (it == views.begin())
-                    it = views.end();
-                --it;
-            }
-            focus_view(server, *it);
+            size_t i = it - vis.begin();
+            i = (dir > 0) ? (i + 1) % vis.size() : (i + vis.size() - 1) % vis.size();
+            focus_view(server, vis[i]);
         }
 
         void keyboard_handle_modifiers(wl_listener* listener, void* data) {
@@ -98,7 +97,7 @@ namespace fenriz {
             wlr_keyboard_set_keymap(kb, keymap);
             xkb_keymap_unref(keymap);
             xkb_context_unref(ctx);
-            wlr_keyboard_set_repeat_info(kb, 25, 600);
+            wlr_keyboard_set_repeat_info(kb, 60, 200);
 
             Keyboard* keyboard = new Keyboard{};
             keyboard->server = &server;
@@ -154,6 +153,22 @@ namespace fenriz {
             case Action::ToggleLayout:
                 // TODO: alternate layouts once more than master-stack exists.
                 break;
+            case Action::Workspace:
+            case Action::MoveToWorkspace: {
+                int n = 0;
+                try {
+                    n = std::stoi(b.arg);
+                } catch (...) {
+                    n = 0;
+                }
+                if (n >= 1 && n <= 10) {
+                    if (b.action == Action::Workspace)
+                        set_workspace(server, n - 1);
+                    else
+                        move_focused_to_workspace(server, n - 1);
+                }
+                break;
+            }
             case Action::None:
                 break;
             }

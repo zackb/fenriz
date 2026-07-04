@@ -122,6 +122,22 @@ namespace fenriz {
         for (const std::string& cmd : config.exec_once)
             spawn(cmd);
 
+        // DBG: exercise workspace switching without a physical keyboard. Cycles
+        // ws0 -> ws1 (empty) -> ws0 on a timer so a headless run can verify filtering/focus.
+        if (getenv("FENRIZ_DBG_WORKSPACES")) {
+            static wl_event_source* t = wl_event_loop_add_timer(
+                loop,
+                [](void* data) -> int {
+                    Server* s = static_cast<Server*>(data);
+                    int next = s->active_workspace == 0 ? 1 : 0;
+                    wlr_log(WLR_INFO, "fenriz DBG: timer switching to ws %d", next);
+                    set_workspace(*s, next);
+                    return 0;
+                },
+                this);
+            wl_event_source_timer_update(t, 2500);
+        }
+
         return true;
     }
 

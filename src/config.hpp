@@ -15,6 +15,8 @@ namespace fenriz {
         FocusNext,
         FocusPrev,
         ToggleLayout,
+        Workspace,       // arg = workspace number 1..10
+        MoveToWorkspace, // arg = workspace number 1..10
     };
 
     struct Bind {

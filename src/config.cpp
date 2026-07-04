@@ -80,6 +80,10 @@ namespace fenriz {
             return Action::FocusPrev;
         if (s == "togglelayout")
             return Action::ToggleLayout;
+        if (s == "workspace")
+            return Action::Workspace;
+        if (s == "movetoworkspace")
+            return Action::MoveToWorkspace;
         return Action::None;
     }
 
