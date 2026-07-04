@@ -15,13 +15,18 @@ exec-once = foot
 
 # keybinds: bind = MODS, KEY, action[, arg]
 #   MODS: SUPER SHIFT CTRL ALT (space-separated)
-#   actions: exec, killactive, exit, focusnext, focusprev, togglelayout,
+#   actions: exec, killactive, exit, focusnext, focusprev,
+#            focusleft, focusright, focusup, focusdown, togglelayout,
 #            workspace <1-10>, movetoworkspace <1-10>
 bind = SUPER,       Return, exec, foot
 bind = SUPER,       Q,      killactive
 bind = SUPER SHIFT, E,      exit
 bind = SUPER,       J,      focusnext
 bind = SUPER,       K,      focusprev
+bind = SUPER,       left,   focusleft
+bind = SUPER,       right,  focusright
+bind = SUPER,       up,     focusup
+bind = SUPER,       down,   focusdown
 bind = SUPER,       Space,  togglelayout
 
 # workspaces: SUPER+<n> switches, SUPER+SHIFT+<n> sends the focused window there (0 = 10)

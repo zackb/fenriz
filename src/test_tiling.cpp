@@ -28,6 +28,15 @@ int main() {
     assert(c[1].y + c[1].h + 10 == c[2].y); // exactly one gap between tiles
     assert(c[2].y + c[2].h == 990);         // last tile reaches usable bottom edge
 
+    // n=4 dwindle spiral: master left full-height; right column split top/bottom;
+    // the bottom-right then splits left|right (master-stack would stack 3 vertically).
+    std::vector<Rect> d = layout(0, 0, 1000, 1000, 10, 4);
+    assert(d.size() == 4);
+    assert(d[0].x == 10 && d[0].w == 485 && d[0].h == 980);   // master left, full height
+    assert(d[1].x == 505 && d[1].y == 10 && d[1].h == 485);   // top-right
+    assert(d[2].x == 505 && d[2].y == 505 && d[2].w == 237);  // bottom-right, left half
+    assert(d[3].x == 752 && d[3].y == 505 && d[3].w == 238);  // bottom-right, right half
+
     std::printf("tiling layout: all assertions passed\n");
     return 0;
 }

@@ -43,6 +43,10 @@ namespace fenriz {
     // Drop keyboard focus entirely (e.g. switching to an empty workspace).
     void clear_focus(Server& server);
 
+    // Focus the nearest visible view whose center lies in direction (dx,dy), each in
+    // {-1,0,1}: left (-1,0), right (1,0), up (0,-1), down (0,1). No-op if none.
+    void focus_direction(Server& server, int dx, int dy);
+
     // A view is shown only when mapped and on the active workspace.
     bool view_visible(const Server& server, const View* view);
 

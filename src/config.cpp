@@ -78,6 +78,14 @@ namespace fenriz {
             return Action::FocusNext;
         if (s == "focusprev")
             return Action::FocusPrev;
+        if (s == "focusleft")
+            return Action::FocusLeft;
+        if (s == "focusright")
+            return Action::FocusRight;
+        if (s == "focusup")
+            return Action::FocusUp;
+        if (s == "focusdown")
+            return Action::FocusDown;
         if (s == "togglelayout")
             return Action::ToggleLayout;
         if (s == "workspace")

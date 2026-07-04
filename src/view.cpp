@@ -1,6 +1,7 @@
 #include "view.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 
 #include "server.hpp"
 #include "tiling.hpp"
@@ -101,6 +102,32 @@ namespace fenriz {
             server.focused_view = nullptr;
         }
         wlr_seat_keyboard_notify_clear_focus(server.seat);
+    }
+
+    void focus_direction(Server& server, int dx, int dy) {
+        View* cur = server.focused_view;
+        if (!cur)
+            return;
+        auto cx = [](View* v) { return v->box.x + v->box.width / 2; };
+        auto cy = [](View* v) { return v->box.y + v->box.height / 2; };
+        View* best = nullptr;
+        long best_score = 0;
+        for (View* v : server.views) {
+            if (v == cur || !view_visible(server, v))
+                continue;
+            const long ddx = cx(v) - cx(cur), ddy = cy(v) - cy(cur);
+            const long proj = ddx * dx + ddy * dy; // must move in the requested direction
+            if (proj <= 0)
+                continue;
+            const long perp = dx ? std::labs(ddy) : std::labs(ddx);
+            const long score = proj + 2 * perp; // prefer aligned, then closest
+            if (!best || score < best_score) {
+                best = v;
+                best_score = score;
+            }
+        }
+        if (best)
+            focus_view(server, best);
     }
 
     bool view_visible(const Server& server, const View* view) {

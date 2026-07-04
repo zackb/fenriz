@@ -14,6 +14,10 @@ namespace fenriz {
         Exit,
         FocusNext,
         FocusPrev,
+        FocusLeft,
+        FocusRight,
+        FocusUp,
+        FocusDown,
         ToggleLayout,
         Workspace,       // arg = workspace number 1..10
         MoveToWorkspace, // arg = workspace number 1..10

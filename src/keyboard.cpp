@@ -150,6 +150,18 @@ namespace fenriz {
             case Action::FocusPrev:
                 cycle_focus(server, -1);
                 break;
+            case Action::FocusLeft:
+                focus_direction(server, -1, 0);
+                break;
+            case Action::FocusRight:
+                focus_direction(server, 1, 0);
+                break;
+            case Action::FocusUp:
+                focus_direction(server, 0, -1);
+                break;
+            case Action::FocusDown:
+                focus_direction(server, 0, 1);
+                break;
             case Action::ToggleLayout:
                 // TODO: alternate layouts once more than master-stack exists.
                 break;
