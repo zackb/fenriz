@@ -55,6 +55,10 @@ namespace fenriz {
         View* focused_view = nullptr;
         int active_workspace = 0; // 0-indexed; 10 workspaces (0..9)
 
+        // ext-session-lock-v1 engaged: normal content is blanked and input is routed
+        // only to the lock surface. Owned by src/lock.cpp; other modules just read it.
+        bool locked = false;
+
         // Per-workspace dwindle BSP tree root (see tiling.hpp). Nodes leak at shutdown.
         tiling::Node* ws_roots[10] = {};
 

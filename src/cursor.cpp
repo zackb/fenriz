@@ -1,6 +1,7 @@
 #include "cursor.hpp"
 
 #include "layer.hpp"
+#include "lock.hpp"
 #include "server.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
@@ -30,12 +31,18 @@ namespace fenriz::cursor {
 
             const double lx = c->cursor->x, ly = c->cursor->y;
             double sx, sy;
-            // Z-order: overlay/top layers, then windows, then bottom/background layers.
-            wlr_surface* surface = layer::surface_at(server, lx, ly, &sx, &sy, true);
-            if (!surface)
-                view_at(server, lx, ly, &surface, &sx, &sy);
-            if (!surface)
-                surface = layer::surface_at(server, lx, ly, &sx, &sy, false);
+            wlr_surface* surface;
+            if (server.locked) {
+                // Locked: the pointer only ever reaches the lock surface.
+                surface = lock::surface_at(server, lx, ly, &sx, &sy);
+            } else {
+                // Z-order: overlay/top layers, then windows, then bottom/background layers.
+                surface = layer::surface_at(server, lx, ly, &sx, &sy, true);
+                if (!surface)
+                    view_at(server, lx, ly, &surface, &sx, &sy);
+                if (!surface)
+                    surface = layer::surface_at(server, lx, ly, &sx, &sy, false);
+            }
 
             if (!surface) {
                 // Over empty desktop: show the default cursor and drop pointer focus.

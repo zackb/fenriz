@@ -59,7 +59,9 @@ namespace fenriz {
             const uint32_t mods = wlr_keyboard_get_modifiers(kb);
 
             bool handled = false;
-            if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+            // While locked, compositor keybinds are disabled — every key goes to the lock
+            // surface so the user can type their password (and can't switch workspace etc.).
+            if (!server.locked && event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
                 // Match binds against base-level (unshifted) keysyms so a bind like
                 // "SUPER SHIFT, E" resolves to XKB_KEY_e, matching the config parser.
                 xkb_layout_index_t layout = xkb_state_key_get_layout(kb->xkb_state, keycode);

@@ -9,6 +9,7 @@
 #include "ipc.hpp"
 #include "keyboard.hpp"
 #include "layer.hpp"
+#include "lock.hpp"
 #include "output.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
@@ -160,6 +161,7 @@ namespace fenriz {
         cursor::init(*this);
 
         layer::init(*this);
+        lock::init(*this);
         decoration::init(*this);
 
         const char* socket = wl_display_add_socket_auto(display);

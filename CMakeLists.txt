@@ -36,6 +36,7 @@ add_executable(fenriz
     src/tiling.cpp
     src/config.cpp
     src/layer.cpp
+    src/lock.cpp
     src/decoration.cpp
     src/ipc.cpp
     ${LAYER_SHELL_HEADER}

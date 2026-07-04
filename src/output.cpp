@@ -6,6 +6,7 @@
 #include <pixman.h>
 
 #include "layer.hpp"
+#include "lock.hpp"
 #include "server.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
@@ -135,6 +136,24 @@ namespace fenriz::output {
                 bg.box = {0, 0, output->handle->width, output->handle->height};
                 bg.color = {BG[0], BG[1], BG[2], BG[3]};
                 wlr_render_pass_add_rect(pass, &bg);
+
+                if (server.locked) {
+                    // Locked: draw only the lock surface over the blank background — never
+                    // client windows. A missing surface (not yet mapped, or the lock client
+                    // died) leaves just the background, so the desktop stays hidden.
+                    if (wlr_surface* lsurf = lock::surface_for(server, output->handle)) {
+                        RenderContext ctx = {pass, 0, 0, scale, nullptr, nullptr};
+                        wlr_surface_for_each_surface(lsurf, render_surface, &ctx);
+                    }
+                    wlr_render_pass_submit(pass);
+                    wlr_output_commit_state(output->handle, &state);
+                    wlr_output_state_finish(&state);
+                    timespec lnow;
+                    clock_gettime(CLOCK_MONOTONIC, &lnow);
+                    if (wlr_surface* lsurf = lock::surface_for(server, output->handle))
+                        wlr_surface_for_each_surface(lsurf, send_frame_done, &lnow);
+                    return;
+                }
 
                 // Layer-shell backdrop (wallpapers, bottom bars) sits below windows.
                 render_layer(pass, server, ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND, scale);
