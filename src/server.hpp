@@ -24,6 +24,9 @@ namespace fenriz {
     class Server;
     class View;
     struct LayerSurface;
+    namespace tiling {
+        struct Node;
+    }
 
     // Launch a shell command detached (`/bin/sh -c cmd`); no-op on empty. Used for
     // keybind `exec` actions and `exec-once` startup commands. Children are reaped via
@@ -47,10 +50,13 @@ namespace fenriz {
         void stop();
 
         Config config;
-        std::list<View*> views;                   // bottom -> top (all workspaces)
-        std::list<LayerSurface*> layer_surfaces;   // all layers; z-order resolved at render
+        std::list<View*> views;                  // bottom -> top (all workspaces)
+        std::list<LayerSurface*> layer_surfaces; // all layers; z-order resolved at render
         View* focused_view = nullptr;
         int active_workspace = 0; // 0-indexed; 10 workspaces (0..9)
+
+        // Per-workspace dwindle BSP tree root (see tiling.hpp). Nodes leak at shutdown.
+        tiling::Node* ws_roots[10] = {};
 
         wl_display* display = nullptr;
         wlr_backend* backend = nullptr;

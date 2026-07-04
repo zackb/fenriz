@@ -30,10 +30,10 @@ namespace fenriz::output {
         // Passed through wlr_xdg_surface_for_each_surface while rendering a view.
         struct RenderContext {
             wlr_render_pass* pass;
-            int x, y;                        // surface origin in logical output-local coords
-            float scale;                     // output scale: logical -> physical buffer pixels
-            const float* alpha;              // per-window opacity, or nullptr for opaque
-            const pixman_region32_t* clip;   // physical-pixel clip (tile), or nullptr
+            int x, y;                      // surface origin in logical output-local coords
+            float scale;                   // output scale: logical -> physical buffer pixels
+            const float* alpha;            // per-window opacity, or nullptr for opaque
+            const pixman_region32_t* clip; // physical-pixel clip (tile), or nullptr
         };
 
         // Scale a logical box into physical buffer pixels.
@@ -60,8 +60,10 @@ namespace fenriz::output {
             const float s = ctx->scale;
             wlr_render_texture_options opts = {};
             opts.texture = texture;
-            opts.dst_box = {(int)((ctx->x + sx) * s), (int)((ctx->y + sy) * s),
-                            (int)(surface->current.width * s), (int)(surface->current.height * s)};
+            opts.dst_box = {(int)((ctx->x + sx) * s),
+                            (int)((ctx->y + sy) * s),
+                            (int)(surface->current.width * s),
+                            (int)(surface->current.height * s)};
             opts.alpha = ctx->alpha;
             opts.clip = ctx->clip; // keep CSD shadow from bleeding past the tile
             wlr_render_pass_add_texture(ctx->pass, &opts);
@@ -147,8 +149,8 @@ namespace fenriz::output {
                     // Honor the client's window geometry: align its geometry origin to the
                     // tile (CSD apps put a shadow margin at negative offset).
                     const wlr_box& geo = view->toplevel->base->geometry;
-                    const wlr_box tile = scale_box({view->box.x, view->box.y, view->box.width, view->box.height},
-                                                   scale);
+                    const wlr_box tile =
+                        scale_box({view->box.x, view->box.y, view->box.width, view->box.height}, scale);
                     const int radius = (int)(cfg.rounding * scale);
                     const int bw = (int)(cfg.border_width * scale);
                     const bool has_border = bw > 0 && tile.width > 2 * bw && tile.height > 2 * bw;
@@ -163,8 +165,8 @@ namespace fenriz::output {
                     build_rounded_region(&inner, inner_box, has_border ? std::max(0, radius - bw) : radius);
 
                     const int inset = has_border ? cfg.border_width : 0; // logical
-                    RenderContext ctx = {pass, view->box.x + inset - geo.x, view->box.y + inset - geo.y, scale,
-                                         &cfg.opacity, &inner};
+                    RenderContext ctx = {
+                        pass, view->box.x + inset - geo.x, view->box.y + inset - geo.y, scale, &cfg.opacity, &inner};
                     wlr_xdg_surface_for_each_surface(view->toplevel->base, render_surface, &ctx);
 
                     if (has_border) {
@@ -195,8 +197,7 @@ namespace fenriz::output {
                     if (!view_visible(server, view) || !view->fullscreen)
                         continue;
                     const wlr_box& geo = view->toplevel->base->geometry;
-                    RenderContext ctx = {pass, view->box.x - geo.x, view->box.y - geo.y, scale,
-                                         &cfg.opacity, nullptr};
+                    RenderContext ctx = {pass, view->box.x - geo.x, view->box.y - geo.y, scale, &cfg.opacity, nullptr};
                     wlr_xdg_surface_for_each_surface(view->toplevel->base, render_surface, &ctx);
                 }
 

@@ -1,41 +1,73 @@
 #include "tiling.hpp"
 
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
 
+using namespace fenriz;
 using namespace fenriz::tiling;
 
+namespace {
+    // Fake View handles: the tree only uses View* as an identity tag, never derefs it.
+    View* tag(int i) { return reinterpret_cast<View*>(static_cast<intptr_t>(i)); }
+
+    // Insert `v` splitting `focus`, then recompute geometry over a 1000x1000 area / gap 10
+    // (usable inset -> origin 10,10 size 980x980), as arrange() does after every map.
+    void add(Node*& root, View* v, View* focus) {
+        tree_insert(root, v, focus);
+        place(root, {10, 10, 980, 980}, 10);
+    }
+
+    Rect box(Node* root, View* v) { return find_leaf(root, v)->rect; }
+} // namespace
+
 int main() {
-    // 1000x1000 area, gap 10 -> usable area is (10,10) size 980x980.
+    // Always focusing the newest window reproduces the classic dwindle spiral.
+    {
+        Node* root = nullptr;
+        add(root, tag(1), nullptr);
+        assert(box(root, tag(1)).x == 10 && box(root, tag(1)).w == 980 && box(root, tag(1)).h == 980);
 
-    // n=1: single tile fills the usable area.
-    std::vector<Rect> a = layout(0, 0, 1000, 1000, 10, 1);
-    assert(a.size() == 1);
-    assert(a[0].x == 10 && a[0].y == 10 && a[0].w == 980 && a[0].h == 980);
+        add(root, tag(2), tag(1)); // split master -> left | right
+        assert(box(root, tag(1)).x == 10 && box(root, tag(1)).w == 485 && box(root, tag(1)).h == 980);
+        assert(box(root, tag(2)).x == 505 && box(root, tag(2)).w == 485 && box(root, tag(2)).h == 980);
 
-    // n=2: master left (w=(980-10)/2=485), one stacked right (same width, full height).
-    std::vector<Rect> b = layout(0, 0, 1000, 1000, 10, 2);
-    assert(b.size() == 2);
-    assert(b[0].x == 10 && b[0].w == 485 && b[0].h == 980);
-    assert(b[1].x == 505 && b[1].w == 485 && b[1].h == 980); // 10 + 485 + 10
+        add(root, tag(3), tag(2));                                        // split right column top / bottom
+        assert(box(root, tag(1)).w == 485 && box(root, tag(1)).h == 980); // master unchanged
+        assert(box(root, tag(2)).x == 505 && box(root, tag(2)).y == 10 && box(root, tag(2)).h == 485);
+        assert(box(root, tag(3)).y == 505 && box(root, tag(3)).y + box(root, tag(3)).h == 990);
 
-    // n=3: two tiles stacked in the right column, each_h=(980-10)/2=485, 10px between.
-    std::vector<Rect> c = layout(0, 0, 1000, 1000, 10, 3);
-    assert(c.size() == 3);
-    assert(c[0].w == 485 && c[0].h == 980); // master unchanged
-    assert(c[1].x == 505 && c[1].y == 10 && c[1].h == 485);
-    assert(c[2].y == 505);                  // 10 + 485 + 10
-    assert(c[1].y + c[1].h + 10 == c[2].y); // exactly one gap between tiles
-    assert(c[2].y + c[2].h == 990);         // last tile reaches usable bottom edge
+        add(root, tag(4), tag(3)); // bottom-right splits left | right
+        assert(box(root, tag(1)).x == 10 && box(root, tag(1)).w == 485 && box(root, tag(1)).h == 980);
+        assert(box(root, tag(2)).x == 505 && box(root, tag(2)).y == 10 && box(root, tag(2)).h == 485);
+        assert(box(root, tag(3)).x == 505 && box(root, tag(3)).y == 505 && box(root, tag(3)).w == 237);
+        assert(box(root, tag(4)).x == 752 && box(root, tag(4)).y == 505 && box(root, tag(4)).w == 238);
+    }
 
-    // n=4 dwindle spiral: master left full-height; right column split top/bottom;
-    // the bottom-right then splits left|right (master-stack would stack 3 vertically).
-    std::vector<Rect> d = layout(0, 0, 1000, 1000, 10, 4);
-    assert(d.size() == 4);
-    assert(d[0].x == 10 && d[0].w == 485 && d[0].h == 980);   // master left, full height
-    assert(d[1].x == 505 && d[1].y == 10 && d[1].h == 485);   // top-right
-    assert(d[2].x == 505 && d[2].y == 505 && d[2].w == 237);  // bottom-right, left half
-    assert(d[3].x == 752 && d[3].y == 505 && d[3].w == 238);  // bottom-right, right half
+    // Focus-aware: focusing the LEFT master and opening a window splits the LEFT column,
+    // not the right — the regression this whole change fixes.
+    {
+        Node* root = nullptr;
+        add(root, tag(1), nullptr);
+        add(root, tag(2), tag(1)); // 1 = left, 2 = right
+        add(root, tag(3), tag(1)); // focus master (left) -> split it, not the right column
+
+        assert(box(root, tag(2)).x == 505 && box(root, tag(2)).w == 485); // right untouched
+        // Left column (x < 505) now holds both 1 and 3, stacked (was wide -> vertical split...
+        // left tile is 485x980, taller than wide -> stacked top/bottom).
+        assert(box(root, tag(1)).x == 10 && box(root, tag(3)).x == 10);
+        assert(box(root, tag(1)).y == 10 && box(root, tag(3)).y == 505);
+    }
+
+    // Closing a window: its sibling reclaims the whole freed tile.
+    {
+        Node* root = nullptr;
+        add(root, tag(1), nullptr);
+        add(root, tag(2), tag(1));
+        tree_remove(root, tag(2));
+        place(root, {10, 10, 980, 980}, 10);
+        assert(box(root, tag(1)).w == 980 && box(root, tag(1)).h == 980); // back to full area
+    }
 
     std::printf("tiling layout: all assertions passed\n");
     return 0;

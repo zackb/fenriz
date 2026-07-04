@@ -8,26 +8,13 @@
 
 namespace fenriz::tiling {
 
-    void arrange(Server& server) {
-        // Only windows on the active workspace are tiled/shown. A fullscreen view is
-        // pulled out of the tiled set and sized to the whole output instead.
-        std::vector<View*> visible;
-        View* fs = nullptr;
-        for (View* view : server.views)
-            if (view_visible(server, view)) {
-                if (view->fullscreen)
-                    fs = view; // ponytail: last one wins if two are somehow fullscreen
-                else
-                    visible.push_back(view);
-            }
+    void insert(Server& server, View* v, View* focus) { tree_insert(server.ws_roots[v->workspace], v, focus); }
 
-        if (fs) {
-            wlr_box out;
-            wlr_output_layout_get_box(server.output_layout, nullptr, &out);
-            fs->box = {out.x, out.y, out.width, out.height};
-            wlr_xdg_toplevel_set_size(fs->toplevel, out.width, out.height); // no border inset
-        }
-        if (visible.empty())
+    void remove(Server& server, View* v) { tree_remove(server.ws_roots[v->workspace], v); }
+
+    void arrange(Server& server) {
+        Node* root = server.ws_roots[server.active_workspace];
+        if (!root)
             return;
 
         // Prefer the usable area left by layer-shell exclusive zones (bars); fall back to
@@ -40,17 +27,29 @@ namespace fenriz::tiling {
             ax = area.x, ay = area.y, aw = area.width, ah = area.height;
         }
 
-        std::vector<Rect> rects = layout(ax, ay, aw, ah, server.config.gaps, (int)visible.size());
+        const int gap = server.config.gaps;
+        place(root, {ax + gap, ay + gap, aw - 2 * gap, ah - 2 * gap}, gap);
 
-        // view->box is the full tile (outer border edge); the client is sized to the inner
-        // area so the border frames it and content doesn't run under the rounded edge.
+        wlr_box out;
+        wlr_output_layout_get_box(server.output_layout, nullptr, &out);
         const int bw = server.config.border_width;
-        int i = 0;
-        for (View* view : visible) {
-            const Rect& r = rects[i++];
-            view->box = {r.x, r.y, r.w, r.h};
-            int cw = std::max(1, r.w - 2 * bw);
-            int ch = std::max(1, r.h - 2 * bw);
+
+        std::vector<Node*> leaves;
+        collect_leaves(root, leaves);
+        for (Node* n : leaves) {
+            View* view = n->view;
+            if (view->fullscreen) {
+                // Fullscreen covers the whole output (no border inset); it keeps its tree
+                // slot so it returns to the same tile when restored.
+                view->box = {out.x, out.y, out.width, out.height};
+                wlr_xdg_toplevel_set_size(view->toplevel, out.width, out.height);
+                continue;
+            }
+            // view->box is the full tile (outer border edge); the client is sized to the
+            // inner area so the border frames it and content stays off the rounded edge.
+            view->box = {n->rect.x, n->rect.y, n->rect.w, n->rect.h};
+            int cw = std::max(1, n->rect.w - 2 * bw);
+            int ch = std::max(1, n->rect.h - 2 * bw);
             wlr_xdg_toplevel_set_size(view->toplevel, cw, ch);
         }
     }

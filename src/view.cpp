@@ -27,6 +27,8 @@ namespace fenriz {
             view->mapped = true;
             view->workspace = server.active_workspace;
             server.views.push_back(view);
+            // New window splits the focused window's tile (focus-aware dwindle).
+            tiling::insert(server, view, server.focused_view);
 
             // HiDPI: put the surface on the output and tell it our (possibly fractional)
             // scale so it renders a native-resolution buffer instead of a 1x one we'd blur.
@@ -57,6 +59,7 @@ namespace fenriz {
             Server& server = *view->server;
             view->mapped = false;
             server.views.remove(view);
+            tiling::remove(server, view); // sibling reclaims the freed tile
             if (view->foreign_handle) {
                 wlr_foreign_toplevel_handle_v1_destroy(view->foreign_handle);
                 view->foreign_handle = nullptr;
@@ -219,7 +222,9 @@ namespace fenriz {
         View* v = server.focused_view;
         if (!v || v->workspace == n)
             return;
-        v->workspace = n; // now on another workspace -> hidden; we stay on the current one
+        tiling::remove(server, v);
+        v->workspace = n;                   // now on another workspace -> hidden; we stay on the current one
+        tiling::insert(server, v, nullptr); // append to the target workspace's tree
         tiling::arrange(server);
         if (View* next = topmost_visible(server))
             focus_view(server, next);

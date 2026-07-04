@@ -136,8 +136,7 @@ namespace fenriz::ipc {
             int cfd = accept4(fd, nullptr, nullptr, SOCK_CLOEXEC | SOCK_NONBLOCK);
             if (cfd < 0)
                 return 0;
-            wl_event_source* src =
-                wl_event_loop_add_fd(st->loop, cfd, WL_EVENT_READABLE, on_client_readable, st);
+            wl_event_source* src = wl_event_loop_add_fd(st->loop, cfd, WL_EVENT_READABLE, on_client_readable, st);
             st->clients.push_back({cfd, src});
             send_line(cfd, snapshot(*st->server)); // greet with current state
             return 0;
