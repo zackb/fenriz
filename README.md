@@ -36,6 +36,12 @@ Nested inside an existing Wayland session (opens a window), or from a TTY for th
 DRM backend. Config is read from `$XDG_CONFIG_HOME/fenriz/fenriz.conf` (or
 `~/.config/fenriz/fenriz.conf`); see `fenriz.conf.example`.
 
+## IPC
+
+fenriz exposes a Unix socket (`FENRIZ_SOCKET`) that streams workspace/window state as
+newline-delimited JSON and accepts one-line commands — for status bars and shells. See
+[docs/IPC.md](docs/IPC.md).
+
 ## Layout
 
 ```
@@ -48,6 +54,7 @@ src/
   cursor.*      pointer focus
   tiling.*      master-stack layout
   layer.*       wlr-layer-shell (bars/panels/wallpapers) + idle-notify
+  ipc.*         FENRIZ_SOCKET control socket (see docs/IPC.md)
   config.*      Hyprland-style config parser
   renderer.*    GLES2 rounded-rect + border + alpha shader
 ```
