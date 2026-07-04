@@ -303,4 +303,24 @@ namespace fenriz::output {
         wl_signal_add(&server.backend->events.new_output, &server.l_new_output.listener);
     }
 
+    void set_dpms(Server& server, bool on) {
+        if (!server.output)
+            return;
+        // Same enable pattern as handle_new_output: re-apply mode + scale when powering on.
+        wlr_output_state state;
+        wlr_output_state_init(&state);
+        wlr_output_state_set_enabled(&state, on);
+        if (on) {
+            if (wlr_output_mode* mode = wlr_output_preferred_mode(server.output))
+                wlr_output_state_set_mode(&state, mode);
+            if (server.config.scale > 0)
+                wlr_output_state_set_scale(&state, server.config.scale);
+        }
+        wlr_output_commit_state(server.output, &state);
+        wlr_output_state_finish(&state);
+        if (on)
+            wlr_output_schedule_frame(server.output);
+        wlr_log(WLR_INFO, "fenriz: display %s", on ? "on" : "off");
+    }
+
 } // namespace fenriz::output

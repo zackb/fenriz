@@ -44,7 +44,7 @@ Strings are JSON-escaped; control characters other than `\n` are dropped.
 
 ## Commands (client → server)
 
-Send one JSON object per line, terminated by `\n`. One command is implemented:
+Send one JSON object per line, terminated by `\n`. Commands implemented:
 
 ```json
 {"cmd":"workspace","n":3}
@@ -52,10 +52,25 @@ Send one JSON object per line, terminated by `\n`. One command is implemented:
 
 Switches to workspace `n` (1–10); out-of-range values are ignored.
 
+```json
+{"cmd":"dpms","on":false}
+```
+
+Powers the display off (`"on":false`) or on (`"on":true`) — DPMS. The same effect
+is available to standard tools via the `wlr-output-power-management-v1` protocol
+(e.g. `wlopm`, `hypridle`).
+
+```json
+{"cmd":"unlock"}
+```
+
+Force-unlocks the session. This is a safety net: if a lock client crashes or hangs 
+it would otherwise leave the screen blank forever, recoverable only by killing the compositor. Run it from a TTY to escape.
+
 The command parser is substring-based, not a full JSON parser: a command is
-recognized as long as the line contains the `"cmd":"workspace"` and `"n":`
-substrings, so whitespace and key order don't matter. Each command must arrive as
-one complete line in a single write — a command split across reads is dropped.
+recognized by its `"cmd":"…"` substring (and `"n":` / `"on":true` for arguments),
+so whitespace and key order don't matter. Each command must arrive as one complete
+line in a single write — a command split across reads is dropped.
 
 ## Example
 
@@ -69,4 +84,10 @@ Switch to workspace 2:
 
 ```
 printf '{"cmd":"workspace","n":2}\n' | socat - UNIX-CONNECT:$FENRIZ_SOCKET
+```
+
+Recover from a broken lock screen, e.g. from a TTY (`Ctrl+Alt+F2`):
+
+```
+printf '{"cmd":"dpms","on":true}\n{"cmd":"unlock"}\n' | socat - UNIX-CONNECT:$FENRIZ_SOCKET
 ```

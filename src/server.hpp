@@ -18,6 +18,7 @@ struct wlr_idle_notifier_v1;
 struct wlr_xdg_decoration_manager_v1;
 struct wlr_foreign_toplevel_manager_v1;
 struct wlr_gamma_control_manager_v1;
+struct wlr_output_power_manager_v1;
 
 namespace fenriz {
 
@@ -75,6 +76,7 @@ namespace fenriz {
         wlr_xdg_decoration_manager_v1* xdg_decoration_manager = nullptr;
         wlr_foreign_toplevel_manager_v1* foreign_toplevel_manager = nullptr;
         wlr_gamma_control_manager_v1* gamma_control_manager = nullptr;
+        wlr_output_power_manager_v1* output_power_manager = nullptr;
         wlr_cursor* cursor = nullptr;
 
         // Tiling region left after layer-shell exclusive zones (bars) are subtracted.
@@ -91,6 +93,7 @@ namespace fenriz {
         SignalListener l_set_primary_selection;
         SignalListener l_start_drag;
         SignalListener l_set_gamma;
+        SignalListener l_output_power;
     };
 
 } // namespace fenriz

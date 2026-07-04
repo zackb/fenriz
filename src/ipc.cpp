@@ -9,6 +9,8 @@
 #include <unistd.h>
 #include <vector>
 
+#include "lock.hpp"
+#include "output.hpp"
 #include "server.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
@@ -102,14 +104,24 @@ namespace fenriz::ipc {
         // reads is dropped. Commands are single tiny writes (socat/printf), so fine — add
         // per-client line buffering only if a real client streams partial commands.
         void handle_command_line(Server& server, const std::string& line) {
-            if (line.find("\"cmd\":\"workspace\"") == std::string::npos)
+            if (line.find("\"cmd\":\"workspace\"") != std::string::npos) {
+                size_t p = line.find("\"n\":");
+                if (p == std::string::npos)
+                    return;
+                int n = std::atoi(line.c_str() + p + 4);
+                if (n >= 1 && n <= 10)
+                    set_workspace(server, n - 1);
                 return;
-            size_t p = line.find("\"n\":");
-            if (p == std::string::npos)
+            }
+            if (line.find("\"cmd\":\"unlock\"") != std::string::npos) {
+                lock::force_unlock(server);
                 return;
-            int n = std::atoi(line.c_str() + p + 4);
-            if (n >= 1 && n <= 10)
-                set_workspace(server, n - 1);
+            }
+            if (line.find("\"cmd\":\"dpms\"") != std::string::npos) {
+                // {"cmd":"dpms","on":true} powers on; anything else (e.g. "on":false) powers off.
+                output::set_dpms(server, line.find("\"on\":true") != std::string::npos);
+                return;
+            }
         }
 
         int on_client_readable(int fd, uint32_t mask, void* data) {

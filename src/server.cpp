@@ -62,6 +62,14 @@ namespace fenriz {
             wlr_output_schedule_frame(ev->output);
         }
 
+        // wlr-output-power-management: a shell/idle daemon (wlopm, hypridle) toggles DPMS.
+        // Shares set_dpms with the IPC `dpms` command.
+        void on_output_power(wl_listener* listener, void* data) {
+            SignalListener* sl = wl_container_of(listener, sl, listener);
+            auto* ev = static_cast<wlr_output_power_v1_set_mode_event*>(data);
+            output::set_dpms(*sl->server, ev->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
+        }
+
     } // namespace
 
     void spawn(const std::string& cmd) {
@@ -157,6 +165,12 @@ namespace fenriz {
         l_set_gamma.server = this;
         l_set_gamma.listener.notify = on_set_gamma;
         wl_signal_add(&gamma_control_manager->events.set_gamma, &l_set_gamma.listener);
+
+        // DPMS control for shells/idle daemons (also reachable via the IPC `dpms` command).
+        output_power_manager = wlr_output_power_manager_v1_create(display);
+        l_output_power.server = this;
+        l_output_power.listener.notify = on_output_power;
+        wl_signal_add(&output_power_manager->events.set_mode, &l_output_power.listener);
 
         cursor::init(*this);
 

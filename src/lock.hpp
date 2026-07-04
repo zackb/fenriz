@@ -14,6 +14,10 @@ namespace fenriz {
         // lock: without it the client can't lock and the screen never covers.
         void init(Server& server);
 
+        // Force-unlock the session escape hatch (reachable via the IPC `unlock` command)
+        // for when the lock client crashes or hangs
+        void force_unlock(Server& server);
+
         // The mapped lock surface to draw fullscreen on `output` while locked, or nullptr
         // when there's no surface yet or the lock client died — the caller then leaves the
         // screen blank (a locked compositor must never reveal normal content).

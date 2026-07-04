@@ -26,6 +26,17 @@ add_custom_command(
     VERBATIM
 )
 
+# Same story for wlr_output_power_management_v1.h (DPMS control).
+set(OUTPUT_POWER_HEADER ${CMAKE_CURRENT_BINARY_DIR}/wlr-output-power-management-unstable-v1-protocol.h)
+add_custom_command(
+    OUTPUT ${OUTPUT_POWER_HEADER}
+    COMMAND ${WAYLAND_SCANNER} server-header
+            ${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-output-power-management-unstable-v1.xml
+            ${OUTPUT_POWER_HEADER}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-output-power-management-unstable-v1.xml
+    VERBATIM
+)
+
 add_executable(fenriz
     src/main.cpp
     src/server.cpp
@@ -40,6 +51,7 @@ add_executable(fenriz
     src/decoration.cpp
     src/ipc.cpp
     ${LAYER_SHELL_HEADER}
+    ${OUTPUT_POWER_HEADER}
 )
 
 # wlroots headers require this before inclusion

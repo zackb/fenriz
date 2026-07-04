@@ -14,13 +14,13 @@ namespace fenriz::lock {
             wl_listener destroy;
         };
 
-        // One instance per compositor (fenriz is single-output, so one lock surface).
+        // One instance per compositor (TODO: multi-output).
         // File-local like ipc.cpp's state; callbacks reach it here.
         struct LockState {
             Server* server = nullptr;
             wlr_session_lock_manager_v1* manager = nullptr;
             wlr_session_lock_v1* session = nullptr; // active lock, or null
-            LockSurface* surface = nullptr;         // ponytail: single-output -> one surface
+            LockSurface* surface = nullptr;         // single-output -> one surface
             wl_listener new_lock;
             wl_listener new_surface; // on the active session
             wl_listener unlock;
@@ -131,6 +131,25 @@ namespace fenriz::lock {
         g->manager = wlr_session_lock_manager_v1_create(server.display);
         g->new_lock.notify = on_new_lock;
         wl_signal_add(&g->manager->events.new_lock, &g->new_lock);
+    }
+
+    void force_unlock(Server& server) {
+        if (!server.locked)
+            return;
+        server.locked = false;
+        // Tear down a still-alive (hung) lock session so it can't re-assert; this fires
+        // on_lock_destroy, which drops the listeners and clears g->session. A crashed client
+        // already ran that path (g->session == null), so we just restore below.
+        if (g && g->session)
+            wlr_session_lock_v1_destroy(g->session);
+        // Restore keyboard focus like on_unlock does.
+        if (server.focused_view)
+            focus_surface(server, server.focused_view->toplevel->base->surface);
+        else
+            wlr_seat_keyboard_notify_clear_focus(server.seat);
+        if (server.output)
+            wlr_output_schedule_frame(server.output);
+        wlr_log(WLR_INFO, "fenriz: session force-unlocked via IPC");
     }
 
     wlr_surface* surface_for(Server& server, wlr_output* output) {
