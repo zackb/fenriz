@@ -1,10 +1,11 @@
 #include "output.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <ctime>
 #include <pixman.h>
 
 #include "layer.hpp"
-#include "renderer.hpp"
 #include "server.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
@@ -66,25 +67,26 @@ namespace fenriz::output {
             wlr_render_pass_add_texture(ctx->pass, &opts);
         }
 
-        // Draw a `bw`-thick border frame just inside the edges of `box` (logical coords,
-        // scaled to physical pixels by `scale`).
-        void draw_border(wlr_render_pass* pass, const View::Box& logical, uint32_t rgba, int bw, float scale) {
-            if (bw <= 0)
+        // Build a filled rounded-rectangle pixman region (physical pixels). Corners are
+        // approximated per-scanline from the corner circle; pixman coalesces the strips.
+        // radius <= 0 yields a plain rectangle. Used to clip window content (corners reveal
+        // the real backdrop) and to shape the border ring.
+        void build_rounded_region(pixman_region32_t* out, const wlr_box& box, int radius) {
+            pixman_region32_init(out);
+            if (box.width <= 0 || box.height <= 0)
                 return;
-            wlr_render_color color = color_from_u32(rgba);
-            const wlr_box box = scale_box({logical.x, logical.y, logical.width, logical.height}, scale);
-            bw = (int)(bw * scale);
-            const wlr_box rects[4] = {
-                {box.x, box.y, box.width, bw},                                 // top
-                {box.x, box.y + box.height - bw, box.width, bw},               // bottom
-                {box.x, box.y + bw, bw, box.height - 2 * bw},                  // left
-                {box.x + box.width - bw, box.y + bw, bw, box.height - 2 * bw}, // right
-            };
-            for (const wlr_box& r : rects) {
-                wlr_render_rect_options opts = {};
-                opts.box = r;
-                opts.color = color;
-                wlr_render_pass_add_rect(pass, &opts);
+            radius = std::min({radius, box.width / 2, box.height / 2});
+            if (radius <= 0) {
+                pixman_region32_init_rect(out, box.x, box.y, box.width, box.height);
+                return;
+            }
+            pixman_region32_union_rect(out, out, box.x, box.y + radius, box.width, box.height - 2 * radius);
+            for (int i = 0; i < radius; i++) {
+                int dy = radius - 1 - i;
+                int inset = radius - (int)std::floor(std::sqrt((double)(radius * radius - dy * dy)));
+                int w = box.width - 2 * inset;
+                pixman_region32_union_rect(out, out, box.x + inset, box.y + i, w, 1);
+                pixman_region32_union_rect(out, out, box.x + inset, box.y + box.height - 1 - i, w, 1);
             }
         }
 
@@ -126,24 +128,51 @@ namespace fenriz::output {
                 render_layer(pass, server, ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND, scale);
                 render_layer(pass, server, ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM, scale);
 
-                // Content (with opacity) + borders, bottom -> top. Rounded corners are
-                // applied afterward by the GLES2 pass below.
+                // Content + rounded border, bottom -> top. Rounding is done by clipping the
+                // window (and shaping the border) to a rounded-rect region, so the corners
+                // reveal whatever is actually behind them.
                 for (View* view : server.views) {
                     if (!view->mapped)
                         continue;
                     // Honor the client's window geometry: align its geometry origin to the
-                    // tile (CSD apps put a shadow margin at negative offset) and clip the
-                    // surface tree to the tile so that shadow doesn't bleed into gaps.
+                    // tile (CSD apps put a shadow margin at negative offset).
                     const wlr_box& geo = view->toplevel->base->geometry;
                     const wlr_box tile = scale_box({view->box.x, view->box.y, view->box.width, view->box.height},
                                                    scale);
-                    pixman_region32_t clip;
-                    pixman_region32_init_rect(&clip, tile.x, tile.y, tile.width, tile.height);
-                    RenderContext ctx = {pass, view->box.x - geo.x, view->box.y - geo.y, scale, &cfg.opacity, &clip};
+                    const int radius = (int)(cfg.rounding * scale);
+                    const int bw = (int)(cfg.border_width * scale);
+                    const bool has_border = bw > 0 && tile.width > 2 * bw && tile.height > 2 * bw;
+
+                    // Content is inset by the border so it sits *inside* the frame (the
+                    // client is sized to this inner area by tiling::arrange). The rounded
+                    // inner clip also clips CSD shadow bleed.
+                    const wlr_box inner_box =
+                        has_border ? wlr_box{tile.x + bw, tile.y + bw, tile.width - 2 * bw, tile.height - 2 * bw}
+                                   : tile;
+                    pixman_region32_t inner;
+                    build_rounded_region(&inner, inner_box, has_border ? std::max(0, radius - bw) : radius);
+
+                    const int inset = has_border ? cfg.border_width : 0; // logical
+                    RenderContext ctx = {pass, view->box.x + inset - geo.x, view->box.y + inset - geo.y, scale,
+                                         &cfg.opacity, &inner};
                     wlr_xdg_surface_for_each_surface(view->toplevel->base, render_surface, &ctx);
-                    pixman_region32_fini(&clip);
-                    uint32_t border = (view == server.focused_view) ? cfg.border_active : cfg.border_inactive;
-                    draw_border(pass, view->box, border, cfg.border_width, scale);
+
+                    if (has_border) {
+                        // Border ring: the rounded outer edge minus the inner content region.
+                        pixman_region32_t outer, ring;
+                        build_rounded_region(&outer, tile, radius);
+                        pixman_region32_init(&ring);
+                        pixman_region32_subtract(&ring, &outer, &inner);
+                        uint32_t border = (view == server.focused_view) ? cfg.border_active : cfg.border_inactive;
+                        wlr_render_rect_options opts = {};
+                        opts.box = tile;
+                        opts.color = color_from_u32(border);
+                        opts.clip = &ring;
+                        wlr_render_pass_add_rect(pass, &opts);
+                        pixman_region32_fini(&outer);
+                        pixman_region32_fini(&ring);
+                    }
+                    pixman_region32_fini(&inner);
                 }
 
                 // Top bars/panels and overlays (e.g. quickshell) sit above windows.
@@ -152,9 +181,6 @@ namespace fenriz::output {
 
                 wlr_render_pass_submit(pass);
             }
-
-            // Round window corners by overdrawing the corners with BG (GLES2-only).
-            renderer::round_corners(server, state.buffer, output->handle->width, output->handle->height, BG, scale);
 
             wlr_output_commit_state(output->handle, &state);
             wlr_output_state_finish(&state);

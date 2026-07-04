@@ -72,6 +72,12 @@ namespace fenriz::decoration {
         server.l_new_decoration.listener.notify = on_new_decoration;
         wl_signal_add(&server.xdg_decoration_manager->events.new_toplevel_decoration,
                       &server.l_new_decoration.listener);
+
+        // Legacy KDE protocol: GTK/libadwaita apps (ghostty) ignore xdg-decoration and read
+        // this to decide whether to draw their own titlebar. Default to server-side so they
+        // don't. ponytail: obsolete-but-required — it's the only decoration lever GTK honors.
+        wlr_server_decoration_manager* kde = wlr_server_decoration_manager_create(server.display);
+        wlr_server_decoration_manager_set_default_mode(kde, WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
     }
 
 } // namespace fenriz::decoration

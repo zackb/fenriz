@@ -1,5 +1,7 @@
 #include "tiling.hpp"
 
+#include <algorithm>
+
 #include "server.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
@@ -22,11 +24,16 @@ namespace fenriz::tiling {
 
         std::vector<Rect> rects = layout(ax, ay, aw, ah, server.config.gaps, (int)server.views.size());
 
+        // view->box is the full tile (outer border edge); the client is sized to the inner
+        // area so the border frames it and content doesn't run under the rounded edge.
+        const int bw = server.config.border_width;
         int i = 0;
         for (View* view : server.views) {
             const Rect& r = rects[i++];
             view->box = {r.x, r.y, r.w, r.h};
-            wlr_xdg_toplevel_set_size(view->toplevel, r.w, r.h);
+            int cw = std::max(1, r.w - 2 * bw);
+            int ch = std::max(1, r.h - 2 * bw);
+            wlr_xdg_toplevel_set_size(view->toplevel, cw, ch);
         }
     }
 
