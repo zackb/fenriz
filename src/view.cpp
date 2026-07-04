@@ -122,8 +122,7 @@ namespace fenriz {
 
     void focus_surface(Server& server, wlr_surface* surface) {
         if (wlr_keyboard* kb = wlr_seat_get_keyboard(server.seat))
-            wlr_seat_keyboard_notify_enter(
-                server.seat, surface, kb->keycodes, kb->num_keycodes, &kb->modifiers);
+            wlr_seat_keyboard_notify_enter(server.seat, surface, kb->keycodes, kb->num_keycodes, &kb->modifiers);
     }
 
     void focus_view(Server& server, View* view) {
@@ -261,7 +260,7 @@ namespace fenriz {
         commit.notify = view_handle_commit;
         wl_signal_add(&surface->events.commit, &commit);
         destroy.notify = view_handle_destroy;
-        wl_signal_add(&toplevel->base->events.destroy, &destroy);
+        wl_signal_add(&toplevel->events.destroy, &destroy);
         set_title.notify = view_handle_set_title;
         wl_signal_add(&toplevel->events.set_title, &set_title);
         set_app_id.notify = view_handle_set_app_id;
