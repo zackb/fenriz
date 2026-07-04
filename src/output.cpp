@@ -2,6 +2,7 @@
 
 #include <ctime>
 
+#include "layer.hpp"
 #include "renderer.hpp"
 #include "server.hpp"
 #include "view.hpp"
@@ -71,6 +72,17 @@ namespace fenriz::output {
             }
         }
 
+        // Render every mapped layer surface on a given layer (surface + its popups).
+        // Layers are drawn opaque (alpha=nullptr); the surface's own alpha still applies.
+        void render_layer(wlr_render_pass* pass, Server& server, int lyr) {
+            for (LayerSurface* ls : server.layer_surfaces) {
+                if (!ls->mapped || ls->handle->current.layer != (uint32_t)lyr)
+                    continue;
+                RenderContext ctx = {pass, ls->geo.x, ls->geo.y, nullptr};
+                wlr_layer_surface_v1_for_each_surface(ls->handle, render_surface, &ctx);
+            }
+        }
+
         void send_frame_done(wlr_surface* surface, int sx, int sy, void* data) {
             (void)sx;
             (void)sy;
@@ -93,6 +105,10 @@ namespace fenriz::output {
                 bg.color = {BG[0], BG[1], BG[2], BG[3]};
                 wlr_render_pass_add_rect(pass, &bg);
 
+                // Layer-shell backdrop (wallpapers, bottom bars) sits below windows.
+                render_layer(pass, server, ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND);
+                render_layer(pass, server, ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM);
+
                 // Content (with opacity) + borders, bottom -> top. Rounded corners are
                 // applied afterward by the GLES2 pass below.
                 for (View* view : server.views) {
@@ -103,6 +119,10 @@ namespace fenriz::output {
                     uint32_t border = (view == server.focused_view) ? cfg.border_active : cfg.border_inactive;
                     draw_border(pass, view->box, border, cfg.border_width);
                 }
+
+                // Top bars/panels and overlays (e.g. quickshell) sit above windows.
+                render_layer(pass, server, ZWLR_LAYER_SHELL_V1_LAYER_TOP);
+                render_layer(pass, server, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
 
                 wlr_render_pass_submit(pass);
             }
@@ -119,6 +139,10 @@ namespace fenriz::output {
             for (View* view : output->server->views) {
                 if (view->mapped)
                     wlr_xdg_surface_for_each_surface(view->toplevel->base, send_frame_done, &now);
+            }
+            for (LayerSurface* ls : output->server->layer_surfaces) {
+                if (ls->mapped)
+                    wlr_layer_surface_v1_for_each_surface(ls->handle, send_frame_done, &now);
             }
         }
 
@@ -161,6 +185,11 @@ namespace fenriz::output {
             wl_signal_add(&out->events.destroy, &output->destroy);
 
             wlr_output_layout_add_auto(server.output_layout, out);
+
+            // Adopt the first output as primary and give layer surfaces a home + geometry.
+            if (!server.output)
+                server.output = out;
+            layer::arrange(server);
         }
 
         void on_new_output(wl_listener* listener, void* data) {

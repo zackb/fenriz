@@ -8,15 +8,19 @@
 struct wlr_backend;
 struct wlr_renderer;
 struct wlr_allocator;
+struct wlr_output;
 struct wlr_output_layout;
 struct wlr_seat;
 struct wlr_xdg_shell;
 struct wlr_cursor;
+struct wlr_layer_shell_v1;
+struct wlr_idle_notifier_v1;
 
 namespace fenriz {
 
     class Server;
     class View;
+    struct LayerSurface;
 
     // Launch a shell command detached (`/bin/sh -c cmd`); no-op on empty. Used for
     // keybind `exec` actions and `exec-once` startup commands. Children are reaped via
@@ -40,21 +44,31 @@ namespace fenriz {
         void stop();
 
         Config config;
-        std::list<View*> views; // bottom -> top
+        std::list<View*> views;                   // bottom -> top
+        std::list<LayerSurface*> layer_surfaces;   // all layers; z-order resolved at render
         View* focused_view = nullptr;
 
         wl_display* display = nullptr;
         wlr_backend* backend = nullptr;
         wlr_renderer* renderer = nullptr;
         wlr_allocator* allocator = nullptr;
+        wlr_output* output = nullptr; // primary output (fenriz is single-output; see layer::arrange)
         wlr_output_layout* output_layout = nullptr;
         wlr_seat* seat = nullptr;
         wlr_xdg_shell* xdg_shell = nullptr;
+        wlr_layer_shell_v1* layer_shell = nullptr;
+        wlr_idle_notifier_v1* idle_notifier = nullptr;
         wlr_cursor* cursor = nullptr;
+
+        // Tiling region left after layer-shell exclusive zones (bars) are subtracted.
+        struct {
+            int x, y, width, height;
+        } usable_area{};
 
         SignalListener l_new_output;
         SignalListener l_new_toplevel;
         SignalListener l_new_input;
+        SignalListener l_new_layer_surface;
     };
 
 } // namespace fenriz

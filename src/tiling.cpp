@@ -10,11 +10,17 @@ namespace fenriz::tiling {
         if (server.views.empty())
             return;
 
-        wlr_box area;
-        wlr_output_layout_get_box(server.output_layout, nullptr, &area);
+        // Prefer the usable area left by layer-shell exclusive zones (bars); fall back to
+        // the full output layout before any layer surface has reserved space.
+        auto& u = server.usable_area;
+        int ax = u.x, ay = u.y, aw = u.width, ah = u.height;
+        if (aw <= 0 || ah <= 0) {
+            wlr_box area;
+            wlr_output_layout_get_box(server.output_layout, nullptr, &area);
+            ax = area.x, ay = area.y, aw = area.width, ah = area.height;
+        }
 
-        std::vector<Rect> rects =
-            layout(area.x, area.y, area.width, area.height, server.config.gaps, (int)server.views.size());
+        std::vector<Rect> rects = layout(ax, ay, aw, ah, server.config.gaps, (int)server.views.size());
 
         int i = 0;
         for (View* view : server.views) {

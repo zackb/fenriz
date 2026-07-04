@@ -54,6 +54,8 @@ namespace fenriz {
             Server& server = *keyboard->server;
             wlr_keyboard* kb = keyboard->kb;
 
+            wlr_idle_notifier_v1_notify_activity(server.idle_notifier, server.seat);
+
             const uint32_t keycode = event->keycode + 8; // libinput -> xkb keycode
             const uint32_t mods = wlr_keyboard_get_modifiers(kb);
 

@@ -6,6 +6,7 @@
 
 #include "cursor.hpp"
 #include "keyboard.hpp"
+#include "layer.hpp"
 #include "output.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
@@ -93,6 +94,8 @@ namespace fenriz {
         wl_signal_add(&backend->events.new_input, &l_new_input.listener);
 
         cursor::init(*this);
+
+        layer::init(*this);
 
         const char* socket = wl_display_add_socket_auto(display);
         if (!socket) {

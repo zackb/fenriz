@@ -1,5 +1,6 @@
 #include "cursor.hpp"
 
+#include "layer.hpp"
 #include "server.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
@@ -24,9 +25,16 @@ namespace fenriz::cursor {
         // Update pointer focus + cursor image for the surface under the cursor.
         void process_motion(Cursor* c, uint32_t time) {
             Server& server = *c->server;
+            wlr_idle_notifier_v1_notify_activity(server.idle_notifier, server.seat);
+
+            const double lx = c->cursor->x, ly = c->cursor->y;
             double sx, sy;
-            wlr_surface* surface = nullptr;
-            view_at(server, c->cursor->x, c->cursor->y, &surface, &sx, &sy);
+            // Z-order: overlay/top layers, then windows, then bottom/background layers.
+            wlr_surface* surface = layer::surface_at(server, lx, ly, &sx, &sy, true);
+            if (!surface)
+                view_at(server, lx, ly, &surface, &sx, &sy);
+            if (!surface)
+                surface = layer::surface_at(server, lx, ly, &sx, &sy, false);
 
             if (!surface) {
                 // Over empty desktop: show the default cursor and drop pointer focus.

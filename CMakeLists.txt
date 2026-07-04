@@ -14,6 +14,20 @@ pkg_check_modules(PIXMAN    REQUIRED IMPORTED_TARGET pixman-1)
 pkg_check_modules(EGL       REQUIRED IMPORTED_TARGET egl)
 pkg_check_modules(GLESV2    REQUIRED IMPORTED_TARGET glesv2)
 
+# wlroots' wlr_layer_shell_v1.h includes the generated wlr-layer-shell protocol
+# server header, which this wlroots package does not ship. Generate it ourselves
+# from the vendored XML with wayland-scanner.
+find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
+set(LAYER_SHELL_HEADER ${CMAKE_CURRENT_BINARY_DIR}/wlr-layer-shell-unstable-v1-protocol.h)
+add_custom_command(
+    OUTPUT ${LAYER_SHELL_HEADER}
+    COMMAND ${WAYLAND_SCANNER} server-header
+            ${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-layer-shell-unstable-v1.xml
+            ${LAYER_SHELL_HEADER}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-layer-shell-unstable-v1.xml
+    VERBATIM
+)
+
 add_executable(fenriz
     src/main.cpp
     src/server.cpp
@@ -24,11 +38,13 @@ add_executable(fenriz
     src/tiling.cpp
     src/config.cpp
     src/renderer.cpp
+    src/layer.cpp
+    ${LAYER_SHELL_HEADER}
 )
 
 # wlroots headers require this before inclusion
 target_compile_definitions(fenriz PRIVATE WLR_USE_UNSTABLE)
-target_include_directories(fenriz PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(fenriz PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(fenriz PRIVATE
     PkgConfig::WLROOTS
     PkgConfig::WAYLAND

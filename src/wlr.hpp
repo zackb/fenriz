@@ -24,8 +24,15 @@ extern "C" {
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_idle_notify_v1.h>
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
+// wlr_layer_shell_v1.h (and its generated protocol header) use `namespace` as a struct
+// field / parameter name, which is a C++ keyword. Rename it away for this include only;
+// fenriz never touches that field. Same pin-scoped tactic as the `static` guard above.
+#define namespace namespace_
+#include <wlr/types/wlr_layer_shell_v1.h>
+#undef namespace
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_pointer.h>
