@@ -114,6 +114,10 @@ namespace fenriz {
             // client choose its own dimensions; milestone 3 tiling will impose sizes.
             if (view->toplevel->base->initial_commit)
                 wlr_xdg_toplevel_set_size(view->toplevel, 0, 0);
+            // A client can change its window geometry after mapping (CSD apps adjust their
+            // shadow margin); re-sync the scene nodes so the inset stays correct. No-op
+            // until the nodes exist (created on map).
+            place_view_nodes(view);
         }
 
         void view_handle_set_title(wl_listener* listener, void* data) {
@@ -304,11 +308,11 @@ namespace fenriz {
         const int oy = (int)std::lround(view->anim_oy);
         wlr_scene_node_set_position(&view->scene_tree->node, view->box.x + ox, view->box.y + oy);
 
-        // Inset the client by the border. Its geometry origin (CSD shadow margin) is aligned
-        // to the inner corner, matching the client size arrange() configured.
-        const wlr_box& geo = view->toplevel->base->geometry;
+        // Inset the client by the border. wlr_scene_xdg_surface_create already makes the
+        // subtree origin the window-geometry top-left (CSD shadow margin handled internally),
+        // so we position it at the inner corner directly — no geometry offset here.
         const int bw = view->fullscreen ? 0 : server.config.border_width;
-        wlr_scene_node_set_position(&view->surface_tree->node, bw - geo.x, bw - geo.y);
+        wlr_scene_node_set_position(&view->surface_tree->node, bw, bw);
 
         const bool show_border = bw > 0;
         wlr_scene_node_set_enabled(&view->border->node, show_border);

@@ -156,6 +156,17 @@ namespace fenriz {
         scene_overlay = wlr_scene_tree_create(&scene->tree);
         scene_lock = wlr_scene_tree_create(&scene->tree);
 
+        // linux-dmabuf lets GPU clients (QtQuick/quickshell, browsers) share their GPU
+        // buffers zero-copy instead of falling back to SHM (a per-frame GPU->CPU->upload
+        // treadmill that burns CPU on both sides). Wiring it into the scene also enables
+        // direct scanout for fullscreen. presentation-time gives clients accurate frame
+        // pacing so they throttle to vblank instead of rendering continuously.
+        wlr_linux_dmabuf_v1* dmabuf = wlr_linux_dmabuf_v1_create_with_renderer(display, 5, renderer);
+        wlr_scene_set_linux_dmabuf_v1(scene, dmabuf);
+        wlr_presentation_create(display, backend, 2);
+        wlr_single_pixel_buffer_manager_v1_create(display);
+        wlr_content_type_manager_v1_create(display, 1);
+
         output::register_handlers(*this);
 
         xdg_shell = wlr_xdg_shell_create(display, 3);
