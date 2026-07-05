@@ -131,13 +131,20 @@ namespace fenriz {
     }
 
     void focus_view(Server& server, View* view) {
-        if (!view || server.focused_view == view)
-            return;
         // While locked, keyboard focus belongs to the lock surface; a window mapping or a
         // click underneath must not steal it. focused_view is left as-is so it's restored
         // on unlock (on_unlock in lock.cpp).
-        if (server.locked)
+        if (!view || server.locked)
             return;
+
+        if (server.focused_view == view) {
+            // Already the focused window, but the seat's keyboard focus can have been grabbed
+            // away by a keyboard-interactive layer surface (e.g. a quickshell launcher) while
+            // this stayed focused_view. Re-assert it so a click / cycle / workspace-return
+            // reclaims the keyboard instead of no-opping and stranding input.
+            focus_surface(server, view->toplevel->base->surface);
+            return;
+        }
 
         if (server.focused_view) {
             wlr_xdg_toplevel_set_activated(server.focused_view->toplevel, false);
