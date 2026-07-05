@@ -38,8 +38,10 @@ namespace fenriz {
         uint32_t border_inactive = 0x444444ff; // RGBA
         int gaps = 8;
         int rounding = 10;
+        int animation_ms = 150; // slide-into-place duration; 0 = instant (no animation)
         float opacity = 1.0f;
-        float scale = 1.0f; // output scale; fractional (e.g. 1.5) supported, 1.0 = off
+        float scale = 1.0f;         // output scale; fractional (e.g. 1.5) supported, 1.0 = off
+        bool natural_scroll = true; // libinput scroll direction; false = traditional wheel
         std::vector<Bind> binds;
         std::vector<std::string> exec_once; // commands to run once at startup
 

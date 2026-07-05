@@ -48,6 +48,14 @@ namespace fenriz {
             }
         }
 
+        bool parse_bool(const std::string& s, bool fallback) {
+            if (s == "true" || s == "1" || s == "on" || s == "yes")
+                return true;
+            if (s == "false" || s == "0" || s == "off" || s == "no")
+                return false;
+            return fallback;
+        }
+
         // Mirror WLR_MODIFIER_* bit values (wlr/types/wlr_keyboard.h) so the config
         // parser stays free of a wlroots include and its test needs no wlroots.
         // ponytail: 4 constants beats dragging wlr headers into the pure-logic unit.
@@ -145,6 +153,8 @@ namespace fenriz {
                 cfg.gaps = parse_int(val, cfg.gaps);
             else if (key == "rounding")
                 cfg.rounding = parse_int(val, cfg.rounding);
+            else if (key == "animation")
+                cfg.animation_ms = parse_int(val, cfg.animation_ms);
             else if (key == "opacity") {
                 try {
                     cfg.opacity = std::stof(val);
@@ -155,7 +165,8 @@ namespace fenriz {
                     cfg.scale = std::stof(val);
                 } catch (...) {
                 }
-            }
+            } else if (key == "natural_scroll")
+                cfg.natural_scroll = parse_bool(val, cfg.natural_scroll);
         }
         return cfg;
     }

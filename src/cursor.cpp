@@ -61,7 +61,11 @@ namespace fenriz::cursor {
             case Grab::None:
                 return false;
             case Grab::Swap:
-                return true; // swap resolves on release
+                // Float the window up under the cursor: track the pointer via the render
+                // offset (box stays in the tree so the swap-on-drop target is unchanged).
+                v->anim_ox += dx;
+                v->anim_oy += dy;
+                return true;
             case Grab::MoveFloat:
                 v->box.x += (int)dx;
                 v->box.y += (int)dy;
@@ -116,8 +120,11 @@ namespace fenriz::cursor {
             auto* event = static_cast<wlr_pointer_motion_event*>(data);
             const double ox = c->cursor->x, oy = c->cursor->y;
             wlr_cursor_move(c->cursor, &event->pointer->base, event->delta_x, event->delta_y);
-            if (process_grab(c, c->cursor->x - ox, c->cursor->y - oy))
+            if (process_grab(c, c->cursor->x - ox, c->cursor->y - oy)) {
+                if (c->server->output)
+                    wlr_output_schedule_frame(c->server->output); // no client damage drives the drag
                 return;
+            }
             process_motion(c, event->time_msec);
         }
 
@@ -126,8 +133,11 @@ namespace fenriz::cursor {
             auto* event = static_cast<wlr_pointer_motion_absolute_event*>(data);
             const double ox = c->cursor->x, oy = c->cursor->y;
             wlr_cursor_warp_absolute(c->cursor, &event->pointer->base, event->x, event->y);
-            if (process_grab(c, c->cursor->x - ox, c->cursor->y - oy))
+            if (process_grab(c, c->cursor->x - ox, c->cursor->y - oy)) {
+                if (c->server->output)
+                    wlr_output_schedule_frame(c->server->output);
                 return;
+            }
             process_motion(c, event->time_msec);
         }
 
@@ -141,9 +151,12 @@ namespace fenriz::cursor {
                 // window is dropped on.
                 if (c->grab != Grab::None) {
                     if (c->grab == Grab::Swap) {
+                        // Stop holding the offset so it decays: the window slides from where
+                        // it was dropped into its destination tile (or back home if no swap).
+                        c->grabbed->dragging = false;
                         View* target = view_box_at(server, c->cursor->x, c->cursor->y);
                         if (target && target != c->grabbed && !target->floating)
-                            tiling::swap(server, c->grabbed, target);
+                            tiling::swap(server, c->grabbed, target); // arrange folds old-new into the offset
                     }
                     c->grab = Grab::None;
                     c->grabbed = nullptr;
@@ -165,6 +178,7 @@ namespace fenriz::cursor {
                         c->grabbed = v;
                         c->grab = v->floating ? (resize ? Grab::ResizeFloat : Grab::MoveFloat)
                                               : (resize ? Grab::ResizeTile : Grab::Swap);
+                        v->dragging = (c->grab == Grab::Swap); // float above tiles, hold offset
                         wlr_cursor_set_xcursor(c->cursor, c->mgr, resize ? "se-resize" : "grabbing");
                         return; // consume the press; don't forward to the client
                     }
@@ -217,6 +231,7 @@ namespace fenriz::cursor {
     } // namespace
 
     void forget_view(View* view) {
+        view->dragging = false; // never leave a stuck drag flag on an unmapping view
         if (g_cursor && g_cursor->grabbed == view) {
             g_cursor->grab = Grab::None;
             g_cursor->grabbed = nullptr;
@@ -256,6 +271,13 @@ namespace fenriz::cursor {
 
     void attach_pointer(Server& server, wlr_input_device* device) {
         wlr_cursor_attach_input_device(server.cursor, device);
+        // Apply the scroll direction to real (libinput) pointers that support it — trackpads
+        // and some mice. Nested/headless backends aren't libinput and are skipped.
+        if (wlr_input_device_is_libinput(device)) {
+            libinput_device* dev = wlr_libinput_get_device_handle(device);
+            if (dev && libinput_device_config_scroll_has_natural_scroll(dev))
+                libinput_device_config_scroll_set_natural_scroll_enabled(dev, server.config.natural_scroll);
+        }
     }
 
 } // namespace fenriz::cursor

@@ -29,6 +29,12 @@ namespace fenriz {
         bool fullscreen = false;
         bool floating = false; // escaped the BSP tree; free move/resize, drawn above tiles
 
+        // Render offset from box, in logical coords; decays to 0 each frame for the
+        // slide-into-place animation (see output.cpp). `dragging` holds the offset
+        // (no decay) while the window tracks the cursor, and draws it above the tiles.
+        double anim_ox = 0, anim_oy = 0;
+        bool dragging = false;
+
         // wlr-foreign-toplevel handle (taskbar/window-list protocol); live while mapped.
         wlr_foreign_toplevel_handle_v1* foreign_handle = nullptr;
 

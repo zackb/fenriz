@@ -23,16 +23,11 @@ namespace fenriz::tiling {
         arrange(server);
     }
 
-    // Nearest ancestor of `leaf` whose split orientation matches `vertical`; also reports
-    // whether leaf descends the child[0] (grow-with-positive-delta) side.
-    static Node* enclosing_split(Node* leaf, bool vertical, bool& first_side) {
-        for (Node* n = leaf; n && n->parent; n = n->parent) {
-            Node* p = n->parent;
-            if (p->vertical == vertical) {
-                first_side = (p->child[0] == n);
-                return p;
-            }
-        }
+    // Nearest ancestor of `leaf` whose split orientation matches `vertical`.
+    static Node* enclosing_split(Node* leaf, bool vertical) {
+        for (Node* n = leaf; n && n->parent; n = n->parent)
+            if (n->parent->vertical == vertical)
+                return n->parent;
         return nullptr;
     }
 
@@ -40,11 +35,13 @@ namespace fenriz::tiling {
         Node* leaf = find_leaf(server.ws_roots[v->workspace], v);
         if (!leaf)
             return;
-        bool first;
-        if (Node* h = enclosing_split(leaf, true, first); h && h->rect.w > 0)
-            h->ratio = std::clamp(h->ratio + (first ? dx : -dx) / h->rect.w, 0.1, 0.9);
-        if (Node* w = enclosing_split(leaf, false, first); w && w->rect.h > 0)
-            w->ratio = std::clamp(w->ratio + (first ? dy : -dy) / w->rect.h, 0.1, 0.9);
+        // The divider follows the cursor: +dx moves the vertical split right, +dy moves the
+        // stacked split down, no matter which side `leaf` is on. (ratio is the fraction to
+        // child[0], i.e. the left/top tile, so raising it grows that tile toward the cursor.)
+        if (Node* h = enclosing_split(leaf, true); h && h->rect.w > 0)
+            h->ratio = std::clamp(h->ratio + dx / h->rect.w, 0.1, 0.9);
+        if (Node* w = enclosing_split(leaf, false); w && w->rect.h > 0)
+            w->ratio = std::clamp(w->ratio + dy / w->rect.h, 0.1, 0.9);
         arrange(server);
     }
 
@@ -83,7 +80,15 @@ namespace fenriz::tiling {
             }
             // view->box is the full tile (outer border edge); the client is sized to the
             // inner area so the border frames it and content stays off the rounded edge.
+            // Feed the position delta into the render offset so the window slides from its
+            // old slot to the new one; the offset decays to 0 in output.cpp. Skip windows
+            // that weren't placed yet (new maps: box.width == 0) so they don't fly in.
+            const View::Box old = view->box;
             view->box = {n->rect.x, n->rect.y, n->rect.w, n->rect.h};
+            if (server.config.animation_ms > 0 && old.width > 0) {
+                view->anim_ox += old.x - view->box.x;
+                view->anim_oy += old.y - view->box.y;
+            }
             int cw = std::max(1, n->rect.w - 2 * bw);
             int ch = std::max(1, n->rect.h - 2 * bw);
             wlr_xdg_toplevel_set_size(view->toplevel, cw, ch);

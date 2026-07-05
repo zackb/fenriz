@@ -26,6 +26,7 @@ namespace fenriz::output {
             wl_listener frame;
             wl_listener request_state;
             wl_listener destroy;
+            timespec last_frame{}; // for frame-rate-independent animation decay
         };
 
         // Passed through wlr_xdg_surface_for_each_surface while rendering a view.
@@ -110,6 +111,56 @@ namespace fenriz::output {
             wlr_surface_send_frame_done(surface, static_cast<timespec*>(data));
         }
 
+        // Draw one non-fullscreen window: content clipped to a rounded rect, then the
+        // border ring. Positioned at view->box plus its animation offset (anim_ox/oy),
+        // so a window sliding into place or held under a drag renders off its tile.
+        void render_window(wlr_render_pass* pass, Server& server, const Config& cfg, View* view, float scale) {
+            const int ox = (int)std::lround(view->anim_ox);
+            const int oy = (int)std::lround(view->anim_oy);
+            // Honor the client's window geometry: align its geometry origin to the tile
+            // (CSD apps put a shadow margin at negative offset).
+            const wlr_box& geo = view->toplevel->base->geometry;
+            const wlr_box tile =
+                scale_box({view->box.x + ox, view->box.y + oy, view->box.width, view->box.height}, scale);
+            const int radius = (int)(cfg.rounding * scale);
+            const int bw = (int)(cfg.border_width * scale);
+            const bool has_border = bw > 0 && tile.width > 2 * bw && tile.height > 2 * bw;
+
+            // Content is inset by the border so it sits *inside* the frame (the client is
+            // sized to this inner area by tiling::arrange). The rounded inner clip also
+            // clips CSD shadow bleed.
+            const wlr_box inner_box =
+                has_border ? wlr_box{tile.x + bw, tile.y + bw, tile.width - 2 * bw, tile.height - 2 * bw} : tile;
+            pixman_region32_t inner;
+            build_rounded_region(&inner, inner_box, has_border ? std::max(0, radius - bw) : radius);
+
+            const int inset = has_border ? cfg.border_width : 0; // logical
+            RenderContext ctx = {pass,
+                                 view->box.x + ox + inset - geo.x,
+                                 view->box.y + oy + inset - geo.y,
+                                 scale,
+                                 &cfg.opacity,
+                                 &inner};
+            wlr_xdg_surface_for_each_surface(view->toplevel->base, render_surface, &ctx);
+
+            if (has_border) {
+                // Border ring: the rounded outer edge minus the inner content region.
+                pixman_region32_t outer, ring;
+                build_rounded_region(&outer, tile, radius);
+                pixman_region32_init(&ring);
+                pixman_region32_subtract(&ring, &outer, &inner);
+                uint32_t border = (view == server.focused_view) ? cfg.border_active : cfg.border_inactive;
+                wlr_render_rect_options opts = {};
+                opts.box = tile;
+                opts.color = color_from_u32(border);
+                opts.clip = &ring;
+                wlr_render_pass_add_rect(pass, &opts);
+                pixman_region32_fini(&outer);
+                pixman_region32_fini(&ring);
+            }
+            pixman_region32_fini(&inner);
+        }
+
         void output_handle_frame(wl_listener* listener, void* data) {
             Output* output = wl_container_of(listener, output, frame);
             (void)data;
@@ -161,50 +212,20 @@ namespace fenriz::output {
 
                 // Content + rounded border, bottom -> top. Rounding is done by clipping the
                 // window (and shaping the border) to a rounded-rect region, so the corners
-                // reveal whatever is actually behind them.
+                // reveal whatever is actually behind them. A window held under a drag is
+                // skipped here and drawn last, so it floats above the other tiles.
+                View* dragging = nullptr;
                 for (View* view : server.views) {
                     if (!view_visible(server, view) || view->fullscreen)
                         continue; // fullscreen windows are drawn above the top layer, below
-                    // Honor the client's window geometry: align its geometry origin to the
-                    // tile (CSD apps put a shadow margin at negative offset).
-                    const wlr_box& geo = view->toplevel->base->geometry;
-                    const wlr_box tile =
-                        scale_box({view->box.x, view->box.y, view->box.width, view->box.height}, scale);
-                    const int radius = (int)(cfg.rounding * scale);
-                    const int bw = (int)(cfg.border_width * scale);
-                    const bool has_border = bw > 0 && tile.width > 2 * bw && tile.height > 2 * bw;
-
-                    // Content is inset by the border so it sits *inside* the frame (the
-                    // client is sized to this inner area by tiling::arrange). The rounded
-                    // inner clip also clips CSD shadow bleed.
-                    const wlr_box inner_box =
-                        has_border ? wlr_box{tile.x + bw, tile.y + bw, tile.width - 2 * bw, tile.height - 2 * bw}
-                                   : tile;
-                    pixman_region32_t inner;
-                    build_rounded_region(&inner, inner_box, has_border ? std::max(0, radius - bw) : radius);
-
-                    const int inset = has_border ? cfg.border_width : 0; // logical
-                    RenderContext ctx = {
-                        pass, view->box.x + inset - geo.x, view->box.y + inset - geo.y, scale, &cfg.opacity, &inner};
-                    wlr_xdg_surface_for_each_surface(view->toplevel->base, render_surface, &ctx);
-
-                    if (has_border) {
-                        // Border ring: the rounded outer edge minus the inner content region.
-                        pixman_region32_t outer, ring;
-                        build_rounded_region(&outer, tile, radius);
-                        pixman_region32_init(&ring);
-                        pixman_region32_subtract(&ring, &outer, &inner);
-                        uint32_t border = (view == server.focused_view) ? cfg.border_active : cfg.border_inactive;
-                        wlr_render_rect_options opts = {};
-                        opts.box = tile;
-                        opts.color = color_from_u32(border);
-                        opts.clip = &ring;
-                        wlr_render_pass_add_rect(pass, &opts);
-                        pixman_region32_fini(&outer);
-                        pixman_region32_fini(&ring);
+                    if (view->dragging) {
+                        dragging = view;
+                        continue;
                     }
-                    pixman_region32_fini(&inner);
+                    render_window(pass, server, cfg, view, scale);
                 }
+                if (dragging)
+                    render_window(pass, server, cfg, dragging, scale);
 
                 // Top bars/panels sit above windows.
                 render_layer(pass, server, ZWLR_LAYER_SHELL_V1_LAYER_TOP, scale);
@@ -240,6 +261,39 @@ namespace fenriz::output {
                 if (ls->mapped)
                     wlr_layer_surface_v1_for_each_surface(ls->handle, send_frame_done, &now);
             }
+
+            // Advance the slide-into-place animation: decay each view's render offset
+            // toward 0 by an exponential factor scaled to the elapsed frame time (so the
+            // speed is independent of refresh rate). A held (dragging) view is left alone.
+            // While anything is still moving, keep requesting frames — there is no
+            // continuous render clock, so without this the animation (and a live drag)
+            // would stall until a client next damages the screen.
+            double dt = (now.tv_sec - output->last_frame.tv_sec) +
+                        (now.tv_nsec - output->last_frame.tv_nsec) / 1e9;
+            output->last_frame = now;
+            if (dt <= 0 || dt > 1.0)
+                dt = 1.0 / 60; // first frame or a long stall: assume one 60Hz tick
+            const double tau = std::max(1, cfg.animation_ms) / 1000.0 * 0.35;
+            const double factor = std::exp(-dt / tau);
+            bool animating = false;
+            for (View* view : server.views) {
+                if (!view_visible(server, view))
+                    continue;
+                if (view->dragging) {
+                    animating = true;
+                    continue;
+                }
+                if (view->anim_ox != 0 || view->anim_oy != 0) {
+                    view->anim_ox *= factor;
+                    view->anim_oy *= factor;
+                    if (std::abs(view->anim_ox) < 1 && std::abs(view->anim_oy) < 1)
+                        view->anim_ox = view->anim_oy = 0;
+                    else
+                        animating = true;
+                }
+            }
+            if (animating)
+                wlr_output_schedule_frame(output->handle);
         }
 
         void output_handle_request_state(wl_listener* listener, void* data) {

@@ -242,6 +242,11 @@ namespace fenriz {
             return;
         server.active_workspace = n;
         tiling::arrange(server);
+        // The now-visible workspace's views were arranged from stale (last-seen) boxes;
+        // clear any resulting offset so they appear in place instead of sliding in.
+        for (View* v : server.views)
+            if (view_visible(server, v))
+                v->anim_ox = v->anim_oy = 0;
         if (View* v = topmost_visible(server))
             focus_view(server, v);
         else
