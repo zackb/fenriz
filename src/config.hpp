@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 #include <xkbcommon/xkbcommon.h>
 
@@ -43,7 +44,8 @@ namespace fenriz {
         float scale = 1.0f;         // output scale; fractional (e.g. 1.5) supported, 1.0 = off
         bool natural_scroll = true; // libinput scroll direction; false = traditional wheel
         std::vector<Bind> binds;
-        std::vector<std::string> exec_once; // commands to run once at startup
+        std::vector<std::string> exec_once;                    // commands to run once at startup
+        std::vector<std::pair<std::string, std::string>> env; // NAME,VALUE exported before exec-once
 
         // Parse from a config string. Unknown/malformed lines are ignored.
         static Config parse(const std::string& text);

@@ -12,6 +12,8 @@ int main() {
                        "opacity = 0.9\n"
                        "border_active = 0x33ccffff\n"
                        "exec-once = waybar --config /etc/x\n"
+                       "env = QT_QPA_PLATFORMTHEME,qt6ct\n"
+                       "env = FOO,a,b,c\n" // value keeps commas; only the first splits
                        "bind = SUPER, Return, exec, foot\n"
                        "bind = SUPER SHIFT, E, exit\n"
                        "bind = SUPER, 2, workspace, 3\n"
@@ -28,6 +30,11 @@ int main() {
     // exec-once keeps the full command (not comma-split like binds).
     assert(c.exec_once.size() == 1);
     assert(c.exec_once[0] == "waybar --config /etc/x");
+
+    // env splits NAME from VALUE on the first comma only (value may contain commas).
+    assert(c.env.size() == 2);
+    assert(c.env[0].first == "QT_QPA_PLATFORMTHEME" && c.env[0].second == "qt6ct");
+    assert(c.env[1].first == "FOO" && c.env[1].second == "a,b,c");
 
     assert(c.binds.size() == 4);
 

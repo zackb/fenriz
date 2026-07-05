@@ -195,6 +195,12 @@ namespace fenriz {
         // exec_once so bars/tools spawned below inherit the env and can connect immediately.
         ipc::init(*this);
 
+        // Export configured env vars (QT_QPA_PLATFORMTHEME) before spawning anything,
+        // so exec-once clients inherit them. Set after WAYLAND_DISPLAY/FENRIZ_SOCKET so a
+        // stray `env` line can't shadow those.
+        for (const auto& [name, value] : config.env)
+            setenv(name.c_str(), value.c_str(), 1);
+
         // Run startup commands now that the socket is live and WAYLAND_DISPLAY is set,
         // so the spawned clients connect to us.
         for (const std::string& cmd : config.exec_once)

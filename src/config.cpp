@@ -143,6 +143,18 @@ namespace fenriz {
                 continue;
             }
 
+            if (key == "env") {
+                // NAME,VALUE split on the first comma only (values may contain commas,
+                size_t comma = val.find(',');
+                if (comma == std::string::npos)
+                    continue;
+                std::string name = trim(val.substr(0, comma));
+                std::string value = trim(val.substr(comma + 1));
+                if (!name.empty())
+                    cfg.env.emplace_back(name, value);
+                continue;
+            }
+
             if (key == "border_width")
                 cfg.border_width = parse_int(val, cfg.border_width);
             else if (key == "border_active")

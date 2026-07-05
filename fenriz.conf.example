@@ -11,6 +11,11 @@ opacity          = 0.95         # 0.0..1.0
 scale            = 1.0           # HiDPI output scale; fractional ok (e.g. 1.5), 1.0 = off
 natural_scroll   = true          # scroll/content follows fingers; false = traditional wheel
 
+# environment: env = NAME,VALUE exported to all spawned clients (applied before exec-once).
+# Value may contain commas (only the first comma splits NAME from VALUE).
+# env = QT_QPA_PLATFORMTHEME,qt6ct
+# env = QT_QPA_PLATFORM,wayland
+
 # startup: run once when the compositor starts (bar, wallpaper, terminal, ...)
 exec-once = foot
 # exec-once = waybar
