@@ -9,107 +9,19 @@ namespace fenriz::layer {
 
     namespace {
 
-        // Subtract a surface's exclusive zone from the usable area, based on which single
-        // edge (or full-width/height edge triplet) it anchors to. Mirrors the reference
-        // wlroots layer-shell arrangement.
-        void apply_exclusive(wlr_box& usable,
-                             uint32_t anchor,
-                             int32_t exclusive,
-                             int32_t margin_top,
-                             int32_t margin_right,
-                             int32_t margin_bottom,
-                             int32_t margin_left) {
-            if (exclusive <= 0)
-                return;
-            const uint32_t T = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
-            const uint32_t B = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
-            const uint32_t L = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT;
-            const uint32_t R = ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
-            if (anchor == T || anchor == (L | R | T)) {
-                usable.y += exclusive + margin_top;
-                usable.height -= exclusive + margin_top;
-            } else if (anchor == B || anchor == (L | R | B)) {
-                usable.height -= exclusive + margin_bottom;
-            } else if (anchor == L || anchor == (T | B | L)) {
-                usable.x += exclusive + margin_left;
-                usable.width -= exclusive + margin_left;
-            } else if (anchor == R || anchor == (T | B | R)) {
-                usable.width -= exclusive + margin_right;
+        // The scene tree a layer surface belongs in, by its layer. Reapplied each commit so
+        // a client moving between layers (e.g. bottom -> top) restacks correctly.
+        wlr_scene_tree* tree_for_layer(Server& server, uint32_t layer) {
+            switch (layer) {
+            case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
+                return server.scene_background;
+            case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
+                return server.scene_bottom;
+            case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
+                return server.scene_overlay;
+            default:
+                return server.scene_top;
             }
-        }
-
-        // Place and configure one surface. `exclusive` selects the pass: exclusive-zone
-        // surfaces are laid out first (against the full output) so they can reserve space
-        // before the rest are fit into the shrinking usable area.
-        void arrange_one(LayerSurface* ls, const wlr_box& full, wlr_box& usable, bool exclusive) {
-            wlr_layer_surface_v1* layer = ls->handle;
-            const wlr_layer_surface_v1_state& state = layer->current;
-            if (exclusive != (state.exclusive_zone > 0))
-                return;
-
-            const uint32_t T = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
-            const uint32_t B = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
-            const uint32_t L = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT;
-            const uint32_t R = ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
-
-            // exclusive_zone == -1 means "over the top of everything, use the full output".
-            const wlr_box bounds = (state.exclusive_zone == -1) ? full : usable;
-            wlr_box box = {0, 0, (int)state.desired_width, (int)state.desired_height};
-
-            const uint32_t both_h = L | R;
-            if (box.width == 0)
-                box.x = bounds.x;
-            else if ((state.anchor & both_h) == both_h)
-                box.x = bounds.x + (bounds.width - box.width) / 2;
-            else if (state.anchor & L)
-                box.x = bounds.x;
-            else if (state.anchor & R)
-                box.x = bounds.x + (bounds.width - box.width);
-            else
-                box.x = bounds.x + (bounds.width - box.width) / 2;
-
-            const uint32_t both_v = T | B;
-            if (box.height == 0)
-                box.y = bounds.y;
-            else if ((state.anchor & both_v) == both_v)
-                box.y = bounds.y + (bounds.height - box.height) / 2;
-            else if (state.anchor & T)
-                box.y = bounds.y;
-            else if (state.anchor & B)
-                box.y = bounds.y + (bounds.height - box.height);
-            else
-                box.y = bounds.y + (bounds.height - box.height) / 2;
-
-            if (box.width == 0) {
-                box.x += state.margin.left;
-                box.width = bounds.width - (state.margin.left + state.margin.right);
-            } else if (state.anchor & L)
-                box.x += state.margin.left;
-            else if (state.anchor & R)
-                box.x -= state.margin.right;
-
-            if (box.height == 0) {
-                box.y += state.margin.top;
-                box.height = bounds.height - (state.margin.top + state.margin.bottom);
-            } else if (state.anchor & T)
-                box.y += state.margin.top;
-            else if (state.anchor & B)
-                box.y -= state.margin.bottom;
-
-            if (box.width < 0 || box.height < 0) {
-                wlr_layer_surface_v1_destroy(layer);
-                return;
-            }
-
-            ls->geo = {box.x, box.y, box.width, box.height};
-            apply_exclusive(usable,
-                            state.anchor,
-                            state.exclusive_zone,
-                            state.margin.top,
-                            state.margin.right,
-                            state.margin.bottom,
-                            state.margin.left);
-            wlr_layer_surface_v1_configure(layer, box.width, box.height);
         }
 
         void on_map(wl_listener* listener, void* data) {
@@ -145,8 +57,19 @@ namespace fenriz::layer {
         void on_commit(wl_listener* listener, void* data) {
             LayerSurface* ls = wl_container_of(listener, ls, commit);
             (void)data;
-            // Answers the initial commit with a configure and reacts to anchor/zone changes.
+            // Restack if the client changed layers, then re-run placement. arrange() answers
+            // the initial commit with a configure and reacts to anchor/zone changes.
+            wlr_scene_node_reparent(&ls->scene->tree->node,
+                                    tree_for_layer(*ls->server, ls->handle->current.layer));
             arrange(*ls->server);
+        }
+
+        void on_new_popup(wl_listener* listener, void* data) {
+            LayerSurface* ls = wl_container_of(listener, ls, new_popup);
+            auto* popup = static_cast<wlr_xdg_popup*>(data);
+            // Parent the popup into the layer surface's scene tree; base->data lets nested
+            // popups find it via the xdg-shell new_popup handler (server.cpp).
+            popup->base->data = wlr_scene_xdg_surface_create(ls->scene->tree, popup->base);
         }
 
         void on_destroy(wl_listener* listener, void* data) {
@@ -156,6 +79,7 @@ namespace fenriz::layer {
             wl_list_remove(&ls->map.link);
             wl_list_remove(&ls->unmap.link);
             wl_list_remove(&ls->commit.link);
+            wl_list_remove(&ls->new_popup.link);
             wl_list_remove(&ls->destroy.link);
             server.layer_surfaces.remove(ls);
             delete ls;
@@ -174,12 +98,15 @@ namespace fenriz::layer {
             LayerSurface* ls = new LayerSurface{};
             ls->server = &server;
             ls->handle = layer;
+            ls->scene = wlr_scene_layer_surface_v1_create(tree_for_layer(server, layer->current.layer), layer);
             ls->map.notify = on_map;
             wl_signal_add(&layer->surface->events.map, &ls->map);
             ls->unmap.notify = on_unmap;
             wl_signal_add(&layer->surface->events.unmap, &ls->unmap);
             ls->commit.notify = on_commit;
             wl_signal_add(&layer->surface->events.commit, &ls->commit);
+            ls->new_popup.notify = on_new_popup;
+            wl_signal_add(&layer->events.new_popup, &ls->new_popup);
             ls->destroy.notify = on_destroy;
             wl_signal_add(&layer->events.destroy, &ls->destroy);
 
@@ -194,36 +121,25 @@ namespace fenriz::layer {
             wlr_output_layout_get_box(server.output_layout, server.output, &full);
         wlr_box usable = full;
 
-        // Exclusive pass first (top -> bottom) so bars reserve space, then the rest.
+        // Exclusive pass first (top -> bottom) so bars reserve space, then the rest. The
+        // scene helper does the anchor/margin/exclusive-zone math, sends the configure,
+        // positions the node, and shrinks `usable` for us.
         const int order[] = {ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
                              ZWLR_LAYER_SHELL_V1_LAYER_TOP,
                              ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM,
                              ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND};
         for (bool exclusive : {true, false})
             for (int lyr : order)
-                for (LayerSurface* ls : server.layer_surfaces)
-                    if (ls->handle->current.layer == (uint32_t)lyr)
-                        arrange_one(ls, full, usable, exclusive);
+                for (LayerSurface* ls : server.layer_surfaces) {
+                    if (ls->handle->current.layer != (uint32_t)lyr)
+                        continue;
+                    if ((ls->handle->current.exclusive_zone > 0) != exclusive)
+                        continue;
+                    wlr_scene_layer_surface_v1_configure(ls->scene, &full, &usable);
+                }
 
         server.usable_area = {usable.x, usable.y, usable.width, usable.height};
         tiling::arrange(server);
-    }
-
-    wlr_surface* surface_at(Server& server, double lx, double ly, double* sx, double* sy, bool above) {
-        const int hi[] = {ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, ZWLR_LAYER_SHELL_V1_LAYER_TOP};
-        const int lo[] = {ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM, ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND};
-        const int* layers = above ? hi : lo;
-        for (int i = 0; i < 2; ++i) {
-            const int lyr = layers[i];
-            for (LayerSurface* ls : server.layer_surfaces) {
-                if (!ls->mapped || ls->handle->current.layer != (uint32_t)lyr)
-                    continue;
-                wlr_surface* s = wlr_layer_surface_v1_surface_at(ls->handle, lx - ls->geo.x, ly - ls->geo.y, sx, sy);
-                if (s)
-                    return s;
-            }
-        }
-        return nullptr;
     }
 
     void init(Server& server) {

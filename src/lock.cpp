@@ -21,6 +21,7 @@ namespace fenriz::lock {
             wlr_session_lock_manager_v1* manager = nullptr;
             wlr_session_lock_v1* session = nullptr; // active lock, or null
             LockSurface* surface = nullptr;         // single-output -> one surface
+            wlr_scene_rect* bg = nullptr;           // black backdrop under the lock UI
             wl_listener new_lock;
             wl_listener new_surface; // on the active session
             wl_listener unlock;
@@ -31,6 +32,27 @@ namespace fenriz::lock {
         void redraw() {
             if (g->server->output)
                 wlr_output_schedule_frame(g->server->output);
+        }
+
+        // Show only the lock tree (a black backdrop + the lock UI) and hide all normal
+        // content, or reverse it. A locked compositor must never reveal the desktop.
+        void show_lock_scene(Server& server, bool on) {
+            wlr_scene_node_set_enabled(&server.scene_background->node, !on);
+            wlr_scene_node_set_enabled(&server.scene_bottom->node, !on);
+            wlr_scene_node_set_enabled(&server.scene_tiles->node, !on);
+            wlr_scene_node_set_enabled(&server.scene_top->node, !on);
+            wlr_scene_node_set_enabled(&server.scene_fullscreen->node, !on);
+            wlr_scene_node_set_enabled(&server.scene_overlay->node, !on);
+            wlr_scene_node_set_enabled(&server.scene_lock->node, on);
+        }
+
+        // Tear down the lock scene on a real unlock: drop the backdrop and reveal content.
+        void end_lock_scene(Server& server) {
+            if (g->bg) {
+                wlr_scene_node_destroy(&g->bg->node);
+                g->bg = nullptr;
+            }
+            show_lock_scene(server, false);
         }
 
         void on_surface_map(wl_listener* listener, void* data) {
@@ -56,11 +78,18 @@ namespace fenriz::lock {
         void on_new_surface(wl_listener* listener, void* data) {
             (void)listener;
             auto* surf = static_cast<wlr_session_lock_surface_v1*>(data);
+            Server& server = *g->server;
 
             // Size the lock surface to its output's logical resolution.
             int w = 0, h = 0;
             wlr_output_effective_resolution(surf->output, &w, &h);
             wlr_session_lock_surface_v1_configure(surf, w, h);
+
+            // Render it in the lock tree at the output origin (auto-destroyed with the surface).
+            wlr_box box;
+            wlr_output_layout_get_box(server.output_layout, surf->output, &box);
+            wlr_scene_tree* tree = wlr_scene_subsurface_tree_create(server.scene_lock, surf->surface);
+            wlr_scene_node_set_position(&tree->node, box.x, box.y);
 
             LockSurface* ls = new LockSurface{};
             ls->handle = surf;
@@ -76,6 +105,7 @@ namespace fenriz::lock {
             (void)data;
             g->server->locked = false;
             g->session = nullptr; // session listeners are torn down in on_lock_destroy
+            end_lock_scene(*g->server);
             // Restore keyboard focus to the window that had it before the lock.
             if (g->server->focused_view)
                 focus_surface(*g->server, g->server->focused_view->toplevel->base->surface);
@@ -108,7 +138,18 @@ namespace fenriz::lock {
             }
 
             g->session = lock;
-            g->server->locked = true;
+            Server& server = *g->server;
+            server.locked = true;
+
+            // Blank the desktop behind a black backdrop before confirming the lock.
+            if (server.output) {
+                wlr_box box;
+                wlr_output_layout_get_box(server.output_layout, server.output, &box);
+                const float black[4] = {0, 0, 0, 1};
+                g->bg = wlr_scene_rect_create(server.scene_lock, box.width, box.height, black);
+                wlr_scene_node_set_position(&g->bg->node, box.x, box.y);
+            }
+            show_lock_scene(server, true);
 
             g->new_surface.notify = on_new_surface;
             wl_signal_add(&lock->events.new_surface, &g->new_surface);
@@ -137,6 +178,7 @@ namespace fenriz::lock {
         if (!server.locked)
             return;
         server.locked = false;
+        end_lock_scene(server);
         // Tear down a still-alive (hung) lock session so it can't re-assert; this fires
         // on_lock_destroy, which drops the listeners and clears g->session. A crashed client
         // already ran that path (g->session == null), so we just restore below.
@@ -150,21 +192,6 @@ namespace fenriz::lock {
         if (server.output)
             wlr_output_schedule_frame(server.output);
         wlr_log(WLR_INFO, "fenriz: session force-unlocked via IPC");
-    }
-
-    wlr_surface* surface_for(Server& server, wlr_output* output) {
-        (void)server;
-        (void)output; // single-output
-        if (g && g->surface && g->surface->handle->surface->mapped)
-            return g->surface->handle->surface;
-        return nullptr;
-    }
-
-    wlr_surface* surface_at(Server& server, double lx, double ly, double* sx, double* sy) {
-        wlr_surface* root = surface_for(server, server.output);
-        if (!root)
-            return nullptr;
-        return wlr_surface_surface_at(root, lx, ly, sx, sy);
     }
 
 } // namespace fenriz::lock

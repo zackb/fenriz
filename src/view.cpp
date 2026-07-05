@@ -1,6 +1,8 @@
 #include "view.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <cstdlib>
 
 #include "cursor.hpp"
@@ -12,6 +14,15 @@
 namespace fenriz {
 
     namespace {
+
+        // Unpack a 0xRRGGBBAA border color into wlr_scene_rect's float[4] (matches the old
+        // manual renderer's color_from_u32).
+        void u32_color(uint32_t c, float out[4]) {
+            out[0] = ((c >> 24) & 0xff) / 255.0f;
+            out[1] = ((c >> 16) & 0xff) / 255.0f;
+            out[2] = ((c >> 8) & 0xff) / 255.0f;
+            out[3] = (c & 0xff) / 255.0f;
+        }
 
         // Back-most (topmost) visible view on the active workspace, or null.
         View* topmost_visible(Server& server) {
@@ -28,6 +39,19 @@ namespace fenriz {
             view->mapped = true;
             view->workspace = server.active_workspace;
             server.views.push_back(view);
+
+            // Build the scene nodes: a container tree holding the border rect (below) and
+            // the xdg surface subtree (inset by the border in place_view_nodes). The View*
+            // on the container lets scene hit-testing recover the window; base->data lets
+            // popups find their parent scene tree (see on_new_popup in server.cpp).
+            view->scene_tree = wlr_scene_tree_create(server.scene_tiles);
+            view->scene_tree->node.data = view;
+            float col[4];
+            u32_color(server.config.border_inactive, col);
+            view->border = wlr_scene_rect_create(view->scene_tree, 0, 0, col);
+            view->surface_tree = wlr_scene_xdg_surface_create(view->scene_tree, view->toplevel->base);
+            view->toplevel->base->data = view->surface_tree;
+
             // New window splits the focused window's tile (focus-aware dwindle).
             tiling::insert(server, view, server.focused_view);
 
@@ -59,6 +83,14 @@ namespace fenriz {
             (void)data;
             Server& server = *view->server;
             view->mapped = false;
+            if (view->scene_tree) {
+                // Frees the whole subtree (border + surface + any popups).
+                wlr_scene_node_destroy(&view->scene_tree->node);
+                view->scene_tree = nullptr;
+                view->surface_tree = nullptr;
+                view->border = nullptr;
+                view->toplevel->base->data = nullptr;
+            }
             cursor::forget_view(view); // drop any in-flight mouse grab before the view is gone
             server.views.remove(view);
             tiling::remove(server, view); // sibling reclaims the freed tile
@@ -146,11 +178,12 @@ namespace fenriz {
             return;
         }
 
-        if (server.focused_view) {
-            wlr_xdg_toplevel_set_activated(server.focused_view->toplevel, false);
-            server.focused_view->focused = false;
-            if (server.focused_view->foreign_handle)
-                wlr_foreign_toplevel_handle_v1_set_activated(server.focused_view->foreign_handle, false);
+        View* prev = server.focused_view;
+        if (prev) {
+            wlr_xdg_toplevel_set_activated(prev->toplevel, false);
+            prev->focused = false;
+            if (prev->foreign_handle)
+                wlr_foreign_toplevel_handle_v1_set_activated(prev->foreign_handle, false);
         }
 
         // Raise floating windows to the top of the stack so they stay above tiles while in
@@ -158,6 +191,8 @@ namespace fenriz {
         if (view->floating) {
             server.views.remove(view);
             server.views.push_back(view);
+            if (view->scene_tree)
+                wlr_scene_node_raise_to_top(&view->scene_tree->node);
         }
 
         server.focused_view = view;
@@ -166,17 +201,24 @@ namespace fenriz {
         if (view->foreign_handle)
             wlr_foreign_toplevel_handle_v1_set_activated(view->foreign_handle, true);
 
+        // Repaint both borders with their new active/inactive colors.
+        place_view_nodes(view);
+        if (prev)
+            place_view_nodes(prev);
+
         focus_surface(server, view->toplevel->base->surface);
         ipc::publish(server);
     }
 
     void clear_focus(Server& server) {
         if (server.focused_view) {
-            wlr_xdg_toplevel_set_activated(server.focused_view->toplevel, false);
-            server.focused_view->focused = false;
-            if (server.focused_view->foreign_handle)
-                wlr_foreign_toplevel_handle_v1_set_activated(server.focused_view->foreign_handle, false);
+            View* prev = server.focused_view;
+            wlr_xdg_toplevel_set_activated(prev->toplevel, false);
+            prev->focused = false;
+            if (prev->foreign_handle)
+                wlr_foreign_toplevel_handle_v1_set_activated(prev->foreign_handle, false);
             server.focused_view = nullptr;
+            place_view_nodes(prev); // repaint its border inactive
         }
         wlr_seat_keyboard_notify_clear_focus(server.seat);
         ipc::publish(server);
@@ -187,6 +229,11 @@ namespace fenriz {
             return;
         view->fullscreen = on;
         wlr_xdg_toplevel_set_fullscreen(view->toplevel, on);
+        // Fullscreen views float above the top layer (below the overlay/lock); restore to
+        // the normal tile tree when cleared. arrange() re-lays out the box + border.
+        if (view->scene_tree)
+            wlr_scene_node_reparent(&view->scene_tree->node,
+                                    on ? server.scene_fullscreen : server.scene_tiles);
         tiling::arrange(server);
     }
 
@@ -243,6 +290,38 @@ namespace fenriz {
         return view->mapped && view->workspace == server.active_workspace;
     }
 
+    void place_view_nodes(View* view) {
+        if (!view->scene_tree)
+            return; // not mapped yet
+        Server& server = *view->server;
+        const bool vis = view_visible(server, view);
+        wlr_scene_node_set_enabled(&view->scene_tree->node, vis);
+        if (!vis)
+            return;
+
+        // Container sits at the tile origin plus the (decaying) slide-animation offset.
+        const int ox = (int)std::lround(view->anim_ox);
+        const int oy = (int)std::lround(view->anim_oy);
+        wlr_scene_node_set_position(&view->scene_tree->node, view->box.x + ox, view->box.y + oy);
+
+        // Inset the client by the border. Its geometry origin (CSD shadow margin) is aligned
+        // to the inner corner, matching the client size arrange() configured.
+        const wlr_box& geo = view->toplevel->base->geometry;
+        const int bw = view->fullscreen ? 0 : server.config.border_width;
+        wlr_scene_node_set_position(&view->surface_tree->node, bw - geo.x, bw - geo.y);
+
+        const bool show_border = bw > 0;
+        wlr_scene_node_set_enabled(&view->border->node, show_border);
+        if (show_border) {
+            wlr_scene_rect_set_size(view->border, view->box.width, view->box.height);
+            float col[4];
+            u32_color(view == server.focused_view ? server.config.border_active
+                                                  : server.config.border_inactive,
+                      col);
+            wlr_scene_rect_set_color(view->border, col);
+        }
+    }
+
     void set_workspace(Server& server, int n) {
         n = std::clamp(n, 0, 9);
         if (n == server.active_workspace)
@@ -277,27 +356,6 @@ namespace fenriz {
         ipc::publish(server); // occupancy of workspace n changed
     }
 
-    View* view_at(Server& server, double lx, double ly, wlr_surface** surface, double* sx, double* sy) {
-        // Topmost first: views are rendered bottom -> top, so the back of the list is on top.
-        for (auto it = server.views.rbegin(); it != server.views.rend(); ++it) {
-            View* view = *it;
-            if (!view_visible(server, view))
-                continue;
-            double subx, suby;
-            // Match the render offset: content geometry origin sits at the tile origin, so
-            // shift the hit-test into surface-local coords by the same geometry offset.
-            const wlr_box& geo = view->toplevel->base->geometry;
-            wlr_surface* s = wlr_xdg_surface_surface_at(
-                view->toplevel->base, lx - view->box.x + geo.x, ly - view->box.y + geo.y, &subx, &suby);
-            if (s) {
-                *surface = s;
-                *sx = subx;
-                *sy = suby;
-                return view;
-            }
-        }
-        return nullptr;
-    }
 
     View::View(Server& server, wlr_xdg_toplevel* toplevel) : server(&server), toplevel(toplevel) {
         wlr_surface* surface = toplevel->base->surface;

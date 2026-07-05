@@ -5,6 +5,8 @@
 struct wlr_xdg_toplevel;
 struct wlr_surface;
 struct wlr_foreign_toplevel_handle_v1;
+struct wlr_scene_tree;
+struct wlr_scene_rect;
 
 namespace fenriz {
 
@@ -37,6 +39,13 @@ namespace fenriz {
 
         // wlr-foreign-toplevel handle (taskbar/window-list protocol); live while mapped.
         wlr_foreign_toplevel_handle_v1* foreign_handle = nullptr;
+
+        // Scene nodes, created on map (see view_handle_map). scene_tree is the container
+        // positioned at the tile origin; surface_tree holds the xdg surface (inset by the
+        // border) and is also the parent for this window's popups. border is the frame rect.
+        wlr_scene_tree* scene_tree = nullptr;
+        wlr_scene_tree* surface_tree = nullptr;
+        wlr_scene_rect* border = nullptr;
 
         wl_listener map;
         wl_listener unmap;
@@ -75,12 +84,14 @@ namespace fenriz {
     // A view is shown only when mapped and on the active workspace.
     bool view_visible(const Server& server, const View* view);
 
+    // Position/size a view's scene nodes from its box + animation offset, set the border
+    // color from focus state, and toggle visibility for the active workspace. Called from
+    // everywhere that mutates box/anim (tiling::arrange, cursor grabs, the animation tick,
+    // focus/workspace changes). No-op before the view's nodes exist (pre-map).
+    void place_view_nodes(View* view);
+
     // Switch the active workspace / send the focused window to a workspace (0-indexed).
     void set_workspace(Server& server, int n);
     void move_focused_to_workspace(Server& server, int n);
-
-    // Topmost visible view whose surface tree contains layout point (lx, ly). On a hit,
-    // sets *surface to the specific (sub)surface and *sx,*sy to surface-local coords.
-    View* view_at(Server& server, double lx, double ly, wlr_surface** surface, double* sx, double* sy);
 
 } // namespace fenriz

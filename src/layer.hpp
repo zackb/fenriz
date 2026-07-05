@@ -4,6 +4,7 @@
 
 struct wlr_layer_surface_v1;
 struct wlr_surface;
+struct wlr_scene_layer_surface_v1;
 
 namespace fenriz {
 
@@ -14,13 +15,12 @@ namespace fenriz {
     struct LayerSurface {
         Server* server;
         wlr_layer_surface_v1* handle;
-        struct {
-            int x, y, width, height;
-        } geo; // output-layout coordinates, computed by layer::arrange
+        wlr_scene_layer_surface_v1* scene; // renders + positions the surface; owns its subtree
         bool mapped;
         wl_listener map;
         wl_listener unmap;
         wl_listener commit;
+        wl_listener new_popup;
         wl_listener destroy;
     };
 
@@ -32,11 +32,6 @@ namespace fenriz {
         // Recompute per-output usable area from layer exclusive zones, position/configure
         // every layer surface, then re-tile windows into what's left.
         void arrange(Server& server);
-
-        // Topmost mapped layer surface under (lx,ly), or nullptr. `above` picks the layers
-        // drawn above windows (overlay/top) vs below (bottom/background). Coordinates are
-        // output-layout; *sx/*sy return surface-local on hit.
-        wlr_surface* surface_at(Server& server, double lx, double ly, double* sx, double* sy, bool above);
 
     } // namespace layer
 

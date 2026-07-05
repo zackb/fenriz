@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <linux/input-event-codes.h>
 
-#include "layer.hpp"
-#include "lock.hpp"
 #include "server.hpp"
 #include "tiling.hpp"
 #include "view.hpp"
@@ -38,8 +36,37 @@ namespace fenriz::cursor {
         // The singleton, so forget_view() can reach the grab state (init() sets it).
         Cursor* g_cursor = nullptr;
 
-        // Topmost visible view whose tile box contains the point. Unlike view_at this hits
-        // borders/gaps too, so a drag started on a window's frame still grabs it.
+        // Surface under (lx,ly) via the scene graph, honoring z-order. While locked, only
+        // the lock tree is considered so input can't reach the desktop. *sx,*sy return
+        // surface-local coords on hit.
+        wlr_surface* scene_surface_at(Server& server, double lx, double ly, double* sx, double* sy) {
+            wlr_scene_node* root = server.locked ? &server.scene_lock->node : &server.scene->tree.node;
+            wlr_scene_node* node = wlr_scene_node_at(root, lx, ly, sx, sy);
+            if (!node || node->type != WLR_SCENE_NODE_BUFFER)
+                return nullptr;
+            wlr_scene_surface* ss = wlr_scene_surface_try_from_buffer(wlr_scene_buffer_from_node(node));
+            return ss ? ss->surface : nullptr;
+        }
+
+        // Recover the View that owns a scene node by walking up to the container tree we
+        // tagged with the View* (view_handle_map). Null for layer surfaces / empty desktop.
+        View* view_from_node(wlr_scene_node* node) {
+            for (; node; node = node->parent ? &node->parent->node : nullptr)
+                if (node->data)
+                    return static_cast<View*>(node->data);
+            return nullptr;
+        }
+
+        // Topmost View whose surface is under the point (for click-to-focus). Unlike
+        // view_box_at this only hits actual surface pixels, not borders/gaps.
+        View* view_at_point(Server& server, double lx, double ly) {
+            double sx, sy;
+            wlr_scene_node* node = wlr_scene_node_at(&server.scene->tree.node, lx, ly, &sx, &sy);
+            return node ? view_from_node(node) : nullptr;
+        }
+
+        // Topmost visible view whose tile box contains the point. Unlike view_at_point this
+        // hits borders/gaps too, so a drag started on a window's frame still grabs it.
         View* view_box_at(Server& server, double lx, double ly) {
             for (auto it = server.views.rbegin(); it != server.views.rend(); ++it) {
                 View* v = *it;
@@ -92,18 +119,8 @@ namespace fenriz::cursor {
 
             const double lx = c->cursor->x, ly = c->cursor->y;
             double sx, sy;
-            wlr_surface* surface;
-            if (server.locked) {
-                // Locked: the pointer only ever reaches the lock surface.
-                surface = lock::surface_at(server, lx, ly, &sx, &sy);
-            } else {
-                // Z-order: overlay/top layers, then windows, then bottom/background layers.
-                surface = layer::surface_at(server, lx, ly, &sx, &sy, true);
-                if (!surface)
-                    view_at(server, lx, ly, &surface, &sx, &sy);
-                if (!surface)
-                    surface = layer::surface_at(server, lx, ly, &sx, &sy, false);
-            }
+            // The scene graph resolves z-order (and the locked-only lock tree) for us.
+            wlr_surface* surface = scene_surface_at(server, lx, ly, &sx, &sy);
 
             if (!surface) {
                 // Over empty desktop: show the default cursor and drop pointer focus.
@@ -184,10 +201,7 @@ namespace fenriz::cursor {
                     }
                 }
                 // Click-to-focus: focus the window under the cursor.
-                double sx, sy;
-                wlr_surface* surface = nullptr;
-                View* view = view_at(server, c->cursor->x, c->cursor->y, &surface, &sx, &sy);
-                if (view)
+                if (View* view = view_at_point(server, c->cursor->x, c->cursor->y))
                     focus_view(server, view);
             }
             wlr_seat_pointer_notify_button(server.seat, event->time_msec, event->button, event->state);

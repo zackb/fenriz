@@ -18,15 +18,6 @@ namespace fenriz {
         // for when the lock client crashes or hangs
         void force_unlock(Server& server);
 
-        // The mapped lock surface to draw fullscreen on `output` while locked, or nullptr
-        // when there's no surface yet or the lock client died — the caller then leaves the
-        // screen blank (a locked compositor must never reveal normal content).
-        wlr_surface* surface_for(Server& server, wlr_output* output);
-
-        // (Sub)surface of the lock UI under layout point (lx,ly), for routing the pointer
-        // while locked; *sx,*sy return surface-local coords on hit. nullptr if none.
-        wlr_surface* surface_at(Server& server, double lx, double ly, double* sx, double* sy);
-
     } // namespace lock
 
 } // namespace fenriz

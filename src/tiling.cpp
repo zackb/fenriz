@@ -93,6 +93,12 @@ namespace fenriz::tiling {
             int ch = std::max(1, n->rect.h - 2 * bw);
             wlr_xdg_toplevel_set_size(view->toplevel, cw, ch);
         }
+
+        // Push every view's box/anim/visibility into its scene nodes. Covers all workspaces
+        // (not just the active leaves above) so views on hidden workspaces get disabled and
+        // a window just moved to another workspace stops rendering.
+        for (View* view : server.views)
+            place_view_nodes(view);
     }
 
 } // namespace fenriz::tiling

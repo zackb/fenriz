@@ -25,6 +25,20 @@ namespace fenriz {
             new View(*sl->server, static_cast<wlr_xdg_toplevel*>(data));
         }
 
+        // A client created an xdg popup (menu, tooltip, nested submenu). Parent it into the
+        // parent surface's scene tree so it renders above the parent and tracks its position.
+        // The parent's scene tree is stashed in xdg_surface->data (by view map and here for
+        // nested popups). Layer-shell popups have a non-xdg parent and are handled in layer.cpp.
+        void on_new_popup(wl_listener* listener, void* data) {
+            (void)listener;
+            auto* popup = static_cast<wlr_xdg_popup*>(data);
+            wlr_xdg_surface* parent = wlr_xdg_surface_try_from_wlr_surface(popup->parent);
+            if (!parent || !parent->data)
+                return;
+            auto* parent_tree = static_cast<wlr_scene_tree*>(parent->data);
+            popup->base->data = wlr_scene_xdg_surface_create(parent_tree, popup->base);
+        }
+
         void on_new_input(wl_listener* listener, void* data) {
             SignalListener* sl = wl_container_of(listener, sl, listener);
             handle_new_input(*sl->server, static_cast<wlr_input_device*>(data));
@@ -57,8 +71,9 @@ namespace fenriz {
         void on_set_gamma(wl_listener* listener, void* data) {
             SignalListener* sl = wl_container_of(listener, sl, listener);
             auto* ev = static_cast<wlr_gamma_control_manager_v1_set_gamma_event*>(data);
-            (void)sl;
-            // Applied on the next frame (output.cpp); just wake the output.
+            // Applied on the next frame (output.cpp); mark dirty + wake the output so the
+            // frame handler commits even though the scene itself needs no repaint.
+            sl->server->gamma_dirty = true;
             wlr_output_schedule_frame(ev->output);
         }
 
@@ -128,12 +143,28 @@ namespace fenriz {
         wlr_fractional_scale_manager_v1_create(display, 1);
 
         output_layout = wlr_output_layout_create(display);
+
+        // Scene graph must exist before outputs connect (handle_new_output creates a
+        // scene-output per wlr_output). Trees are created in bottom -> top z-order.
+        scene = wlr_scene_create();
+        scene_layout = wlr_scene_attach_output_layout(scene, output_layout);
+        scene_background = wlr_scene_tree_create(&scene->tree);
+        scene_bottom = wlr_scene_tree_create(&scene->tree);
+        scene_tiles = wlr_scene_tree_create(&scene->tree);
+        scene_top = wlr_scene_tree_create(&scene->tree);
+        scene_fullscreen = wlr_scene_tree_create(&scene->tree);
+        scene_overlay = wlr_scene_tree_create(&scene->tree);
+        scene_lock = wlr_scene_tree_create(&scene->tree);
+
         output::register_handlers(*this);
 
         xdg_shell = wlr_xdg_shell_create(display, 3);
         l_new_toplevel.server = this;
         l_new_toplevel.listener.notify = on_new_toplevel;
         wl_signal_add(&xdg_shell->events.new_toplevel, &l_new_toplevel.listener);
+        l_new_popup.server = this;
+        l_new_popup.listener.notify = on_new_popup;
+        wl_signal_add(&xdg_shell->events.new_popup, &l_new_popup.listener);
 
         seat = wlr_seat_create(display, "seat0");
         wlr_seat_set_capabilities(seat, WL_SEAT_CAPABILITY_KEYBOARD | WL_SEAT_CAPABILITY_POINTER);
