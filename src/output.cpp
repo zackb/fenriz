@@ -49,6 +49,7 @@ namespace fenriz::output {
                     continue;
                 if (view->dragging) {
                     animating = true;
+                    place_view_nodes(view); // keep the held window under the cursor each frame
                     continue;
                 }
                 if (view->anim_ox != 0 || view->anim_oy != 0) {

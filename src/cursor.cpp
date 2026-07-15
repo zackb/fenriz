@@ -138,8 +138,10 @@ namespace fenriz::cursor {
             const double ox = c->cursor->x, oy = c->cursor->y;
             wlr_cursor_move(c->cursor, &event->pointer->base, event->delta_x, event->delta_y);
             if (process_grab(c, c->cursor->x - ox, c->cursor->y - oy)) {
+                if (c->grabbed)
+                    place_view_nodes(c->grabbed); // reflect the move now; no client damage drives the drag
                 if (c->server->output)
-                    wlr_output_schedule_frame(c->server->output); // no client damage drives the drag
+                    wlr_output_schedule_frame(c->server->output);
                 return;
             }
             process_motion(c, event->time_msec);
@@ -151,6 +153,8 @@ namespace fenriz::cursor {
             const double ox = c->cursor->x, oy = c->cursor->y;
             wlr_cursor_warp_absolute(c->cursor, &event->pointer->base, event->x, event->y);
             if (process_grab(c, c->cursor->x - ox, c->cursor->y - oy)) {
+                if (c->grabbed)
+                    place_view_nodes(c->grabbed);
                 if (c->server->output)
                     wlr_output_schedule_frame(c->server->output);
                 return;
