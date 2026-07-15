@@ -57,11 +57,17 @@ namespace fenriz::layer {
         void on_commit(wl_listener* listener, void* data) {
             LayerSurface* ls = wl_container_of(listener, ls, commit);
             (void)data;
-            // Restack if the client changed layers, then re-run placement. arrange() answers
-            // the initial commit with a configure and reacts to anchor/zone changes.
-            wlr_scene_node_reparent(&ls->scene->tree->node,
-                                    tree_for_layer(*ls->server, ls->handle->current.layer));
-            arrange(*ls->server);
+            // Restack only when the client actually moved between layers.
+            if (ls->handle->current.committed & WLR_LAYER_SURFACE_V1_STATE_LAYER)
+                wlr_scene_node_reparent(&ls->scene->tree->node, tree_for_layer(*ls->server, ls->handle->current.layer));
+            // arrange() re-sends a configure to every layer surface (the wlroots helper does
+            // it unconditionally, with no dedup). Run it ONLY on the initial commit or when
+            // layout-affecting state changed. A plain buffer commit (the bar just repainting)
+            // has committed == 0; arranging there would send a fresh configure, forcing the
+            // client to relayout+repaint and commit again, a full-refresh feedback loop that
+            // pins the GPU at idle.
+            if (ls->handle->initial_commit || ls->handle->current.committed != 0)
+                arrange(*ls->server);
         }
 
         void on_new_popup(wl_listener* listener, void* data) {
