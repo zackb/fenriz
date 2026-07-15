@@ -151,6 +151,7 @@ namespace fenriz {
         scene_background = wlr_scene_tree_create(&scene->tree);
         scene_bottom = wlr_scene_tree_create(&scene->tree);
         scene_tiles = wlr_scene_tree_create(&scene->tree);
+        scene_floating = wlr_scene_tree_create(&scene->tree);
         scene_top = wlr_scene_tree_create(&scene->tree);
         scene_fullscreen = wlr_scene_tree_create(&scene->tree);
         scene_overlay = wlr_scene_tree_create(&scene->tree);

@@ -44,7 +44,8 @@ namespace fenriz {
             // the xdg surface subtree (inset by the border in place_view_nodes). The View*
             // on the container lets scene hit-testing recover the window; base->data lets
             // popups find their parent scene tree (see on_new_popup in server.cpp).
-            view->scene_tree = wlr_scene_tree_create(server.scene_tiles);
+            view->scene_tree = wlr_scene_tree_create(
+                view->floating ? server.scene_floating : server.scene_tiles);
             view->scene_tree->node.data = view;
             float col[4];
             u32_color(server.config.border_inactive, col);
@@ -190,8 +191,9 @@ namespace fenriz {
                 wlr_foreign_toplevel_handle_v1_set_activated(prev->foreign_handle, false);
         }
 
-        // Raise floating windows to the top of the stack so they stay above tiles while in
-        // use. Tiled windows keep their list order (raising them would scramble cycle_focus).
+        // Floating windows live in their own scene tree (always above tiles). Raise the
+        // focused float above the *other* floats so it's on top while in use. Tiled windows
+        // keep their list order (raising them would scramble cycle_focus).
         if (view->floating) {
             server.views.remove(view);
             server.views.push_back(view);
@@ -237,7 +239,8 @@ namespace fenriz {
         // the normal tile tree when cleared. arrange() re-lays out the box + border.
         if (view->scene_tree)
             wlr_scene_node_reparent(&view->scene_tree->node,
-                                    on ? server.scene_fullscreen : server.scene_tiles);
+                                    on ? server.scene_fullscreen
+                                       : (view->floating ? server.scene_floating : server.scene_tiles));
         tiling::arrange(server);
     }
 
@@ -253,12 +256,17 @@ namespace fenriz {
         v->floating = !v->floating;
         if (v->floating) {
             // Leave the tree (its slot is reclaimed by the sibling) and keep the current tile
-            // box as the initial floating geometry; raise it above the tiles (v is already
-            // focused, so focus_view would no-op — splice directly).
+            // box as the initial floating geometry. Reparent into the floating scene tree so it
+            // sits above the tiles structurally (v is already focused, so focus_view would
+            // no-op — splice the list directly).
             tiling::remove(server, v);
             server.views.remove(v);
             server.views.push_back(v);
+            if (v->scene_tree)
+                wlr_scene_node_reparent(&v->scene_tree->node, server.scene_floating);
         } else {
+            if (v->scene_tree)
+                wlr_scene_node_reparent(&v->scene_tree->node, server.scene_tiles);
             tiling::insert(server, v, nullptr); // re-tile at the spiral tail
         }
         tiling::arrange(server);

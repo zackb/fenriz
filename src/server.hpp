@@ -95,6 +95,7 @@ namespace fenriz {
         wlr_scene_tree* scene_background = nullptr;
         wlr_scene_tree* scene_bottom = nullptr;
         wlr_scene_tree* scene_tiles = nullptr;      // normal windows
+        wlr_scene_tree* scene_floating = nullptr;   // floats, above tiles / below top layer
         wlr_scene_tree* scene_top = nullptr;
         wlr_scene_tree* scene_fullscreen = nullptr; // above top, below overlay
         wlr_scene_tree* scene_overlay = nullptr;
