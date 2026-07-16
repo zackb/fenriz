@@ -15,6 +15,7 @@ struct wlr_xdg_shell;
 struct wlr_cursor;
 struct wlr_layer_shell_v1;
 struct wlr_idle_notifier_v1;
+struct wlr_idle_inhibit_manager_v1;
 struct wlr_xdg_decoration_manager_v1;
 struct wlr_foreign_toplevel_manager_v1;
 struct wlr_gamma_control_manager_v1;
@@ -85,6 +86,8 @@ namespace fenriz {
         wlr_xdg_shell* xdg_shell = nullptr;
         wlr_layer_shell_v1* layer_shell = nullptr;
         wlr_idle_notifier_v1* idle_notifier = nullptr;
+        wlr_idle_inhibit_manager_v1* idle_inhibit_manager = nullptr;
+        int active_inhibitors = 0; // live zwp_idle_inhibitor_v1 count; >0 => idle inhibited
         wlr_xdg_decoration_manager_v1* xdg_decoration_manager = nullptr;
         wlr_foreign_toplevel_manager_v1* foreign_toplevel_manager = nullptr;
         wlr_gamma_control_manager_v1* gamma_control_manager = nullptr;
@@ -122,6 +125,7 @@ namespace fenriz {
         SignalListener l_start_drag;
         SignalListener l_set_gamma;
         SignalListener l_output_power;
+        SignalListener l_new_idle_inhibitor;
     };
 
 } // namespace fenriz

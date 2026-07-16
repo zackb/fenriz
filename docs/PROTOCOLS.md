@@ -42,6 +42,7 @@ added in v6, is not advertised).
 | wlr-output-power-management-v1 | `wlr_output_power_manager_v1` | `server.cpp`, `output.cpp` | DPMS (wlopm, hypridle) |
 | ext-idle-notify-v1 | `wlr_idle_notifier_v1` | `layer.cpp`, `cursor.cpp`, `keyboard.cpp` | Idle detection (swayidle/hypridle) |
 | ext-session-lock-v1 | `wlr_session_lock_manager_v1` | `lock.cpp` | Screen lockers |
+| idle-inhibit-unstable-v1 | `wlr_idle_inhibit_v1` | `server.cpp` | Video/fullscreen apps keep the screen awake (mpv, browsers) |
 
 Plus a native, non-Wayland control socket (`FENRIZ_SOCKET`) for bars/shells — see
 [IPC.md](IPC.md).
@@ -54,7 +55,6 @@ logic, "L" ≈ substantial subsystem).
 
 | Protocol | Why it matters | Effort |
 |---|---|---|
-| idle-inhibit-unstable-v1 | Video/fullscreen apps keep the screen awake — fenriz has idle *notify* but not *inhibit* | S |
 | xdg-activation-v1 | Activation tokens: launchers/notifications requesting focus or "raise me" | S–M |
 | wlr-output-management-v1 | Dynamic output config (kanshi, wlr-randr, nwg-displays) — currently config-file only | M |
 | pointer-constraints-v1 + relative-pointer-v1 | Mouse lock/warp for games and FPS aiming | M |

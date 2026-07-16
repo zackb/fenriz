@@ -126,6 +126,33 @@ namespace fenriz {
             output::set_dpms(*sl->server, ev->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
         }
 
+        // idle-inhibit-v1: a client holding an inhibitor (video/fullscreen) keeps the
+        // screen awake by suppressing the idle notifier that ext-idle-notify feeds.
+        struct IdleInhibitor {
+            wl_listener destroy;
+            Server* server;
+        };
+
+        void on_inhibitor_destroy(wl_listener* listener, void*) {
+            IdleInhibitor* ii = wl_container_of(listener, ii, destroy);
+            Server* s = ii->server;
+            s->active_inhibitors--;
+            wlr_idle_notifier_v1_set_inhibited(s->idle_notifier, s->active_inhibitors > 0);
+            wl_list_remove(&ii->destroy.link);
+            delete ii;
+        }
+
+        void on_new_idle_inhibitor(wl_listener* listener, void* data) {
+            SignalListener* sl = wl_container_of(listener, sl, listener);
+            auto* inhibitor = static_cast<wlr_idle_inhibitor_v1*>(data);
+            auto* ii = new IdleInhibitor{};
+            ii->server = sl->server;
+            ii->destroy.notify = on_inhibitor_destroy;
+            wl_signal_add(&inhibitor->events.destroy, &ii->destroy);
+            sl->server->active_inhibitors++;
+            wlr_idle_notifier_v1_set_inhibited(sl->server->idle_notifier, true);
+        }
+
     } // namespace
 
     void spawn(const std::string& cmd) {
@@ -262,9 +289,16 @@ namespace fenriz {
 
         cursor::init(*this);
 
-        layer::init(*this);
+        layer::init(*this); // creates idle_notifier; must precede idle-inhibit wiring below
         lock::init(*this);
         decoration::init(*this);
+
+        // idle-inhibit: keep the screen awake while a client holds an inhibitor. Wired
+        // after layer::init so idle_notifier is non-null for the manager's whole life.
+        idle_inhibit_manager = wlr_idle_inhibit_v1_create(display);
+        l_new_idle_inhibitor.server = this;
+        l_new_idle_inhibitor.listener.notify = on_new_idle_inhibitor;
+        wl_signal_add(&idle_inhibit_manager->events.new_inhibitor, &l_new_idle_inhibitor.listener);
 
         const char* socket = wl_display_add_socket_auto(display);
         if (!socket) {
