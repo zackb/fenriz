@@ -90,6 +90,7 @@ namespace fenriz {
 
             tiling::arrange(server);
             focus_view(server, view);
+            view->needs_initial_arrange = true; // re-issue size once the client is up (gecko)
             ipc::publish(server);
         }
 
@@ -129,6 +130,12 @@ namespace fenriz {
             // client choose its own dimensions; milestone 3 tiling will impose sizes.
             if (view->toplevel->base->initial_commit)
                 wlr_xdg_toplevel_set_size(view->toplevel, 0, 0);
+            // One-shot after map: Gecko ignores the size configured at map time and only honors a later one
+            if (view->needs_initial_arrange && view->mapped && !view->toplevel->base->initial_commit) {
+                view->needs_initial_arrange = false;
+                tiling::arrange(*view->server);
+                return;
+            }
             // A client can change its window geometry after mapping (CSD apps adjust their
             // shadow margin); re-sync the scene nodes so the inset stays correct. No-op
             // until the nodes exist (created on map).

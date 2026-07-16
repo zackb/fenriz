@@ -29,6 +29,8 @@ namespace fenriz {
         bool mapped = false;
         bool focused = false;
         bool fullscreen = false;
+        // Set at map, triggers one re-arrange on the first post-map commit.
+        bool needs_initial_arrange = false;
         bool floating = false; // escaped the BSP tree; free move/resize, drawn above tiles
 
         // Render offset from box, in logical coords; decays to 0 each frame for the
