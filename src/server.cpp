@@ -28,18 +28,86 @@ namespace fenriz {
             new View(*sl->server, static_cast<wlr_xdg_toplevel*>(data));
         }
 
-        // A client created an xdg popup (menu, tooltip, nested submenu). Parent it into the
-        // parent surface's scene tree so it renders above the parent and tracks its position.
-        // The parent's scene tree is stashed in xdg_surface->data (by view map and here for
-        // nested popups). Layer-shell popups have a non-xdg parent and are handled in layer.cpp.
+        // Per-popup state: popups need their own commit/destroy listeners, so each one gets a
+        // small heap object, freed when the popup goes away.
+        struct Popup {
+            Server* server;
+            wlr_xdg_popup* popup;
+            wl_listener commit;
+            wl_listener destroy;
+        };
+
+        // The box a popup must stay inside, in the root toplevel's window-geometry coordinate
+        // space (what wlr_xdg_popup_unconstrain_from_box wants). False when the popup isn't
+        // owned by a mapped View (layer-shell root), or a window that's unmapped/homeless
+        bool popup_constraint_box(Server& server, wlr_xdg_popup* popup, wlr_box* out) {
+            // Walk up through nested submenus to the root xdg surface.
+            wlr_xdg_surface* root = popup->base;
+            while (root->role == WLR_XDG_SURFACE_ROLE_POPUP) {
+                wlr_xdg_surface* parent =
+                    root->popup->parent ? wlr_xdg_surface_try_from_wlr_surface(root->popup->parent) : nullptr;
+                if (!parent)
+                    return false; // layer-shell root: not a coordinate space we can work out
+                root = parent;
+            }
+            if (root->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL)
+                return false;
+
+            View* view = nullptr;
+            for (View* v : server.views)
+                if (v->toplevel == root->toplevel) {
+                    view = v;
+                    break;
+                }
+            output::Output* o = view ? view_output(server, view) : nullptr;
+            if (!o)
+                return false;
+
+            // usable_area is already layout coords with the bars' exclusive zones removed, so
+            // menus stay clear of them. Shift it into the toplevel's window-geometry space:
+            // that origin is where surface_tree/popup_tree sit, and is what popup geometry is
+            // positioned against (see place_view_nodes).
+            const int bw = view->fullscreen ? 0 : server.config.border_width;
+            *out = {o->usable_area.x - (view->box.x + bw),
+                    o->usable_area.y - (view->box.y + bw),
+                    o->usable_area.width,
+                    o->usable_area.height};
+            return true;
+        }
+
+        void on_popup_commit(wl_listener* listener, void* data) {
+            Popup* p = wl_container_of(listener, p, commit);
+            (void)data;
+            if (!p->popup->base->initial_commit)
+                return;
+            // The initial commit must be answered with a configure or the client never maps the
+            // popup: it waits forever, attaches no buffer, and nothing is ever drawn (the
+            // toplevel path does the same in view_handle_commit). Unconstraining schedules a
+            // configure itself, but not on the path where we can't place the popup so ask for
+            // one unconditionally. It's idempotent; wlroots dedups via configure_idle.
+            if (wlr_box box; popup_constraint_box(*p->server, p->popup, &box))
+                wlr_xdg_popup_unconstrain_from_box(p->popup, &box);
+            wlr_xdg_surface_schedule_configure(p->popup->base);
+        }
+
+        void on_popup_destroy(wl_listener* listener, void* data) {
+            Popup* p = wl_container_of(listener, p, destroy);
+            (void)data;
+            wl_list_remove(&p->commit.link);
+            wl_list_remove(&p->destroy.link);
+            delete p;
+        }
+
+        // The parent's scene tree is stashed in xdg_surface->data (by view map, and by
+        // popup_create for nested popups). Layer-shell popups have a non-xdg parent at this
+        // point and are handled in layer.cpp.
         void on_new_popup(wl_listener* listener, void* data) {
-            (void)listener;
+            SignalListener* sl = wl_container_of(listener, sl, listener);
             auto* popup = static_cast<wlr_xdg_popup*>(data);
             wlr_xdg_surface* parent = wlr_xdg_surface_try_from_wlr_surface(popup->parent);
             if (!parent || !parent->data)
                 return;
-            auto* parent_tree = static_cast<wlr_scene_tree*>(parent->data);
-            popup->base->data = wlr_scene_xdg_surface_create(parent_tree, popup->base);
+            popup_create(*sl->server, popup, static_cast<wlr_scene_tree*>(parent->data));
         }
 
         void on_new_input(wl_listener* listener, void* data) {
@@ -156,6 +224,17 @@ namespace fenriz {
         }
 
     } // namespace
+
+    // Parent a popup into `parent_tree` so it renders above its parent and tracks its
+    // position, and take responsibility for configuring it.
+    void popup_create(Server& server, wlr_xdg_popup* popup, wlr_scene_tree* parent_tree) {
+        popup->base->data = wlr_scene_xdg_surface_create(parent_tree, popup->base);
+        Popup* p = new Popup{&server, popup, {}, {}};
+        p->commit.notify = on_popup_commit;
+        wl_signal_add(&popup->base->surface->events.commit, &p->commit);
+        p->destroy.notify = on_popup_destroy;
+        wl_signal_add(&popup->events.destroy, &p->destroy);
+    }
 
     void spawn(const std::string& cmd) {
         if (cmd.empty())

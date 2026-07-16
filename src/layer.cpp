@@ -78,7 +78,7 @@ namespace fenriz::layer {
             auto* popup = static_cast<wlr_xdg_popup*>(data);
             // Parent the popup into the layer surface's scene tree; base->data lets nested
             // popups find it via the xdg-shell new_popup handler (server.cpp).
-            popup->base->data = wlr_scene_xdg_surface_create(ls->scene->tree, popup->base);
+            popup_create(*ls->server, popup, ls->scene->tree);
         }
 
         void on_destroy(wl_listener* listener, void* data) {
