@@ -39,6 +39,20 @@ namespace fenriz {
             wlr_scene_buffer_set_opacity(buf, s.config.opacity);
         }
 
+        // Tell a toplevel it's tiled on all edges (or none). Advertising the tiled state is
+        // what makes GTK/Gecko honor the size we configure and drop their CSD shadow/rounding
+        // on those edges.
+        void set_tiled(View* view, bool tiled) {
+            wlr_xdg_toplevel* tl = view->toplevel;
+            if (wl_resource_get_version(tl->resource) >= 2) { // TILED_* states since v2
+                uint32_t edges =
+                    tiled ? (WLR_EDGE_LEFT | WLR_EDGE_RIGHT | WLR_EDGE_TOP | WLR_EDGE_BOTTOM) : WLR_EDGE_NONE;
+                wlr_xdg_toplevel_set_tiled(tl, edges);
+            } else {
+                wlr_xdg_toplevel_set_maximized(tl, tiled);
+            }
+        }
+
         // Back-most (topmost) visible view on the active workspace, or null.
         View* topmost_visible(Server& server) {
             for (auto it = server.views.rbegin(); it != server.views.rend(); ++it)
@@ -88,9 +102,9 @@ namespace fenriz {
                     wlr_foreign_toplevel_handle_v1_output_enter(view->foreign_handle, server.output);
             }
 
+            set_tiled(view, true); // new windows map tiled; folds into the arrange configure below
             tiling::arrange(server);
             focus_view(server, view);
-            view->needs_initial_arrange = true; // re-issue size once the client is up (gecko)
             ipc::publish(server);
         }
 
@@ -130,12 +144,6 @@ namespace fenriz {
             // client choose its own dimensions; milestone 3 tiling will impose sizes.
             if (view->toplevel->base->initial_commit)
                 wlr_xdg_toplevel_set_size(view->toplevel, 0, 0);
-            // One-shot after map: Gecko ignores the size configured at map time and only honors a later one
-            if (view->needs_initial_arrange && view->mapped && !view->toplevel->base->initial_commit) {
-                view->needs_initial_arrange = false;
-                tiling::arrange(*view->server);
-                return;
-            }
             // A client can change its window geometry after mapping (CSD apps adjust their
             // shadow margin); re-sync the scene nodes so the inset stays correct. No-op
             // until the nodes exist (created on map).
@@ -275,6 +283,7 @@ namespace fenriz {
         if (!v)
             return;
         v->floating = !v->floating;
+        set_tiled(v, !v->floating); // floating -> normal (own size + shadow); tiled -> honor ours
         if (v->floating) {
             // Leave the tree (its slot is reclaimed by the sibling) and keep the current tile
             // box as the initial floating geometry. Reparent into the floating scene tree so it
