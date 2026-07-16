@@ -11,6 +11,8 @@
 
 namespace fenriz {
 
+    void execute_bind(Server& server, const Bind& b); // defined below; run a matched bind's action
+
     namespace {
 
         // Per-keyboard state. Standard-layout so wl_container_of recovers it cleanly.
@@ -47,6 +49,35 @@ namespace fenriz {
             wlr_seat_keyboard_notify_modifiers(keyboard->server->seat, &keyboard->kb->modifiers);
         }
 
+        // Stop any in-progress held-key repeat.
+        void stop_repeat(Server& server) {
+            if (server.repeat_timer)
+                wl_event_source_timer_update(server.repeat_timer, 0);
+            server.repeat_keycode = 0;
+        }
+
+        // Timer tick while a `binde` key is held: re-run the action, re-arm at the rate.
+        int keybind_repeat_cb(void* data) {
+            Server& server = *static_cast<Server*>(data);
+            if (server.locked || server.repeat_keycode == 0)
+                return 0;
+            execute_bind(server, server.repeat_bind);
+            wl_event_source_timer_update(server.repeat_timer, 1000 / server.config.repeat_rate);
+            return 0;
+        }
+
+        // Begin repeating bind `b` (a `binde`) held under `keycode`. Copies the bind so it
+        // survives a config hot-reload that replaces config.binds mid-hold.
+        void start_repeat(Server& server, const Bind& b, uint32_t keycode) {
+            if (!server.repeat_timer) {
+                wl_event_loop* loop = wl_display_get_event_loop(server.display);
+                server.repeat_timer = wl_event_loop_add_timer(loop, keybind_repeat_cb, &server);
+            }
+            server.repeat_bind = b;
+            server.repeat_keycode = keycode;
+            wl_event_source_timer_update(server.repeat_timer, server.config.repeat_delay);
+        }
+
         void keyboard_handle_key(wl_listener* listener, void* data) {
             Keyboard* keyboard = wl_container_of(listener, keyboard, key);
             auto* event = static_cast<wlr_keyboard_key_event*>(data);
@@ -58,6 +89,11 @@ namespace fenriz {
             const uint32_t keycode = event->keycode + 8; // libinput -> xkb keycode
             const uint32_t mods = wlr_keyboard_get_modifiers(kb);
 
+            // Releasing (or locking on) the held key ends its repeat.
+            if (server.locked || (event->state == WL_KEYBOARD_KEY_STATE_RELEASED &&
+                                  keycode == server.repeat_keycode))
+                stop_repeat(server);
+
             bool handled = false;
             // While locked, compositor keybinds are disabled — every key goes to the lock
             // surface so the user can type their password (and can't switch workspace etc.).
@@ -68,8 +104,13 @@ namespace fenriz {
                 const xkb_keysym_t* syms;
                 int nsyms = xkb_keymap_key_get_syms_by_level(kb->keymap, keycode, layout, 0, &syms);
                 for (int i = 0; i < nsyms; i++) {
-                    if (handle_keybind(server, mods, syms[i])) {
+                    if (const Bind* b = handle_keybind(server, mods, syms[i])) {
                         handled = true;
+                        // A repeating bind arms the timer; any other bind cancels a stale repeat.
+                        if (b->repeat)
+                            start_repeat(server, *b, keycode);
+                        else
+                            stop_repeat(server);
                         break;
                     }
                 }
@@ -130,71 +171,74 @@ namespace fenriz {
         }
     }
 
-    bool handle_keybind(Server& server, uint32_t mods, xkb_keysym_t sym) {
+    void execute_bind(Server& server, const Bind& b) {
+        switch (b.action) {
+        case Action::Exec:
+            spawn(b.arg);
+            break;
+        case Action::KillActive:
+            if (server.focused_view)
+                wlr_xdg_toplevel_send_close(server.focused_view->toplevel);
+            break;
+        case Action::Exit:
+            server.stop();
+            break;
+        case Action::FocusNext:
+            cycle_focus(server, +1);
+            break;
+        case Action::FocusPrev:
+            cycle_focus(server, -1);
+            break;
+        case Action::FocusLeft:
+            focus_direction(server, -1, 0);
+            break;
+        case Action::FocusRight:
+            focus_direction(server, 1, 0);
+            break;
+        case Action::FocusUp:
+            focus_direction(server, 0, -1);
+            break;
+        case Action::FocusDown:
+            focus_direction(server, 0, 1);
+            break;
+        case Action::ToggleLayout:
+            // TODO: alternate layouts once more than master-stack exists.
+            break;
+        case Action::Fullscreen:
+            toggle_fullscreen(server);
+            break;
+        case Action::ToggleFloat:
+            toggle_floating(server);
+            break;
+        case Action::Workspace:
+        case Action::MoveToWorkspace: {
+            int n = 0;
+            try {
+                n = std::stoi(b.arg);
+            } catch (...) {
+                n = 0;
+            }
+            if (n >= 1 && n <= 10) {
+                if (b.action == Action::Workspace)
+                    set_workspace(server, n - 1);
+                else
+                    move_focused_to_workspace(server, n - 1);
+            }
+            break;
+        }
+        case Action::None:
+            break;
+        }
+    }
+
+    const Bind* handle_keybind(Server& server, uint32_t mods, xkb_keysym_t sym) {
         for (const Bind& b : server.config.binds) {
             if (b.mods != mods || b.sym != sym)
                 continue;
-
-            switch (b.action) {
-            case Action::Exec:
-                spawn(b.arg);
-                break;
-            case Action::KillActive:
-                if (server.focused_view)
-                    wlr_xdg_toplevel_send_close(server.focused_view->toplevel);
-                break;
-            case Action::Exit:
-                server.stop();
-                break;
-            case Action::FocusNext:
-                cycle_focus(server, +1);
-                break;
-            case Action::FocusPrev:
-                cycle_focus(server, -1);
-                break;
-            case Action::FocusLeft:
-                focus_direction(server, -1, 0);
-                break;
-            case Action::FocusRight:
-                focus_direction(server, 1, 0);
-                break;
-            case Action::FocusUp:
-                focus_direction(server, 0, -1);
-                break;
-            case Action::FocusDown:
-                focus_direction(server, 0, 1);
-                break;
-            case Action::ToggleLayout:
-                // TODO: alternate layouts once more than master-stack exists.
-                break;
-            case Action::Fullscreen:
-                toggle_fullscreen(server);
-                break;
-            case Action::ToggleFloat:
-                toggle_floating(server);
-                break;
-            case Action::Workspace:
-            case Action::MoveToWorkspace: {
-                int n = 0;
-                try {
-                    n = std::stoi(b.arg);
-                } catch (...) {
-                    n = 0;
-                }
-                if (n >= 1 && n <= 10) {
-                    if (b.action == Action::Workspace)
-                        set_workspace(server, n - 1);
-                    else
-                        move_focused_to_workspace(server, n - 1);
-                }
-                break;
-            }
-            case Action::None:
-                break;
-            }
-            return true;
+            execute_bind(server, b);
+            return &b;
         }
-        return false;
+        return nullptr;
     }
 
 } // namespace fenriz

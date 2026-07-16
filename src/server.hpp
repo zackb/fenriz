@@ -76,6 +76,12 @@ namespace fenriz {
 
         int inotify_fd = -1; // watches the config dir for hot-reload; closed in ~Server
 
+        // Held-key repeat for `binde` binds. One timer for the seat.
+        wl_event_source* repeat_timer = nullptr;
+        Bind repeat_bind;
+        // xkb keycode currently held; 0 = idle.
+        uint32_t repeat_keycode = 0;
+
         wl_display* display = nullptr;
         wlr_backend* backend = nullptr;
         wlr_renderer* renderer = nullptr;

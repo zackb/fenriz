@@ -121,11 +121,12 @@ namespace fenriz {
             std::string key = trim(line.substr(0, eq));
             std::string val = trim(line.substr(eq + 1));
 
-            if (key == "bind") {
+            if (key == "bind" || key == "binde") {
                 std::vector<std::string> parts = split(val, ',');
                 if (parts.size() < 2)
                     continue;
                 Bind b;
+                b.repeat = (key == "binde"); // `binde` re-fires while held (volume/brightness)
                 for (const std::string& tok : split(parts[0], ' '))
                     b.mods |= mod_from_token(tok);
                 b.sym = xkb_keysym_from_name(parts[1].c_str(), XKB_KEYSYM_CASE_INSENSITIVE);
@@ -184,7 +185,10 @@ namespace fenriz {
                     cfg.sensitivity = std::clamp(std::stof(val), -1.0f, 1.0f);
                 } catch (...) {
                 }
-            }
+            } else if (key == "repeat_delay")
+                cfg.repeat_delay = parse_int(val, cfg.repeat_delay);
+            else if (key == "repeat_rate")
+                cfg.repeat_rate = std::max(1, parse_int(val, cfg.repeat_rate)); // avoid /0 in timer
         }
         return cfg;
     }

@@ -19,6 +19,9 @@ int main() {
                        "bind = SUPER SHIFT, E, exit\n"
                        "bind = SUPER, 2, workspace, 3\n"
                        "bind = SUPER SHIFT, 4, movetoworkspace, 5\n"
+                       "repeat_delay = 300\n"
+                       "repeat_rate = 20\n"
+                       "binde = , XF86AudioRaiseVolume, exec, wpctl set-volume @X 5%+\n"
                        "garbage line without equals\n";
 
     Config c = Config::parse(text);
@@ -38,13 +41,17 @@ int main() {
     assert(c.env[0].first == "QT_QPA_PLATFORMTHEME" && c.env[0].second == "qt6ct");
     assert(c.env[1].first == "FOO" && c.env[1].second == "a,b,c");
 
-    assert(c.binds.size() == 4);
+    assert(c.repeat_delay == 300);
+    assert(c.repeat_rate == 20);
+
+    assert(c.binds.size() == 5);
 
     const Bind& b0 = c.binds[0];
     assert(b0.mods == 64u); // SUPER == LOGO
     assert(b0.sym == xkb_keysym_from_name("Return", XKB_KEYSYM_CASE_INSENSITIVE));
     assert(b0.action == Action::Exec);
     assert(b0.arg == "foot");
+    assert(!b0.repeat); // plain `bind` does not repeat
 
     const Bind& b1 = c.binds[1];
     assert(b1.mods == (64u | 1u)); // SUPER + SHIFT
@@ -61,6 +68,14 @@ int main() {
     assert(b3.mods == (64u | 1u));
     assert(b3.action == Action::MoveToWorkspace);
     assert(b3.arg == "5");
+
+    // `binde` parses like `bind` but flags the bind to repeat while held (no modifier).
+    const Bind& b4 = c.binds[4];
+    assert(b4.mods == 0u);
+    assert(b4.sym == xkb_keysym_from_name("XF86AudioRaiseVolume", XKB_KEYSYM_CASE_INSENSITIVE));
+    assert(b4.action == Action::Exec);
+    assert(b4.arg == "wpctl set-volume @X 5%+");
+    assert(b4.repeat);
 
     std::printf("config parser: all assertions passed\n");
     return 0;
