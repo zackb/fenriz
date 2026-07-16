@@ -10,6 +10,7 @@ animation        = 150          # window slide-into-place, ms; 0 = instant (off)
 opacity          = 0.95         # 0.0..1.0
 scale            = 1.0           # HiDPI output scale; fractional ok (e.g. 1.5), 1.0 = off
 natural_scroll   = true          # scroll/content follows fingers; false = traditional wheel
+sensitivity      = 0.55          # trackpad/mouse speed, -1.0 (slow) .. 1.0 (fast)
 
 # environment: env = NAME,VALUE exported to all spawned clients (applied before exec-once).
 # Value may contain commas (only the first comma splits NAME from VALUE).
