@@ -251,8 +251,10 @@ namespace fenriz {
         if (inotify_fd >= 0)
             close(inotify_fd);
         if (display) {
+            // Disconnect clients politely, then stop. We deliberately don't
+            // wl_display_destroy(): wlroots' globals assert on teardown that nobody is still
+            // subscribed to their signals.
             wl_display_destroy_clients(display);
-            wl_display_destroy(display);
         }
         // ponytail: backend/renderer/allocator leak at process exit — add explicit
         // teardown (wlr_backend_destroy etc.) if fenriz ever restarts in-process.

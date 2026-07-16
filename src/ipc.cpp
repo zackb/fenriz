@@ -168,6 +168,12 @@ namespace fenriz::ipc {
                 lock::force_unlock(server);
                 return;
             }
+            if (line.find("\"cmd\":\"exit\"") != std::string::npos) {
+                // {"cmd":"exit"} — quit the compositor, same as the `exit` keybind action.
+                // Under a session manager (greetd) that ends the session, i.e. log out.
+                server.stop();
+                return;
+            }
             if (line.find("\"cmd\":\"dpms\"") != std::string::npos) {
                 // {"cmd":"dpms","on":true} powers on; anything else (e.g. "on":false) powers
                 // off. An optional "name" targets one screen; without it, all of them.

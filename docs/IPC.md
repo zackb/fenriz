@@ -111,6 +111,13 @@ printf '{"cmd":"lid","closed":true}\n' | socat - UNIX-CONNECT:$FENRIZ_SOCKET
 Force-unlocks the session. This is a safety net: if a lock client crashes or hangs 
 it would otherwise leave the screen blank forever, recoverable only by killing the compositor. Run it from a TTY to escape.
 
+```json
+{"cmd":"exit"}
+```
+
+Quits the compositor — the same thing the `exit` keybind action does. Started from a session
+manager (greetd), that ends the session, which is what a shell's "Log out" wants.
+
 The command parser is substring-based, not a full JSON parser: a command is
 recognized by its `"cmd":"…"` substring (and `"n":` / `"on":true` for arguments),
 so whitespace and key order don't matter. Each command must arrive as one complete
