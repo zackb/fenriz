@@ -28,11 +28,14 @@ namespace fenriz::layer {
             LayerSurface* ls = wl_container_of(listener, ls, map);
             (void)data;
             ls->mapped = true;
-            // HiDPI: render at the output's (possibly fractional) scale, not 1x.
+            // HiDPI: render at this output's (possibly fractional) scale, not 1x — and not
+            // some other screen's scale, which is why it's looked up per surface.
             wlr_surface* surface = ls->handle->surface;
-            if (ls->handle->output)
+            if (ls->handle->output) {
                 wlr_surface_send_enter(surface, ls->handle->output);
-            wlr_fractional_scale_v1_notify_scale(surface, ls->server->config.scale);
+                if (output::Output* o = output::by_handle(*ls->server, ls->handle->output))
+                    wlr_fractional_scale_v1_notify_scale(surface, output::scale_of(*ls->server, o));
+            }
 
             if (ls->handle->current.keyboard_interactive != ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE)
                 focus_surface(*ls->server, surface);
@@ -97,9 +100,17 @@ namespace fenriz::layer {
             Server& server = *sl->server;
             auto* layer = static_cast<wlr_layer_surface_v1*>(data);
 
-            // Clients may leave output unset, delegating the choice to us.
-            if (!layer->output)
-                layer->output = server.output;
+            // Clients may leave output unset, delegating the choice to us: put it on the
+            // output the user is on. A surface with no output at all can't be placed, so
+            // close it rather than leak a surface we'd never arrange.
+            if (!layer->output) {
+                output::Output* o = output::focused(server);
+                if (!o) {
+                    wlr_layer_surface_v1_destroy(layer);
+                    return;
+                }
+                layer->output = o->handle;
+            }
 
             LayerSurface* ls = new LayerSurface{};
             ls->server = &server;
@@ -122,29 +133,35 @@ namespace fenriz::layer {
     } // namespace
 
     void arrange(Server& server) {
-        wlr_box full = {0, 0, 0, 0};
-        if (server.output_layout && server.output)
-            wlr_output_layout_get_box(server.output_layout, server.output, &full);
-        wlr_box usable = full;
+        // Each output reserves its own space: a bar on one screen must not shrink the tiling
+        // area of another. Every output gets its own usable_area, in layout coordinates.
+        for (output::Output* out : server.outputs) {
+            wlr_box full = {0, 0, 0, 0};
+            if (server.output_layout)
+                wlr_output_layout_get_box(server.output_layout, out->handle, &full);
+            wlr_box usable = full;
 
-        // Exclusive pass first (top -> bottom) so bars reserve space, then the rest. The
-        // scene helper does the anchor/margin/exclusive-zone math, sends the configure,
-        // positions the node, and shrinks `usable` for us.
-        const int order[] = {ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
-                             ZWLR_LAYER_SHELL_V1_LAYER_TOP,
-                             ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM,
-                             ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND};
-        for (bool exclusive : {true, false})
-            for (int lyr : order)
-                for (LayerSurface* ls : server.layer_surfaces) {
-                    if (ls->handle->current.layer != (uint32_t)lyr)
-                        continue;
-                    if ((ls->handle->current.exclusive_zone > 0) != exclusive)
-                        continue;
-                    wlr_scene_layer_surface_v1_configure(ls->scene, &full, &usable);
-                }
+            // Exclusive pass first (top -> bottom) so bars reserve space, then the rest. The
+            // scene helper does the anchor/margin/exclusive-zone math, sends the configure,
+            // positions the node, and shrinks `usable` for us.
+            const int order[] = {ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
+                                 ZWLR_LAYER_SHELL_V1_LAYER_TOP,
+                                 ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM,
+                                 ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND};
+            for (bool exclusive : {true, false})
+                for (int lyr : order)
+                    for (LayerSurface* ls : server.layer_surfaces) {
+                        if (ls->handle->output != out->handle)
+                            continue; // another screen's bar
+                        if (ls->handle->current.layer != (uint32_t)lyr)
+                            continue;
+                        if ((ls->handle->current.exclusive_zone > 0) != exclusive)
+                            continue;
+                        wlr_scene_layer_surface_v1_configure(ls->scene, &full, &usable);
+                    }
 
-        server.usable_area = {usable.x, usable.y, usable.width, usable.height};
+            out->usable_area = {usable.x, usable.y, usable.width, usable.height};
+        }
         tiling::arrange(server);
     }
 

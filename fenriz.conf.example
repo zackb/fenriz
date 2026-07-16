@@ -8,9 +8,42 @@ gaps             = 8
 rounding         = 10           # corner radius in px
 animation        = 150          # window slide-into-place, ms; 0 = instant (off)
 opacity          = 0.95         # 0.0..1.0
-scale            = 1.0           # HiDPI output scale; fractional ok (e.g. 1.5), 1.0 = off
+scale            = 1.0           # default output scale; fractional ok (e.g. 1.5). Per-output
+                                 # `output = ...` scale below overrides it.
 natural_scroll   = true          # scroll/content follows fingers; false = traditional wheel
 sensitivity      = 0.55          # trackpad/mouse speed, -1.0 (slow) .. 1.0 (fast)
+
+# ---------------------------------------------------------------------------
+# outputs: output = NAME, mode, position, scale     (trailing fields optional)
+#   NAME      connector name, e.g. eDP-1, DP-1, HDMI-A-1 (`wlr-randr` lists them)
+#   mode      preferred (default) | 1920x1080 | 1920x1080@144 | disable
+#   position  auto (default) | 1920x0   — layout coords of the top-left corner
+#   scale     per-output scale; omit to use the global `scale` above
+#
+# With `auto`, screens are packed left-to-right in the order they're listed here, so
+# listing them is enough to pin the arrangement — no need for explicit coordinates.
+# output = eDP-1, preferred, auto, 2.0
+# output = DP-1,  3840x2160@144, auto, 1.0
+
+# workspaces: workspace = N, OUTPUT — pin a workspace to a screen.
+#
+# OPTIONAL. Without it, a workspace that gets evacuated (lid shut, cable pulled) remembers
+# the screen it was taken off and returns there by itself when it comes back. Only set this
+# to override that — to say "ws3 belongs on the big monitor, always".
+# workspace = 3, DP-1
+
+# clamshell: fenriz disables the internal panel when the lid shuts AND an external screen
+# is connected, and turns it back on when the lid opens or the external goes away. Windows
+# never change workspace and layouts are never rebuilt, so nothing to clean up afterwards.
+# Whatever you were focused on follows you to the surviving screen and stays focused.
+#
+# Suspending with no external screen is left to logind, whose defaults already handle it
+# (HandleLidSwitch=suspend, HandleLidSwitchDocked=ignore — it counts external DRM
+# connectors itself). Stock logind config is correct; you shouldn't need to touch it.
+#
+# The panel is detected by connector name (eDP-*, LVDS-*, DSI-*). Set lid_output if yours
+# is named something else, or to point the lid at a different screen.
+# lid_output = eDP-1
 
 # environment: env = NAME,VALUE exported to all spawned clients (applied before exec-once).
 # Value may contain commas (only the first comma splits NAME from VALUE).

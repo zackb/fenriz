@@ -38,6 +38,7 @@ extern "C" {
 #include <wlr/types/wlr_presentation_time.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
+#include <wlr/types/wlr_switch.h> // the laptop lid (clamshell)
 #include <wlr/types/wlr_viewporter.h>
 // wlr_layer_shell_v1.h (and its generated protocol header) use `namespace` as a struct
 // field / parameter name, which is a C++ keyword. Rename it away for this include only;

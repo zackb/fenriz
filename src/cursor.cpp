@@ -127,6 +127,15 @@ namespace fenriz::cursor {
             return false;
         }
 
+        // Drive frames on the output the pointer is over: a drag is driven by cursor motion,
+        // not client damage, so nothing else wakes that output up. Only the output under the
+        // cursor needs it — scheduling all of them would spin idle screens (see the frame
+        // handler's needs_frame guard).
+        void schedule_frame_at_cursor(Cursor* c) {
+            if (wlr_output* o = wlr_output_layout_output_at(c->server->output_layout, c->cursor->x, c->cursor->y))
+                wlr_output_schedule_frame(o);
+        }
+
         // Update pointer focus + cursor image for the surface under the cursor.
         void process_motion(Cursor* c, uint32_t time) {
             Server& server = *c->server;
@@ -155,8 +164,7 @@ namespace fenriz::cursor {
             if (process_grab(c, c->cursor->x - ox, c->cursor->y - oy)) {
                 if (c->grabbed)
                     place_view_nodes(c->grabbed); // reflect the move now; no client damage drives the drag
-                if (c->server->output)
-                    wlr_output_schedule_frame(c->server->output);
+                schedule_frame_at_cursor(c);
                 return;
             }
             process_motion(c, event->time_msec);
@@ -170,8 +178,7 @@ namespace fenriz::cursor {
             if (process_grab(c, c->cursor->x - ox, c->cursor->y - oy)) {
                 if (c->grabbed)
                     place_view_nodes(c->grabbed);
-                if (c->server->output)
-                    wlr_output_schedule_frame(c->server->output);
+                schedule_frame_at_cursor(c);
                 return;
             }
             process_motion(c, event->time_msec);
@@ -278,6 +285,37 @@ namespace fenriz::cursor {
             g_cursor->grab = Grab::None;
             g_cursor->grabbed = nullptr;
         }
+    }
+
+    void warp_to_output(Server& server, output::Output* o) {
+        if (!server.cursor || !o)
+            return;
+        wlr_box box;
+        wlr_output_layout_get_box(server.output_layout, o->handle, &box);
+        if (wlr_box_empty(&box))
+            return;
+        // Already on this output: leave the pointer where the user put it.
+        if (server.cursor->x >= box.x && server.cursor->x < box.x + box.width && server.cursor->y >= box.y &&
+            server.cursor->y < box.y + box.height)
+            return;
+        wlr_cursor_warp(server.cursor, nullptr, box.x + box.width / 2.0, box.y + box.height / 2.0);
+        if (g_cursor)
+            process_motion(g_cursor, 0); // refresh pointer focus at the new spot
+    }
+
+    void clamp_to_layout(Server& server) {
+        if (!server.cursor)
+            return;
+        // Still over a live output? Nothing to do.
+        if (wlr_output_layout_output_at(server.output_layout, server.cursor->x, server.cursor->y))
+            return;
+        // Its output is gone (lid closed / cable pulled): move it to the nearest live point,
+        // so the pointer doesn't sit at dead coordinates where clicks hit nothing.
+        double cx = server.cursor->x, cy = server.cursor->y;
+        wlr_output_layout_closest_point(server.output_layout, nullptr, cx, cy, &cx, &cy);
+        wlr_cursor_warp_closest(server.cursor, nullptr, cx, cy);
+        if (g_cursor)
+            process_motion(g_cursor, 0);
     }
 
     void init(Server& server) {

@@ -20,6 +20,7 @@ test: debug
 	./build/debug/fenriz_config_test
 	./build/debug/fenriz_tiling_test
 	./build/debug/fenriz_keybind_test
+	./build/debug/fenriz_output_test
 
 .PHONY: fmt
 fmt:

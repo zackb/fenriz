@@ -43,6 +43,7 @@ add_executable(fenriz
     src/main.cpp
     src/server.cpp
     src/output.cpp
+    src/output_policy.cpp
     src/view.cpp
     src/keyboard.cpp
     src/cursor.cpp
@@ -81,6 +82,8 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/fenriz.desktop
 
 # Self-checks (built, not installed). Pure logic, deliberately decoupled from the
 # wlroots compositor stack so they build and run without a display.
+#
+# These are assert()-based, and a release build defines NDEBUG
 add_executable(fenriz_config_test src/config.cpp src/test_config.cpp)
 target_include_directories(fenriz_config_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(fenriz_config_test PRIVATE PkgConfig::XKBCOMMON)
@@ -88,6 +91,16 @@ target_link_libraries(fenriz_config_test PRIVATE PkgConfig::XKBCOMMON)
 add_executable(fenriz_tiling_test src/test_tiling.cpp)
 target_include_directories(fenriz_tiling_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+# The workspace-assignment policy (evacuate/restore) is pure by design; it links only
+# output_policy.cpp, so the clamshell guarantee is checked without a compositor or a display.
+add_executable(fenriz_output_test src/output_policy.cpp src/test_output.cpp)
+target_include_directories(fenriz_output_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(fenriz_output_test PRIVATE PkgConfig::WAYLAND)
+
 add_executable(fenriz_keybind_test src/config.cpp src/test_keybind.cpp)
 target_include_directories(fenriz_keybind_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(fenriz_keybind_test PRIVATE PkgConfig::XKBCOMMON)
+
+foreach(t fenriz_config_test fenriz_tiling_test fenriz_keybind_test fenriz_output_test)
+    target_compile_options(${t} PRIVATE -UNDEBUG)
+endforeach()

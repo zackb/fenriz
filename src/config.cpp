@@ -144,6 +144,38 @@ namespace fenriz {
                 continue;
             }
 
+            if (key == "output") {
+                // NAME, mode, position, scale — trailing fields optional.
+                std::vector<std::string> parts = split(val, ',');
+                if (parts.empty() || parts[0].empty())
+                    continue;
+                OutputCfg o;
+                o.name = parts[0];
+                if (parts.size() > 1 && !parts[1].empty())
+                    o.mode = parts[1];
+                if (parts.size() > 2 && !parts[2].empty())
+                    o.position = parts[2];
+                if (parts.size() > 3 && !parts[3].empty()) {
+                    try {
+                        o.scale = std::clamp(std::stof(parts[3]), 0.25f, 10.0f);
+                    } catch (...) {
+                    }
+                }
+                cfg.outputs.push_back(o);
+                continue;
+            }
+
+            if (key == "workspace") {
+                // N, OUTPUT — the workspace's home output, so it returns there on hotplug.
+                std::vector<std::string> parts = split(val, ',');
+                if (parts.size() < 2)
+                    continue;
+                const int n = parse_int(parts[0], 0);
+                if (n >= 1 && n <= 10)
+                    cfg.ws_home[n - 1] = parts[1];
+                continue;
+            }
+
             if (key == "env") {
                 // NAME,VALUE split on the first comma only (values may contain commas,
                 size_t comma = val.find(',');
@@ -185,7 +217,9 @@ namespace fenriz {
                     cfg.sensitivity = std::clamp(std::stof(val), -1.0f, 1.0f);
                 } catch (...) {
                 }
-            } else if (key == "repeat_delay")
+            } else if (key == "lid_output")
+                cfg.lid_output = val;
+            else if (key == "repeat_delay")
                 cfg.repeat_delay = parse_int(val, cfg.repeat_delay);
             else if (key == "repeat_rate")
                 cfg.repeat_rate = std::max(1, parse_int(val, cfg.repeat_rate)); // avoid /0 in timer

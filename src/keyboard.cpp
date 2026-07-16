@@ -5,6 +5,7 @@
 
 #include "config.hpp"
 #include "cursor.hpp"
+#include "output.hpp"
 #include "server.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
@@ -24,8 +25,48 @@ namespace fenriz {
             wl_listener destroy;
         };
 
+        // A lid/tablet switch device. The lid is why this exists: reading it here means the
+        // clamshell response happens synchronously inside the compositor, instead of a script
+        // polling /proc/acpi and racing the monitor events.
+        struct Switch {
+            Server* server;
+            wl_listener toggle;
+            wl_listener destroy;
+        };
+
+        void switch_handle_toggle(wl_listener* listener, void* data) {
+            Switch* sw = wl_container_of(listener, sw, toggle);
+            auto* event = static_cast<wlr_switch_toggle_event*>(data);
+            if (event->switch_type != WLR_SWITCH_TYPE_LID)
+                return;
+            sw->server->lid_closed = event->switch_state == WLR_SWITCH_STATE_ON;
+            wlr_log(WLR_INFO, "fenriz: lid %s", sw->server->lid_closed ? "closed" : "opened");
+            // Only ever disables/restores the internal panel when docked; suspend is logind's
+            // job (its HandleLidSwitch default), so there's deliberately no suspend here.
+            output::refresh(*sw->server);
+        }
+
+        void switch_handle_destroy(wl_listener* listener, void* data) {
+            Switch* sw = wl_container_of(listener, sw, destroy);
+            (void)data;
+            wl_list_remove(&sw->toggle.link);
+            wl_list_remove(&sw->destroy.link);
+            delete sw;
+        }
+
+        void new_switch(Server& server, wlr_input_device* device) {
+            wlr_switch* handle = wlr_switch_from_input_device(device);
+            Switch* sw = new Switch{};
+            sw->server = &server;
+            sw->toggle.notify = switch_handle_toggle;
+            wl_signal_add(&handle->events.toggle, &sw->toggle);
+            sw->destroy.notify = switch_handle_destroy;
+            wl_signal_add(&device->events.destroy, &sw->destroy);
+        }
+
         void cycle_focus(Server& server, int dir) {
-            // Only cycle among windows on the active workspace.
+            // Cycle among the windows currently on screen — which, with more than one output,
+            // spans every shown workspace rather than just one.
             std::vector<View*> vis;
             for (View* v : server.views)
                 if (view_visible(server, v))
@@ -90,8 +131,7 @@ namespace fenriz {
             const uint32_t mods = wlr_keyboard_get_modifiers(kb);
 
             // Releasing (or locking on) the held key ends its repeat.
-            if (server.locked || (event->state == WL_KEYBOARD_KEY_STATE_RELEASED &&
-                                  keycode == server.repeat_keycode))
+            if (server.locked || (event->state == WL_KEYBOARD_KEY_STATE_RELEASED && keycode == server.repeat_keycode))
                 stop_repeat(server);
 
             bool handled = false;
@@ -165,8 +205,11 @@ namespace fenriz {
         case WLR_INPUT_DEVICE_POINTER:
             cursor::attach_pointer(server, device);
             break;
+        case WLR_INPUT_DEVICE_SWITCH:
+            new_switch(server, device); // the laptop lid
+            break;
         default:
-            // Touch/tablet/switch devices are not handled yet.
+            // Touch/tablet devices are not handled yet.
             break;
         }
     }

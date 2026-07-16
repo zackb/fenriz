@@ -68,7 +68,9 @@ namespace fenriz {
             (void)data;
             Server& server = *view->server;
             view->mapped = true;
-            view->workspace = server.active_workspace;
+            // New windows open on the workspace shown on the output the user is on.
+            if (output::Output* o = output::focused(server); o && o->active_ws >= 0)
+                view->workspace = o->active_ws;
             server.views.push_back(view);
 
             // Build the scene nodes: a container tree holding the border rect (below) and
@@ -86,13 +88,6 @@ namespace fenriz {
             // New window splits the focused window's tile (focus-aware dwindle).
             tiling::insert(server, view, server.focused_view);
 
-            // HiDPI: put the surface on the output and tell it our (possibly fractional)
-            // scale so it renders a native-resolution buffer instead of a 1x one we'd blur.
-            wlr_surface* surface = view->toplevel->base->surface;
-            if (server.output)
-                wlr_surface_send_enter(surface, server.output);
-            wlr_fractional_scale_v1_notify_scale(surface, server.config.scale);
-
             // Publish this window to the foreign-toplevel (taskbar) protocol.
             if (server.foreign_toplevel_manager) {
                 view->foreign_handle = wlr_foreign_toplevel_handle_v1_create(server.foreign_toplevel_manager);
@@ -100,9 +95,11 @@ namespace fenriz {
                     wlr_foreign_toplevel_handle_v1_set_title(view->foreign_handle, view->toplevel->title);
                 if (view->toplevel->app_id)
                     wlr_foreign_toplevel_handle_v1_set_app_id(view->foreign_handle, view->toplevel->app_id);
-                if (server.output)
-                    wlr_foreign_toplevel_handle_v1_output_enter(view->foreign_handle, server.output);
             }
+
+            // HiDPI: announce the view's own output + that output's scale, so it renders a
+            // native-resolution buffer. Also re-run whenever it migrates between screens.
+            view_update_output(server, view);
 
             set_tiled(view, true); // new windows map tiled; folds into the arrange configure below
             tiling::arrange(server);
@@ -331,7 +328,35 @@ namespace fenriz {
     }
 
     bool view_visible(const Server& server, const View* view) {
-        return view->mapped && view->workspace == server.active_workspace;
+        if (!view->mapped)
+            return false;
+        const Workspace& ws = server.workspaces[view->workspace];
+        // Shown only if its workspace lives on an output AND is the one that output displays.
+        return ws.output && ws.output->active_ws == view->workspace;
+    }
+
+    output::Output* view_output(const Server& server, const View* view) {
+        return server.workspaces[view->workspace].output;
+    }
+
+    void view_update_output(Server& server, View* view) {
+        output::Output* o = view_output(server, view);
+        if (!o || !view->mapped)
+            return;
+        wlr_surface* surface = view->toplevel->base->surface;
+        wlr_surface_send_enter(surface, o->handle);
+        // Scale is per-output now, so a window dragged/evacuated to another screen must be
+        // told the new one or it renders at the old scale (blurry or oversharp).
+        wlr_fractional_scale_v1_notify_scale(surface, output::scale_of(server, o));
+        if (view->foreign_handle)
+            wlr_foreign_toplevel_handle_v1_output_enter(view->foreign_handle, o->handle);
+    }
+
+    void focus_topmost_visible(Server& server) {
+        if (View* v = topmost_visible(server))
+            focus_view(server, v);
+        else
+            clear_focus(server);
     }
 
     // (Re)apply per-window content effects (opacity + corner radius) to the view's surface
@@ -405,31 +430,59 @@ namespace fenriz {
     }
 
     void set_workspace(Server& server, int n) {
-        n = std::clamp(n, 0, 9);
-        if (n == server.active_workspace)
-            return;
-        server.active_workspace = n;
-        tiling::arrange(server, false);
-        if (View* v = topmost_visible(server))
-            focus_view(server, v);
+        n = std::clamp(n, 0, WS_COUNT - 1);
+        Workspace& ws = server.workspaces[n];
+
+        // Homeless (no output has ever shown it, or every screen went away): pull it onto the
+        // output we're looking at.
+        if (!ws.output)
+            ws.output = output::focused(server);
+        if (!ws.output)
+            return; // no outputs at all; nothing to show it on
+
+        output::Output* o = ws.output;
+        if (o->active_ws == n) {
+            // Already shown. If it's on another screen, this is still a focus request — fall
+            // through to move focus there rather than no-op.
+            if (server.focused_view && view_output(server, server.focused_view) == o)
+                return;
+        }
+
+        // The workspace that output was showing steps aside; this one takes its place.
+        o->active_ws = n;
+        tiling::arrange(server, false); // no slide: a workspace switch appears in place
+
+        // Focus follows the workspace to its output (sway semantics). Warp the cursor when
+        // focus crosses screens, or the pointer is left behind on the old one.
+        View* target = nullptr;
+        for (auto it = server.views.rbegin(); it != server.views.rend(); ++it)
+            if (view_visible(server, *it) && view_output(server, *it) == o) {
+                target = *it;
+                break;
+            }
+        if (target)
+            focus_view(server, target);
         else
             clear_focus(server);
-        ipc::publish(server); // active workspace changed even if focus didn't
+        cursor::warp_to_output(server, o);
+        ipc::publish(server); // the shown workspace changed even if focus didn't
     }
 
     void move_focused_to_workspace(Server& server, int n) {
-        n = std::clamp(n, 0, 9);
+        n = std::clamp(n, 0, WS_COUNT - 1);
         View* v = server.focused_view;
         if (!v || v->workspace == n)
             return;
         tiling::remove(server, v);
-        v->workspace = n;                   // now on another workspace -> hidden; we stay on the current one
+        v->workspace = n;                   // may be on another output's workspace; we stay put
         tiling::insert(server, v, nullptr); // append to the target workspace's tree
+        // The target workspace may be homeless (no output showing it); give it one so a window
+        // sent there isn't stranded invisibly.
+        if (!server.workspaces[n].output)
+            server.workspaces[n].output = output::focused(server);
+        view_update_output(server, v); // it may have just crossed to another screen
         tiling::arrange(server);
-        if (View* next = topmost_visible(server))
-            focus_view(server, next);
-        else
-            clear_focus(server);
+        focus_topmost_visible(server);
         ipc::publish(server); // occupancy of workspace n changed
     }
 

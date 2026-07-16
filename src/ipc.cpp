@@ -51,14 +51,53 @@ namespace fenriz::ipc {
         }
 
         std::string snapshot(Server& server) {
+            output::Output* focus = output::focused(server);
+
             std::set<int> occupied;
-            occupied.insert(server.active_workspace + 1); // active is always shown
             for (View* v : server.views)
                 if (v->mapped)
                     occupied.insert(v->workspace + 1);
+            // Whatever each screen is showing counts as occupied even if it's empty, so a bar
+            // always renders the workspace you're looking at.
+            for (output::Output* o : server.outputs)
+                if (o->enabled && o->active_ws >= 0)
+                    occupied.insert(o->active_ws + 1);
 
-            std::string s = "{\"workspaces\":{\"active\":";
-            s += std::to_string(server.active_workspace + 1);
+            // Per-output state. This is what lets a shell rebuild itself on hotplug instead of
+            // being reloaded: the outputs come and go in this feed as their globals do.
+            std::string s = "{\"outputs\":[";
+            bool first_o = true;
+            for (output::Output* o : server.outputs) {
+                if (!o->enabled)
+                    continue; // a disabled panel has no wl_output either; don't advertise it
+                wlr_box box;
+                wlr_output_layout_get_box(server.output_layout, o->handle, &box);
+                if (!first_o)
+                    s += ',';
+                first_o = false;
+                s += "{\"name\":\"";
+                json_escape(s, output::name_of(o).c_str());
+                s += "\",\"active\":" + std::to_string(o->active_ws + 1);
+                s += ",\"focused\":" + std::string(o == focus ? "true" : "false");
+                s += ",\"x\":" + std::to_string(box.x);
+                s += ",\"y\":" + std::to_string(box.y);
+                s += ",\"width\":" + std::to_string(box.width);
+                s += ",\"height\":" + std::to_string(box.height);
+                // The output's ACTUAL committed scale, not the configured one. Reporting the
+                // config here made the feed agree with fenriz.conf while the panel really ran
+                // at 1x, which hid a scale bug instead of surfacing it. Report what is, not
+                // what was asked for.
+                s += ",\"scale\":" + std::to_string(o->handle->scale);
+                s += ",\"internal\":" + std::string(output::is_internal(output::name_of(o)) ? "true" : "false");
+                s += '}';
+            }
+            s += "],\"lid\":\"";
+            s += server.lid_closed ? "closed" : "open";
+
+            // workspaces.active stays the focused output's workspace, so existing single-screen
+            // bars keep working unchanged; `outputs` above carries the per-screen detail.
+            s += "\",\"workspaces\":{\"active\":";
+            s += std::to_string(focus && focus->active_ws >= 0 ? focus->active_ws + 1 : 0);
             s += ",\"occupied\":[";
             bool first = true;
             for (int id : occupied) {
@@ -100,6 +139,18 @@ namespace fenriz::ipc {
                 drop_client(fd);
         }
 
+        // Pull a "key":"value" string out of a command line. Same substring approach as the
+        // rest of the parser — no escape handling, which is fine for output names.
+        std::string extract_string(const std::string& line, const char* key) {
+            const std::string pat = std::string("\"") + key + "\":\"";
+            size_t p = line.find(pat);
+            if (p == std::string::npos)
+                return "";
+            p += pat.size();
+            size_t e = line.find('"', p);
+            return e == std::string::npos ? "" : line.substr(p, e - p);
+        }
+
         // ponytail: parses whole "\n"-terminated lines in one read; a command split across
         // reads is dropped. Commands are single tiny writes (socat/printf), so fine — add
         // per-client line buffering only if a real client streams partial commands.
@@ -118,8 +169,32 @@ namespace fenriz::ipc {
                 return;
             }
             if (line.find("\"cmd\":\"dpms\"") != std::string::npos) {
-                // {"cmd":"dpms","on":true} powers on; anything else (e.g. "on":false) powers off.
-                output::set_dpms(server, line.find("\"on\":true") != std::string::npos);
+                // {"cmd":"dpms","on":true} powers on; anything else (e.g. "on":false) powers
+                // off. An optional "name" targets one screen; without it, all of them.
+                output::Output* o = nullptr;
+                if (std::string n = extract_string(line, "name"); !n.empty())
+                    o = output::by_name(server, n);
+                output::set_dpms(server, o, line.find("\"on\":true") != std::string::npos);
+                return;
+            }
+            if (line.find("\"cmd\":\"output\"") != std::string::npos) {
+                // {"cmd":"output","name":"eDP-1","enabled":false} — enable/disable a screen.
+                std::string n = extract_string(line, "name");
+                if (n.empty())
+                    return;
+                if (output::Output* o = output::by_name(server, n)) {
+                    output::set_enabled(server, o, line.find("\"enabled\":true") != std::string::npos);
+                    // refresh, not apply_layout: disabling the external with the lid shut has
+                    // to bring the panel back, which is the lid policy's call.
+                    output::refresh(server);
+                }
+                return;
+            }
+            if (line.find("\"cmd\":\"lid\"") != std::string::npos) {
+                // {"cmd":"lid","closed":true} — drives the same policy a real lid switch does,
+                // so clamshell behavior is testable in a nested session with no hardware.
+                server.lid_closed = line.find("\"closed\":true") != std::string::npos;
+                output::refresh(server);
                 return;
             }
         }

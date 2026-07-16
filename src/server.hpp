@@ -1,9 +1,11 @@
 #pragma once
 
 #include <list>
+#include <string>
 #include <wayland-server-core.h>
 
 #include "config.hpp"
+#include "output.hpp"
 
 struct wlr_backend;
 struct wlr_renderer;
@@ -33,6 +35,25 @@ namespace fenriz {
         struct Node;
     }
 
+    // A workspace: a dwindle BSP tree (tiling.hpp) plus which output it lives on.
+    //
+    // `output` is where the workspace currently *lives*; the output shows it only if it is
+    // that output's Output::active_ws. `home` is the output name it's configured to prefer
+    // (`workspace = N, NAME`), so it returns there whenever that output is present.
+    //
+    // `origin` is the screen it was involuntarily evacuated off — set only when a screen goes
+    // away with this workspace on it, and honored (then cleared) when that screen returns. It
+    // is what makes a lid cycle round-trip with no config at all; see assign_workspaces.
+    //
+    // Output events only ever reassign `output`/`origin`. `root` and the views' workspace
+    // index are invariant across hotplug/lid — that's what makes a layout survive a lid close.
+    struct Workspace {
+        tiling::Node* root = nullptr;
+        output::Output* output = nullptr; // null = unassigned (no screen); tree is kept
+        std::string home;                 // configured output name; empty = no preference
+        std::string origin;               // output it was evacuated off; empty = none
+    };
+
     // Launch a shell command detached (`/bin/sh -c cmd`); no-op on empty. Used for
     // keybind `exec` actions and `exec-once` startup commands. Children are reaped via
     // SIGCHLD=SIG_IGN (set in Server::start).
@@ -60,8 +81,12 @@ namespace fenriz {
         Config config;
         std::list<View*> views;                  // bottom -> top (all workspaces)
         std::list<LayerSurface*> layer_surfaces; // all layers; z-order resolved at render
+        std::list<output::Output*> outputs;      // live outputs, in the order they appeared
         View* focused_view = nullptr;
-        int active_workspace = 0; // 0-indexed; 10 workspaces (0..9)
+
+        // Lid state, from the libinput switch device (keyboard.cpp). Drives
+        // output::apply_lid_policy; fenriz only acts on it when docked (suspend is logind's).
+        bool lid_closed = false;
 
         // ext-session-lock-v1 engaged: normal content is blanked and input is routed
         // only to the lock surface. Owned by src/lock.cpp; other modules just read it.
@@ -71,8 +96,8 @@ namespace fenriz {
         // the scene, so the frame handler must commit even when the scene needs no repaint.
         bool gamma_dirty = false;
 
-        // Per-workspace dwindle BSP tree root (see tiling.hpp). Nodes leak at shutdown.
-        tiling::Node* ws_roots[10] = {};
+        // The workspaces (see Workspace above). Tree nodes leak at shutdown.
+        Workspace workspaces[WS_COUNT];
 
         int inotify_fd = -1; // watches the config dir for hot-reload; closed in ~Server
 
@@ -86,7 +111,6 @@ namespace fenriz {
         wlr_backend* backend = nullptr;
         wlr_renderer* renderer = nullptr;
         wlr_allocator* allocator = nullptr;
-        wlr_output* output = nullptr; // primary output (fenriz is single-output; see layer::arrange)
         wlr_output_layout* output_layout = nullptr;
         wlr_seat* seat = nullptr;
         wlr_xdg_shell* xdg_shell = nullptr;
@@ -114,11 +138,6 @@ namespace fenriz {
         wlr_scene_tree* scene_fullscreen = nullptr; // above top, below overlay
         wlr_scene_tree* scene_overlay = nullptr;
         wlr_scene_tree* scene_lock = nullptr; // ext-session-lock, above everything
-
-        // Tiling region left after layer-shell exclusive zones (bars) are subtracted.
-        struct {
-            int x, y, width, height;
-        } usable_area{};
 
         SignalListener l_new_output;
         SignalListener l_new_toplevel;

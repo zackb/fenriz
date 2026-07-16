@@ -29,18 +29,38 @@ workspace switch. Identical consecutive snapshots are suppressed, so a line alwa
 means something changed.
 
 ```json
-{"workspaces":{"active":1,"occupied":[1,2,4]},"activeWindow":{"appId":"foot","title":"~"}}
+{"outputs":[{"name":"eDP-1","active":1,"focused":true,"x":0,"y":0,"width":2560,"height":1600,"scale":2.0,"internal":true}],
+ "lid":"open",
+ "workspaces":{"active":1,"occupied":[1,2,4]},
+ "activeWindow":{"appId":"foot","title":"~"}}
 ```
 
 | Field | Type | Meaning |
 |-------|------|---------|
-| `workspaces.active` | int | Active workspace, 1-indexed (1–10). |
-| `workspaces.occupied` | int[] | Sorted 1-indexed workspaces that have mapped windows. Always includes `active`. |
+| `outputs` | object[] | Enabled outputs. A disabled screen has no `wl_output` either, so it's absent here too. |
+| `outputs[].name` | string | Connector name, e.g. `eDP-1`. |
+| `outputs[].active` | int | The workspace this output is showing, 1-indexed. |
+| `outputs[].focused` | bool | Whether this is the output receiving new windows. Exactly one is true. |
+| `outputs[].x/y/width/height` | int | Layout geometry, in layout coordinates. |
+| `outputs[].scale` | float | Effective scale for this output. |
+| `outputs[].internal` | bool | True for a built-in laptop panel (by connector name). |
+| `lid` | string | `"open"` or `"closed"`. |
+| `workspaces.active` | int | The **focused output's** workspace, 1-indexed. Unchanged meaning on a single screen. |
+| `workspaces.occupied` | int[] | Sorted 1-indexed workspaces with mapped windows, plus whatever each output is showing. |
 | `activeWindow` | object \| null | Focused window, or `null` when nothing is focused. |
 | `activeWindow.appId` | string | Focused window's app id. |
 | `activeWindow.title` | string | Focused window's title. |
 
 Strings are JSON-escaped; control characters other than `\n` are dropped.
+
+### You do not need this feed to track screens
+
+A bar does not have to watch `outputs` — or be reloaded — to survive a monitor coming and
+going. fenriz adds and removes each screen's `wl_output` global as it's enabled and disabled,
+so a shell with per-screen surfaces (quickshell's `Variants`, or anything that binds per
+`wl_output`) tears down and rebuilds on its own through the ordinary Wayland registry events.
+The `outputs` array is for *displaying* state (which workspace is on which screen), not for
+driving your shell's lifecycle.
 
 ## Commands (client → server)
 
@@ -50,15 +70,39 @@ Send one JSON object per line, terminated by `\n`. Commands implemented:
 {"cmd":"workspace","n":3}
 ```
 
-Switches to workspace `n` (1–10); out-of-range values are ignored.
+Shows workspace `n` (1–10); out-of-range values are ignored. If `n` lives on another
+output, focus (and the cursor) follow it there rather than dragging it to the current
+screen.
 
 ```json
 {"cmd":"dpms","on":false}
+{"cmd":"dpms","on":false,"name":"DP-1"}
 ```
 
-Powers the display off (`"on":false`) or on (`"on":true`) — DPMS. The same effect
-is available to standard tools via the `wlr-output-power-management-v1` protocol
-(e.g. `wlopm`, `hypridle`).
+Powers the display off (`"on":false`) or on (`"on":true`) — DPMS. Without `name` it
+applies to every output; with it, just that one. The same effect is available to standard
+tools via the `wlr-output-power-management-v1` protocol (e.g. `wlopm`, `hypridle`), which
+targets a single output.
+
+```json
+{"cmd":"output","name":"eDP-1","enabled":false}
+```
+
+Enables or disables an output. Disabling evacuates its workspaces to a surviving screen
+(layouts intact) and destroys its `wl_output` global; enabling reverses it and any
+workspace homed to it returns. Unknown names are ignored.
+
+```json
+{"cmd":"lid","closed":true}
+```
+
+Sets the lid state and runs the clamshell policy, exactly as a real lid switch would.
+Mainly useful for testing clamshell behavior in a nested session with no hardware:
+
+```
+WLR_BACKENDS=wayland WLR_WL_OUTPUTS=2 fenriz    # with `lid_output = WL-1` in the config
+printf '{"cmd":"lid","closed":true}\n' | socat - UNIX-CONNECT:$FENRIZ_SOCKET
+```
 
 ```json
 {"cmd":"unlock"}

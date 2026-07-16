@@ -11,6 +11,9 @@ struct wlr_scene_rect;
 namespace fenriz {
 
     class Server;
+    namespace output {
+        struct Output;
+    }
 
     // A managed window: wraps an xdg_toplevel and its tiled geometry. Standard-layout
     // (pointers + POD + wl_listener only) so wl_container_of recovers it cleanly.
@@ -81,8 +84,21 @@ namespace fenriz {
     // {-1,0,1}: left (-1,0), right (1,0), up (0,-1), down (0,1). No-op if none.
     void focus_direction(Server& server, int dx, int dy);
 
-    // A view is shown only when mapped and on the active workspace.
+    // A view is shown only when mapped and its workspace is the one currently shown on the
+    // output that workspace lives on. A workspace on no output (all screens gone) shows
+    // nothing — its windows and tree are still there, just not rendered.
     bool view_visible(const Server& server, const View* view);
+
+    // The output the view's workspace currently lives on, or null if homeless.
+    output::Output* view_output(const Server& server, const View* view);
+
+    // Re-announce a view's output and scale to the client (wl_surface.enter + fractional
+    // scale + foreign-toplevel). Call after a view's workspace migrates to another output, so
+    // it re-renders at the new screen's scale instead of staying blurry.
+    void view_update_output(Server& server, View* view);
+
+    // Focus the topmost visible view anywhere, or clear focus if there is none.
+    void focus_topmost_visible(Server& server);
 
     // Position/size a view's scene nodes from its box + animation offset, set the border
     // color from focus state, and toggle visibility for the active workspace. Called from
@@ -95,8 +111,10 @@ namespace fenriz {
     // live in the commit path.
     void apply_view_effects(View* view);
 
-    // Switch the active workspace / send the focused window to a workspace (0-indexed).
+    // Show workspace `n` (0-indexed). If it lives on another output, focus follows it there
+    // (sway semantics); if it's homeless, it's pulled onto the focused output.
     void set_workspace(Server& server, int n);
+    // Send the focused window to workspace `n`, leaving focus where it is.
     void move_focused_to_workspace(Server& server, int n);
 
 } // namespace fenriz

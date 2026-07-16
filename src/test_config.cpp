@@ -93,6 +93,29 @@ int main() {
     assert(junk.opacity == 1.0f);
     assert(junk.scale == 1.0f);
 
+    // Per-output config. Trailing fields are optional and fall back to preferred/auto/global
+    // scale, so a bare `output = NAME` is valid.
+    Config out = Config::parse("output = eDP-1, preferred, auto, 2.0\n"
+                               "output = DP-1, 3840x2160@144, 1920x0, 1.0\n"
+                               "output = HDMI-A-1, disable\n"
+                               "output = DP-2\n");
+    assert(out.outputs.size() == 4);
+    assert(out.outputs[0].name == "eDP-1" && out.outputs[0].mode == "preferred");
+    assert(out.outputs[0].position == "auto" && out.outputs[0].scale == 2.0f);
+    assert(out.outputs[1].mode == "3840x2160@144" && out.outputs[1].position == "1920x0");
+    assert(out.outputs[2].mode == "disable");
+    // Unspecified fields keep their defaults; scale 0 means "fall back to the global scale".
+    assert(out.outputs[3].mode == "preferred" && out.outputs[3].position == "auto" && out.outputs[3].scale == 0);
+
+    // Workspace homes are 1-indexed in the config, 0-indexed in the array. Out-of-range is
+    // ignored rather than writing past the end.
+    Config ws = Config::parse("workspace = 1, eDP-1\nworkspace = 10, DP-1\n"
+                              "workspace = 0, X\nworkspace = 11, Y\nworkspace = 3\n");
+    assert(ws.ws_home[0] == "eDP-1");
+    assert(ws.ws_home[9] == "DP-1");
+    assert(ws.ws_home[1].empty()); // never set
+    assert(ws.ws_home[2].empty()); // `workspace = 3` with no output is ignored
+
     std::printf("config parser: all assertions passed\n");
     return 0;
 }

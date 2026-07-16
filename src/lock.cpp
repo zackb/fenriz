@@ -1,5 +1,8 @@
 #include "lock.hpp"
 
+#include <vector>
+
+#include "output.hpp"
 #include "server.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
@@ -14,13 +17,12 @@ namespace fenriz::lock {
             wl_listener destroy;
         };
 
-        // One instance per compositor (TODO: multi-output).
-        // File-local like ipc.cpp's state; callbacks reach it here.
+        // One instance per compositor. File-local like ipc.cpp's state; callbacks reach it here.
         struct LockState {
             Server* server = nullptr;
             wlr_session_lock_manager_v1* manager = nullptr;
             wlr_session_lock_v1* session = nullptr; // active lock, or null
-            LockSurface* surface = nullptr;         // single-output -> one surface
+            std::vector<LockSurface*> surfaces;     // one per output; the client creates them
             wlr_scene_rect* bg = nullptr;           // black backdrop under the lock UI
             wl_listener new_lock;
             wl_listener new_surface; // on the active session
@@ -30,8 +32,11 @@ namespace fenriz::lock {
         LockState* g = nullptr;
 
         void redraw() {
-            if (g->server->output)
-                wlr_output_schedule_frame(g->server->output);
+            // Every screen: a lock that repaints only one output would leave the others
+            // showing whatever was last on them.
+            for (output::Output* o : g->server->outputs)
+                if (o->enabled)
+                    wlr_output_schedule_frame(o->handle);
         }
 
         // Show only the lock tree (a black backdrop + the lock UI) and hide all normal
@@ -57,11 +62,13 @@ namespace fenriz::lock {
         }
 
         void on_surface_map(wl_listener* listener, void* data) {
-            (void)listener;
+            LockSurface* ls = wl_container_of(listener, ls, map);
             (void)data;
-            // Route the keyboard to the lock UI so the password field receives input.
-            if (g->surface)
-                focus_surface(*g->server, g->surface->handle->surface);
+            // Route the keyboard to the lock UI so the password field receives input. With one
+            // surface per output only the first needs the keyboard — they're one client, and
+            // handing focus to each new surface would yank it away as monitors appear.
+            if (g->server->seat->keyboard_state.focused_surface == nullptr || g->surfaces.size() == 1)
+                focus_surface(*g->server, ls->handle->surface);
             redraw();
         }
 
@@ -70,9 +77,13 @@ namespace fenriz::lock {
             (void)data;
             wl_list_remove(&ls->map.link);
             wl_list_remove(&ls->destroy.link);
-            if (g->surface == ls)
-                g->surface = nullptr;
+            std::erase(g->surfaces, ls);
+            const bool had_focus = g->server->seat->keyboard_state.focused_surface == ls->handle->surface;
             delete ls;
+            // An output went away while locked (lid closed at the lock screen): its surface is
+            // gone, so hand the keyboard to a surviving one or the password field goes dead.
+            if (had_focus && !g->surfaces.empty())
+                focus_surface(*g->server, g->surfaces.front()->handle->surface);
             redraw();
         }
 
@@ -98,7 +109,7 @@ namespace fenriz::lock {
             wl_signal_add(&surf->surface->events.map, &ls->map);
             ls->destroy.notify = on_surface_destroy;
             wl_signal_add(&surf->events.destroy, &ls->destroy);
-            g->surface = ls;
+            g->surfaces.push_back(ls);
         }
 
         void on_unlock(wl_listener* listener, void* data) {
@@ -142,10 +153,12 @@ namespace fenriz::lock {
             Server& server = *g->server;
             server.locked = true;
 
-            // Blank the desktop behind a black backdrop before confirming the lock.
-            if (server.output) {
+            // Blank the desktop behind a black backdrop before confirming the lock. Sized to
+            // the whole layout (null = every output's bounding box), so a second monitor is
+            // covered too — and so is any screen whose lock surface hasn't arrived yet.
+            {
                 wlr_box box;
-                wlr_output_layout_get_box(server.output_layout, server.output, &box);
+                wlr_output_layout_get_box(server.output_layout, nullptr, &box);
                 const float black[4] = {0, 0, 0, 1};
                 g->bg = wlr_scene_rect_create(server.scene_lock, box.width, box.height, black);
                 wlr_scene_node_set_position(&g->bg->node, box.x, box.y);
@@ -190,8 +203,7 @@ namespace fenriz::lock {
             focus_surface(server, server.focused_view->toplevel->base->surface);
         else
             wlr_seat_keyboard_notify_clear_focus(server.seat);
-        if (server.output)
-            wlr_output_schedule_frame(server.output);
+        redraw();
         wlr_log(WLR_INFO, "fenriz: session force-unlocked via IPC");
     }
 

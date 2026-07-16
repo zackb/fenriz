@@ -119,11 +119,13 @@ namespace fenriz {
         }
 
         // wlr-output-power-management: a shell/idle daemon (wlopm, hypridle) toggles DPMS.
-        // Shares set_dpms with the IPC `dpms` command.
+        // Shares set_dpms with the IPC `dpms` command. The request names an output — honor it
+        // rather than blanking whichever one happens to be first.
         void on_output_power(wl_listener* listener, void* data) {
             SignalListener* sl = wl_container_of(listener, sl, listener);
             auto* ev = static_cast<wlr_output_power_v1_set_mode_event*>(data);
-            output::set_dpms(*sl->server, ev->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
+            output::set_dpms(
+                *sl->server, output::by_handle(*sl->server, ev->output), ev->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
         }
 
         // idle-inhibit-v1: a client holding an inhibitor (video/fullscreen) keeps the
@@ -240,6 +242,11 @@ namespace fenriz {
         wlr_single_pixel_buffer_manager_v1_create(display);
         wlr_content_type_manager_v1_create(display, 1);
 
+        // Seed workspace homes before any output shows up, so the first monitor to appear
+        // already claims the workspaces configured for it.
+        for (int i = 0; i < WS_COUNT; i++)
+            workspaces[i].home = config.ws_home[i];
+
         output::register_handlers(*this);
 
         xdg_shell = wlr_xdg_shell_create(display, 3);
@@ -338,7 +345,8 @@ namespace fenriz {
                 loop,
                 [](void* data) -> int {
                     Server* s = static_cast<Server*>(data);
-                    int next = s->active_workspace == 0 ? 1 : 0;
+                    output::Output* o = output::focused(*s);
+                    int next = (o && o->active_ws == 0) ? 1 : 0;
                     wlr_log(WLR_INFO, "fenriz DBG: timer switching to ws %d", next);
                     set_workspace(*s, next);
                     return 0;
@@ -352,7 +360,9 @@ namespace fenriz {
 
     void reload_config(Server& server) {
         server.config = Config::load(); // built-in defaults if the file was removed
-        tiling::arrange(server);
+        // Re-apply output mode/scale/position and workspace homes, then re-home + re-arrange.
+        // Editing an `output =` line takes effect live, no restart.
+        output::apply_config(server);
         for (View* v : server.views)
             place_view_nodes(v); // border width/color/rounding on all views (incl. floating)
         wlr_log(WLR_INFO, "fenriz: config reloaded");

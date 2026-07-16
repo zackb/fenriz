@@ -8,18 +8,26 @@
 
 namespace fenriz::tiling {
 
-    void insert(Server& server, View* v, View* focus) { tree_insert(server.ws_roots[v->workspace], v, focus); }
+    void insert(Server& server, View* v, View* focus) { tree_insert(server.workspaces[v->workspace].root, v, focus); }
 
-    void remove(Server& server, View* v) { tree_remove(server.ws_roots[v->workspace], v); }
+    void remove(Server& server, View* v) { tree_remove(server.workspaces[v->workspace].root, v); }
 
     void swap(Server& server, View* a, View* b) {
         if (a == b)
             return;
-        Node* la = find_leaf(server.ws_roots[a->workspace], a);
-        Node* lb = find_leaf(server.ws_roots[b->workspace], b);
+        Node* la = find_leaf(server.workspaces[a->workspace].root, a);
+        Node* lb = find_leaf(server.workspaces[b->workspace].root, b);
         if (!la || !lb)
             return;
         std::swap(la->view, lb->view);
+        // The leaves may be in different workspaces' trees — dragging a window onto a tile on
+        // another monitor is a swap across outputs. The views trade workspaces along with
+        // their slots, or their workspace index would no longer match the tree they sit in.
+        if (a->workspace != b->workspace) {
+            std::swap(a->workspace, b->workspace);
+            view_update_output(server, a); // each landed on a new screen: re-announce scale
+            view_update_output(server, b);
+        }
         arrange(server);
     }
 
@@ -32,7 +40,7 @@ namespace fenriz::tiling {
     }
 
     void resize_split(Server& server, View* v, double dx, double dy) {
-        Node* leaf = find_leaf(server.ws_roots[v->workspace], v);
+        Node* leaf = find_leaf(server.workspaces[v->workspace].root, v);
         if (!leaf)
             return;
         // The divider follows the cursor: +dx moves the vertical split right, +dy moves the
@@ -47,36 +55,40 @@ namespace fenriz::tiling {
     }
 
     void arrange(Server& server, bool animate) {
-        // Lay out only the active workspace's tree. Guarded so an empty active workspace
-        // (root == null) still falls through to the visibility sync below — otherwise
-        // windows left on a now-hidden workspace never get disabled and linger on screen.
-        if (Node* root = server.ws_roots[server.active_workspace]) {
-            // Prefer the usable area left by layer-shell exclusive zones (bars); fall back to
-            // the full output layout before any layer surface has reserved space.
-            auto& u = server.usable_area;
+        // Lay out the workspace each output is showing, into that output's own usable area.
+        // Workspaces that aren't shown anywhere keep their tree untouched — that's what lets a
+        // layout survive a lid close and come back identical.
+        for (output::Output* out : server.outputs) {
+            if (out->active_ws < 0)
+                continue;
+            Node* root = server.workspaces[out->active_ws].root;
+            if (!root)
+                continue; // empty workspace; the visibility sync below still runs
+
+            // Prefer the usable area left by this output's exclusive zones (bars); fall back to
+            // its full box before any layer surface has reserved space.
+            wlr_box full;
+            wlr_output_layout_get_box(server.output_layout, out->handle, &full);
+            const auto& u = out->usable_area;
             int ax = u.x, ay = u.y, aw = u.width, ah = u.height;
             if (aw <= 0 || ah <= 0) {
-                wlr_box area;
-                wlr_output_layout_get_box(server.output_layout, nullptr, &area);
-                ax = area.x, ay = area.y, aw = area.width, ah = area.height;
+                ax = full.x, ay = full.y, aw = full.width, ah = full.height;
             }
 
             const int gap = server.config.gaps;
             place(root, {ax + gap, ay + gap, aw - 2 * gap, ah - 2 * gap}, gap);
 
-            wlr_box out;
-            wlr_output_layout_get_box(server.output_layout, nullptr, &out);
             const int bw = server.config.border_width;
-
             std::vector<Node*> leaves;
             collect_leaves(root, leaves);
             for (Node* n : leaves) {
                 View* view = n->view;
                 if (view->fullscreen) {
-                    // Fullscreen covers the whole output (no border inset); it keeps its tree
-                    // slot so it returns to the same tile when restored.
-                    view->box = {out.x, out.y, out.width, out.height};
-                    wlr_xdg_toplevel_set_size(view->toplevel, out.width, out.height);
+                    // Fullscreen covers the output the window is on — not the whole layout,
+                    // which would span every monitor. It keeps its tree slot so it returns to
+                    // the same tile when restored.
+                    view->box = {full.x, full.y, full.width, full.height};
+                    wlr_xdg_toplevel_set_size(view->toplevel, full.width, full.height);
                     continue;
                 }
                 // view->box is the full tile (outer border edge); the client is sized to the
@@ -97,9 +109,9 @@ namespace fenriz::tiling {
         }
 
         // Push every view's box/anim/visibility into its scene nodes. Covers all workspaces
-        // (not just the active leaves above) so views on hidden workspaces get disabled and
-        // a window just moved to another workspace stops rendering — this must run even when
-        // the active workspace is empty.
+        // (not just the shown leaves above) so views on hidden workspaces get disabled and
+        // a window just moved elsewhere stops rendering — this must run even when every
+        // shown workspace is empty.
         for (View* view : server.views)
             place_view_nodes(view);
     }

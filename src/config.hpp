@@ -34,6 +34,15 @@ namespace fenriz {
         bool repeat = false; // re-fire while held (config `binde`), volume/brightness
     };
 
+    // One `output = NAME, mode, position, scale` entry. Unset fields keep their default and
+    // fall back to the preferred mode / auto position / the global `scale`.
+    struct OutputCfg {
+        std::string name;
+        std::string mode = "preferred"; // "preferred" | "1920x1080" | "1920x1080@60" | "disable"
+        std::string position = "auto";  // "auto" | "1920x0" (layout coords)
+        float scale = 0;                // 0 = fall back to Config::scale
+    };
+
     struct Config {
         int border_width = 2;
         uint32_t border_active = 0x33ccffff;   // RGBA
@@ -50,6 +59,18 @@ namespace fenriz {
         std::vector<Bind> binds;
         std::vector<std::string> exec_once;                   // commands to run once at startup
         std::vector<std::pair<std::string, std::string>> env; // NAME,VALUE exported before exec-once
+
+        // Per-output settings, by connector name (`output = eDP-1, preferred, auto, 2.0`).
+        std::vector<OutputCfg> outputs;
+        // Which output the lid controls. Empty = detect by connector name (eDP-/LVDS-/DSI-),
+        // which is only a convention: set this when the panel is named something unexpected,
+        // or to point the lid at a different screen. Also how clamshell is exercised in a
+        // nested session, where outputs are named WL-1.
+        std::string lid_output;
+        // Each workspace's preferred output name (`workspace = 1, eDP-1`); empty = no
+        // preference. A workspace returns home whenever that output is live — this is what
+        // makes windows come back to the laptop panel when the lid opens.
+        std::string ws_home[10];
 
         // Parse from a config string. Unknown/malformed lines are ignored.
         static Config parse(const std::string& text);
