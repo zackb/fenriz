@@ -59,8 +59,7 @@ namespace fenriz {
             // the xdg surface subtree (inset by the border in place_view_nodes). The View*
             // on the container lets scene hit-testing recover the window; base->data lets
             // popups find their parent scene tree (see on_new_popup in server.cpp).
-            view->scene_tree = wlr_scene_tree_create(
-                view->floating ? server.scene_floating : server.scene_tiles);
+            view->scene_tree = wlr_scene_tree_create(view->floating ? server.scene_floating : server.scene_tiles);
             view->scene_tree->node.data = view;
             float col[4];
             u32_color(server.config.border_inactive, col);
@@ -346,6 +345,21 @@ namespace fenriz {
         const int bw = view->fullscreen ? 0 : server.config.border_width;
         wlr_scene_node_set_position(&view->surface_tree->node, bw, bw);
 
+        // Crop the client to its window geometry so CSD shadow margins (Firefox/GTK/
+        // Chromium ship a buffer bigger than the geometry) don't draw over the border
+        // band, otherwise the border survives only as corner slivers. Anchor at the
+        // geometry origin and cap to the inner border area so the frame always shows on
+        // all sides even if the client hasn't honored our size yet. Fullscreen wants the
+        // whole buffer (and no clip, to keep direct scanout eligible).
+        if (view->fullscreen) {
+            wlr_scene_subsurface_tree_set_clip(&view->surface_tree->node, nullptr);
+        } else {
+            const wlr_box& geo = view->toplevel->base->geometry;
+            wlr_box clip = {
+                geo.x, geo.y, std::max(1, view->box.width - 2 * bw), std::max(1, view->box.height - 2 * bw)};
+            wlr_scene_subsurface_tree_set_clip(&view->surface_tree->node, &clip);
+        }
+
         // Note: content opacity + corner radius are applied per-frame in the output frame
         // handler (apply_view_effects), not here — scenefx re-syncs the surface buffer after
         // our commit handler runs, clobbering opacity set at commit time back to 1.0.
@@ -367,9 +381,7 @@ namespace fenriz {
             };
             wlr_scene_rect_set_clipped_region(view->border, hole);
             float col[4];
-            u32_color(view == server.focused_view ? server.config.border_active
-                                                  : server.config.border_inactive,
-                      col);
+            u32_color(view == server.focused_view ? server.config.border_active : server.config.border_inactive, col);
             wlr_scene_rect_set_color(view->border, col);
         }
     }
@@ -407,7 +419,6 @@ namespace fenriz {
             clear_focus(server);
         ipc::publish(server); // occupancy of workspace n changed
     }
-
 
     View::View(Server& server, wlr_xdg_toplevel* toplevel) : server(&server), toplevel(toplevel) {
         wlr_surface* surface = toplevel->base->surface;
