@@ -183,13 +183,16 @@ namespace fenriz {
         return cfg;
     }
 
-    Config Config::load() {
-        std::string path;
+    std::string Config::config_path() {
         if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg)
-            path = std::string(xdg) + "/fenriz/fenriz.conf";
-        else if (const char* home = std::getenv("HOME"); home && *home)
-            path = std::string(home) + "/.config/fenriz/fenriz.conf";
+            return std::string(xdg) + "/fenriz/fenriz.conf";
+        if (const char* home = std::getenv("HOME"); home && *home)
+            return std::string(home) + "/.config/fenriz/fenriz.conf";
+        return "";
+    }
 
+    Config Config::load() {
+        std::string path = config_path();
         std::ifstream f(path);
         if (!f)
             return Config{}; // built-in defaults

@@ -44,7 +44,7 @@ namespace fenriz {
         float scale = 1.0f;         // output scale; fractional (e.g. 1.5) supported, 1.0 = off
         bool natural_scroll = true; // libinput scroll direction; false = traditional wheel
         std::vector<Bind> binds;
-        std::vector<std::string> exec_once;                    // commands to run once at startup
+        std::vector<std::string> exec_once;                   // commands to run once at startup
         std::vector<std::pair<std::string, std::string>> env; // NAME,VALUE exported before exec-once
 
         // Parse from a config string. Unknown/malformed lines are ignored.
@@ -52,6 +52,9 @@ namespace fenriz {
         // Load from $XDG_CONFIG_HOME/fenriz/fenriz.conf (or ~/.config/...),
         // falling back to built-in defaults if absent.
         static Config load();
+        // Full path to the config file (empty if neither XDG_CONFIG_HOME nor HOME is set).
+        // Used by load() and by the hot-reload directory watcher.
+        static std::string config_path();
     };
 
     Action action_from_string(const std::string& s);

@@ -2,6 +2,8 @@
 
 #include <csignal>
 #include <cstdlib>
+#include <cstring>
+#include <sys/inotify.h>
 #include <unistd.h>
 
 #include "cursor.hpp"
@@ -11,6 +13,7 @@
 #include "layer.hpp"
 #include "lock.hpp"
 #include "output.hpp"
+#include "tiling.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
 
@@ -42,6 +45,44 @@ namespace fenriz {
         void on_new_input(wl_listener* listener, void* data) {
             SignalListener* sl = wl_container_of(listener, sl, listener);
             handle_new_input(*sl->server, static_cast<wlr_input_device*>(data));
+        }
+
+        // inotify fired on the config directory: if fenriz.conf was (re)written, hot-reload.
+        int on_config_changed(int fd, uint32_t mask, void* data) {
+            (void)mask;
+            auto* server = static_cast<Server*>(data);
+            // Drain the queue; an aligned buffer big enough for at least one full event.
+            alignas(inotify_event) char buf[4096];
+            bool hit = false;
+            for (ssize_t n; (n = read(fd, buf, sizeof(buf))) > 0;) {
+                for (char* p = buf; p < buf + n;) {
+                    auto* ev = reinterpret_cast<inotify_event*>(p);
+                    if (ev->len && std::strcmp(ev->name, "fenriz.conf") == 0)
+                        hit = true;
+                    p += sizeof(inotify_event) + ev->len;
+                }
+            }
+            if (hit)
+                reload_config(*server);
+            return 0;
+        }
+
+        // Watch the config directory
+        void init_config_watch(Server& server, wl_event_loop* loop) {
+            std::string path = Config::config_path();
+            if (path.empty())
+                return;
+            std::string dir = path.substr(0, path.find_last_of('/'));
+            server.inotify_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+            if (server.inotify_fd < 0)
+                return;
+            if (inotify_add_watch(server.inotify_fd, dir.c_str(), IN_CLOSE_WRITE | IN_MOVED_TO) < 0) {
+                close(server.inotify_fd);
+                server.inotify_fd = -1;
+                return;
+            }
+            wl_event_loop_add_fd(loop, server.inotify_fd, WL_EVENT_READABLE, on_config_changed, &server);
+            wlr_log(WLR_INFO, "fenriz: watching %s for changes", path.c_str());
         }
 
         // Clipboard: a client with keyboard focus asks to own the selection. Honor it so
@@ -99,6 +140,8 @@ namespace fenriz {
     Server::Server() { config = Config::load(); }
 
     Server::~Server() {
+        if (inotify_fd >= 0)
+            close(inotify_fd);
         if (display) {
             wl_display_destroy_clients(display);
             wl_display_destroy(display);
@@ -240,6 +283,9 @@ namespace fenriz {
         // exec_once so bars/tools spawned below inherit the env and can connect immediately.
         ipc::init(*this);
 
+        // Hot-reload: apply edits to fenriz.conf live (no restart). See init_config_watch.
+        init_config_watch(*this, loop);
+
         // Export configured env vars (QT_QPA_PLATFORMTHEME) before spawning anything,
         // so exec-once clients inherit them. Set after WAYLAND_DISPLAY/FENRIZ_SOCKET so a
         // stray `env` line can't shadow those.
@@ -268,6 +314,14 @@ namespace fenriz {
         }
 
         return true;
+    }
+
+    void reload_config(Server& server) {
+        server.config = Config::load(); // built-in defaults if the file was removed
+        tiling::arrange(server);
+        for (View* v : server.views)
+            place_view_nodes(v); // border width/color/rounding on all views (incl. floating)
+        wlr_log(WLR_INFO, "fenriz: config reloaded");
     }
 
     void Server::run() { wl_display_run(display); }

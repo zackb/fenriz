@@ -37,6 +37,9 @@ namespace fenriz {
     // SIGCHLD=SIG_IGN (set in Server::start).
     void spawn(const std::string& cmd);
 
+    // Re-read fenriz.conf and apply it live
+    void reload_config(Server& server);
+
     // POD wrapper so wl_container_of recovers the owning Server without taking an
     // offsetof into a non-standard-layout class.
     struct SignalListener {
@@ -70,6 +73,8 @@ namespace fenriz {
         // Per-workspace dwindle BSP tree root (see tiling.hpp). Nodes leak at shutdown.
         tiling::Node* ws_roots[10] = {};
 
+        int inotify_fd = -1; // watches the config dir for hot-reload; closed in ~Server
+
         wl_display* display = nullptr;
         wlr_backend* backend = nullptr;
         wlr_renderer* renderer = nullptr;
@@ -94,12 +99,12 @@ namespace fenriz {
         wlr_scene_output_layout* scene_layout = nullptr;
         wlr_scene_tree* scene_background = nullptr;
         wlr_scene_tree* scene_bottom = nullptr;
-        wlr_scene_tree* scene_tiles = nullptr;      // normal windows
-        wlr_scene_tree* scene_floating = nullptr;   // floats, above tiles / below top layer
+        wlr_scene_tree* scene_tiles = nullptr;    // normal windows
+        wlr_scene_tree* scene_floating = nullptr; // floats, above tiles / below top layer
         wlr_scene_tree* scene_top = nullptr;
         wlr_scene_tree* scene_fullscreen = nullptr; // above top, below overlay
         wlr_scene_tree* scene_overlay = nullptr;
-        wlr_scene_tree* scene_lock = nullptr;       // ext-session-lock, above everything
+        wlr_scene_tree* scene_lock = nullptr; // ext-session-lock, above everything
 
         // Tiling region left after layer-shell exclusive zones (bars) are subtracted.
         struct {

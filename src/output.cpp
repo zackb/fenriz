@@ -21,7 +21,7 @@ namespace fenriz::output {
         struct Output {
             Server* server;
             wlr_output* handle;
-            wlr_scene_rect* bg;    // full-output backdrop in the background tree
+            wlr_scene_rect* bg; // full-output backdrop in the background tree
             wl_listener frame;
             wl_listener request_state;
             wl_listener destroy;
@@ -36,8 +36,7 @@ namespace fenriz::output {
         // schedule explicitly so a motionless held drag still ticks.
         bool animate(Output* output, const timespec& now) {
             Server& server = *output->server;
-            double dt = (now.tv_sec - output->last_frame.tv_sec) +
-                        (now.tv_nsec - output->last_frame.tv_nsec) / 1e9;
+            double dt = (now.tv_sec - output->last_frame.tv_sec) + (now.tv_nsec - output->last_frame.tv_nsec) / 1e9;
             output->last_frame = now;
             if (dt <= 0 || dt > 1.0)
                 dt = 1.0 / 60; // first frame or a long stall: assume one 60Hz tick
@@ -96,8 +95,8 @@ namespace fenriz::output {
                 if (server.gamma_dirty) {
                     server.gamma_dirty = false;
                     if (server.gamma_control_manager) {
-                        if (auto* g = wlr_gamma_control_manager_v1_get_control(
-                                server.gamma_control_manager, output->handle))
+                        if (auto* g =
+                                wlr_gamma_control_manager_v1_get_control(server.gamma_control_manager, output->handle))
                             wlr_gamma_control_v1_apply(g, &state);
                     }
                 }
