@@ -54,6 +54,8 @@ namespace fenriz {
         float scale = 1.0f;         // output scale; fractional (e.g. 1.5) supported, 1.0 = off
         bool natural_scroll = true; // libinput scroll direction; false = traditional wheel
         float sensitivity = 0.0f;   // libinput pointer accel speed, -1.0 (slow) .. 1.0 (fast); 0 = default
+        bool tap_to_click = true;   // trackpad tap = click (1/2/3 fingers = left/right/middle)
+        bool clickfinger = true;    // two-finger press = right-click; false = bottom-right corner
         int repeat_delay = 250;     // ms a `binde` key is held before it starts repeating
         int repeat_rate = 15;       // `binde` fires per second while held
         std::vector<Bind> binds;

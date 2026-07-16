@@ -12,6 +12,8 @@ scale            = 1.0           # default output scale; fractional ok (e.g. 1.5
                                  # `output = ...` scale below overrides it.
 natural_scroll   = true          # scroll/content follows fingers; false = traditional wheel
 sensitivity      = 0.55          # trackpad/mouse speed, -1.0 (slow) .. 1.0 (fast)
+tap_to_click     = true          # trackpad tap = click; 1/2/3 fingers = left/right/middle
+clickfinger      = true          # two-finger press = right-click; false = bottom-right corner
 
 # ---------------------------------------------------------------------------
 # outputs: output = NAME, mode, position, scale     (trailing fields optional)

@@ -360,6 +360,13 @@ namespace fenriz::cursor {
             // Pointer/trackpad speed. Skipped on devices with no accel profile
             if (dev && libinput_device_config_accel_is_available(dev))
                 libinput_device_config_accel_set_speed(dev, server.config.sensitivity);
+            // Tap-to-click, and two-finger press as right-click
+            if (dev && libinput_device_config_tap_get_finger_count(dev) > 0)
+                libinput_device_config_tap_set_enabled(
+                    dev, server.config.tap_to_click ? LIBINPUT_CONFIG_TAP_ENABLED : LIBINPUT_CONFIG_TAP_DISABLED);
+            if (dev && server.config.clickfinger &&
+                (libinput_device_config_click_get_methods(dev) & LIBINPUT_CONFIG_CLICK_METHOD_CLICKFINGER))
+                libinput_device_config_click_set_method(dev, LIBINPUT_CONFIG_CLICK_METHOD_CLICKFINGER);
         }
     }
 
