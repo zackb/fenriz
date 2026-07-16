@@ -43,6 +43,7 @@ namespace fenriz {
         float opacity = 1.0f;
         float scale = 1.0f;         // output scale; fractional (e.g. 1.5) supported, 1.0 = off
         bool natural_scroll = true; // libinput scroll direction; false = traditional wheel
+        float sensitivity = 0.0f;   // libinput pointer accel speed, -1.0 (slow) .. 1.0 (fast); 0 = default
         std::vector<Bind> binds;
         std::vector<std::string> exec_once;                   // commands to run once at startup
         std::vector<std::pair<std::string, std::string>> env; // NAME,VALUE exported before exec-once

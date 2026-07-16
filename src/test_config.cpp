@@ -10,6 +10,7 @@ int main() {
                        "border_width = 3\n"
                        "rounding = 12  # inline comment\n"
                        "opacity = 0.9\n"
+                       "sensitivity = 2.5\n" // out of range -> clamped to 1.0
                        "border_active = 0x33ccffff\n"
                        "exec-once = waybar --config /etc/x\n"
                        "env = QT_QPA_PLATFORMTHEME,qt6ct\n"
@@ -25,6 +26,7 @@ int main() {
     assert(c.border_width == 3);
     assert(c.rounding == 12);
     assert(c.opacity > 0.89f && c.opacity < 0.91f);
+    assert(c.sensitivity == 1.0f); // 2.5 clamped into [-1, 1]
     assert(c.border_active == 0x33ccffffu);
 
     // exec-once keeps the full command (not comma-split like binds).

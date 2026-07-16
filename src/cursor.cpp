@@ -295,6 +295,9 @@ namespace fenriz::cursor {
             libinput_device* dev = wlr_libinput_get_device_handle(device);
             if (dev && libinput_device_config_scroll_has_natural_scroll(dev))
                 libinput_device_config_scroll_set_natural_scroll_enabled(dev, server.config.natural_scroll);
+            // Pointer/trackpad speed. Skipped on devices with no accel profile
+            if (dev && libinput_device_config_accel_is_available(dev))
+                libinput_device_config_accel_set_speed(dev, server.config.sensitivity);
         }
     }
 

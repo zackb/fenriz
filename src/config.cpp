@@ -179,6 +179,12 @@ namespace fenriz {
                 }
             } else if (key == "natural_scroll")
                 cfg.natural_scroll = parse_bool(val, cfg.natural_scroll);
+            else if (key == "sensitivity") {
+                try {
+                    cfg.sensitivity = std::clamp(std::stof(val), -1.0f, 1.0f);
+                } catch (...) {
+                }
+            }
         }
         return cfg;
     }
