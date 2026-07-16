@@ -80,6 +80,14 @@ namespace fenriz::output {
             // change is pending). An idle, unchanged output commits nothing, so the frame
             // loop goes quiet instead of re-arming itself every vblank.
             if (wlr_scene_output_needs_frame(so) || server.gamma_dirty) {
+                // (Re)apply SceneFX per-window effects right before rendering. scenefx re-syncs
+                // each surface buffer during its own commit handling (after our commit handler),
+                // resetting opacity to 1.0 — so effects set at commit time never reach the
+                // render. Applying here, per visible view, is the reliable point.
+                for (View* view : server.views)
+                    if (view_visible(server, view))
+                        apply_view_effects(view);
+
                 wlr_output_state state;
                 wlr_output_state_init(&state);
                 wlr_scene_output_build_state(so, &state, nullptr);

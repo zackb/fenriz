@@ -48,11 +48,15 @@ extern "C" {
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output_power_management_v1.h>
 #include <wlr/types/wlr_pointer.h>
-// wlr_scene.h declares wlr_scene_rect_{create,set_color} with `color[static 4]`
-// params — the same C99 `[static N]` that C++ rejects (see the color.h guard above).
+// SceneFX (libscenefx) is a superset fork of wlr_scene providing the same scene
+// API plus corner-radius/opacity/blur/shadow. We include ITS wlr_scene.h (not
+// wlroots') so every wlr_scene_* call resolves to SceneFX; CMake links scenefx
+// before wlroots so the symbols win. Same `#define static` guard as color.h — the
+// scene header still declares `color[static 4]` params (e.g. wlr_scene_shadow_create).
 #define static
-#include <wlr/types/wlr_scene.h>
+#include <scenefx/types/wlr_scene.h>
 #undef static
+#include <scenefx/render/fx_renderer/fx_renderer.h>
 #include <wlr/types/wlr_screencopy_v1.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_session_lock_v1.h>

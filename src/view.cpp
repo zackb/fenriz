@@ -24,6 +24,21 @@ namespace fenriz {
             out[3] = (c & 0xff) / 255.0f;
         }
 
+        // Per-buffer effects for a mapped window: round the content corners and apply the
+        // global opacity. Iterated over the xdg surface subtree so every buffer matches.
+        // ponytail: CSD apps (GTK/Firefox) whose buffer includes a shadow margin round the
+        // buffer corner, not the visible window edge — clip each buffer to window geometry
+        // (SwayFX-style) if that looks wrong. Rounding radius is inset by the border so the
+        // content radius nests inside the (rounded) border frame.
+        void apply_fx(wlr_scene_buffer* buf, int /*sx*/, int /*sy*/, void* data) {
+            View* v = static_cast<View*>(data);
+            Server& s = *v->server;
+            const int bw = v->fullscreen ? 0 : s.config.border_width;
+            const int r = v->fullscreen ? 0 : std::max(0, s.config.rounding - bw);
+            wlr_scene_buffer_set_corner_radius(buf, r);
+            wlr_scene_buffer_set_opacity(buf, s.config.opacity);
+        }
+
         // Back-most (topmost) visible view on the active workspace, or null.
         View* topmost_visible(Server& server) {
             for (auto it = server.views.rbegin(); it != server.views.rend(); ++it)
@@ -302,6 +317,15 @@ namespace fenriz {
         return view->mapped && view->workspace == server.active_workspace;
     }
 
+    // (Re)apply per-window content effects (opacity + corner radius) to the view's surface
+    // buffers. Must run from the frame handler, right before rendering: scenefx re-syncs the
+    // surface buffer during its own commit handling (which runs after ours), resetting opacity
+    // to 1.0, so a value set at commit time never survives to the render.
+    void apply_view_effects(View* view) {
+        if (view->surface_tree)
+            wlr_scene_node_for_each_buffer(&view->surface_tree->node, apply_fx, view);
+    }
+
     void place_view_nodes(View* view) {
         if (!view->scene_tree)
             return; // not mapped yet
@@ -322,10 +346,26 @@ namespace fenriz {
         const int bw = view->fullscreen ? 0 : server.config.border_width;
         wlr_scene_node_set_position(&view->surface_tree->node, bw, bw);
 
+        // Note: content opacity + corner radius are applied per-frame in the output frame
+        // handler (apply_view_effects), not here — scenefx re-syncs the surface buffer after
+        // our commit handler runs, clobbering opacity set at commit time back to 1.0.
+
         const bool show_border = bw > 0;
         wlr_scene_node_set_enabled(&view->border->node, show_border);
         if (show_border) {
             wlr_scene_rect_set_size(view->border, view->box.width, view->box.height);
+            // Round the border frame to match the content so it nests instead of poking
+            // square corners past the client's rounding.
+            wlr_scene_rect_set_corner_radius(view->border, server.config.rounding);
+            // Punch out the interior (where the surface sits) so the rect is only the frame:
+            // a filled rect behind a translucent surface would bleed its color through the
+            // window. Inner radius matches the surface's own rounding (rounding - bw) so the
+            // frame is a uniform bw-wide rounded band.
+            struct clipped_region hole = {
+                .area = {bw, bw, view->box.width - 2 * bw, view->box.height - 2 * bw},
+                .corners = corner_radii_all(std::max(0, server.config.rounding - bw)),
+            };
+            wlr_scene_rect_set_clipped_region(view->border, hole);
             float col[4];
             u32_color(view == server.focused_view ? server.config.border_active
                                                   : server.config.border_inactive,

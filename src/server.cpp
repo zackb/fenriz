@@ -120,7 +120,9 @@ namespace fenriz {
             return false;
         }
 
-        renderer = wlr_renderer_autocreate(backend);
+        // SceneFX's GLES2 renderer (drop-in for wlr_renderer_autocreate); its shaders
+        // are what draw the rounded corners / opacity set in place_view_nodes.
+        renderer = fx_renderer_create(backend);
         if (!renderer) {
             wlr_log(WLR_ERROR, "failed to create renderer");
             return false;

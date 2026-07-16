@@ -90,6 +90,11 @@ namespace fenriz {
     // focus/workspace changes). No-op before the view's nodes exist (pre-map).
     void place_view_nodes(View* view);
 
+    // (Re)apply SceneFX content effects (opacity + corner radius) to a view's surface buffers.
+    // Call from the output frame handler before rendering — see the definition for why it can't
+    // live in the commit path.
+    void apply_view_effects(View* view);
+
     // Switch the active workspace / send the focused window to a workspace (0-indexed).
     void set_workspace(Server& server, int n);
     void move_focused_to_workspace(Server& server, int n);

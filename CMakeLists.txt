@@ -7,6 +7,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(PkgConfig REQUIRED)
 
+pkg_check_modules(SCENEFX   REQUIRED IMPORTED_TARGET scenefx-0.5)
 pkg_check_modules(WLROOTS   REQUIRED IMPORTED_TARGET wlroots-0.20)
 pkg_check_modules(WAYLAND   REQUIRED IMPORTED_TARGET wayland-server)
 pkg_check_modules(XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
@@ -59,6 +60,9 @@ add_executable(fenriz
 target_compile_definitions(fenriz PRIVATE WLR_USE_UNSTABLE)
 target_include_directories(fenriz PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(fenriz PRIVATE
+    # SceneFX is a superset fork of wlr_scene; both libs export wlr_scene_* symbols,
+    # so scenefx must precede wlroots in link order to win symbol resolution.
+    PkgConfig::SCENEFX
     PkgConfig::WLROOTS
     PkgConfig::WAYLAND
     PkgConfig::XKBCOMMON
