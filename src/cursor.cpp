@@ -31,6 +31,7 @@ namespace fenriz::cursor {
 
             Grab grab = Grab::None;
             View* grabbed = nullptr;
+            uint32_t resize_edges = 0; // WLR_EDGE_* corner chosen at resize-grab start
         };
 
         // The singleton, so forget_view() can reach the grab state (init() sets it).
@@ -98,8 +99,22 @@ namespace fenriz::cursor {
                 v->box.y += (int)dy;
                 return true;
             case Grab::ResizeFloat: {
-                v->box.width = std::max(1, v->box.width + (int)dx);
-                v->box.height = std::max(1, v->box.height + (int)dy);
+                // Grab the corner nearest where the drag started (resize_edges)
+                const uint32_t e = c->resize_edges;
+                const int right = v->box.x + v->box.width;
+                const int bottom = v->box.y + v->box.height;
+                if (e & WLR_EDGE_LEFT) {
+                    v->box.width = std::max(1, v->box.width - (int)dx);
+                    v->box.x = right - v->box.width;
+                } else {
+                    v->box.width = std::max(1, v->box.width + (int)dx);
+                }
+                if (e & WLR_EDGE_TOP) {
+                    v->box.height = std::max(1, v->box.height - (int)dy);
+                    v->box.y = bottom - v->box.height;
+                } else {
+                    v->box.height = std::max(1, v->box.height + (int)dy);
+                }
                 const int bw = server.config.border_width;
                 wlr_xdg_toplevel_set_size(
                     v->toplevel, std::max(1, v->box.width - 2 * bw), std::max(1, v->box.height - 2 * bw));
@@ -200,7 +215,16 @@ namespace fenriz::cursor {
                         c->grab = v->floating ? (resize ? Grab::ResizeFloat : Grab::MoveFloat)
                                               : (resize ? Grab::ResizeTile : Grab::Swap);
                         v->dragging = (c->grab == Grab::Swap); // float above tiles, hold offset
-                        wlr_cursor_set_xcursor(c->cursor, c->mgr, resize ? "se-resize" : "grabbing");
+                        // Resize the corner nearest the grab point
+                        const char* rc = "grabbing";
+                        if (resize) {
+                            const bool left = c->cursor->x < v->box.x + v->box.width / 2.0;
+                            const bool top = c->cursor->y < v->box.y + v->box.height / 2.0;
+                            c->resize_edges =
+                                (left ? WLR_EDGE_LEFT : WLR_EDGE_RIGHT) | (top ? WLR_EDGE_TOP : WLR_EDGE_BOTTOM);
+                            rc = top ? (left ? "nw-resize" : "ne-resize") : (left ? "sw-resize" : "se-resize");
+                        }
+                        wlr_cursor_set_xcursor(c->cursor, c->mgr, rc);
                         return; // consume the press; don't forward to the client
                     }
                 }
