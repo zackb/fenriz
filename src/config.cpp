@@ -170,12 +170,12 @@ namespace fenriz {
                 cfg.animation_ms = parse_int(val, cfg.animation_ms);
             else if (key == "opacity") {
                 try {
-                    cfg.opacity = std::stof(val);
+                    cfg.opacity = std::clamp(std::stof(val), 0.0f, 1.0f);
                 } catch (...) {
                 }
             } else if (key == "scale") {
                 try {
-                    cfg.scale = std::stof(val);
+                    cfg.scale = std::clamp(std::stof(val), 0.25f, 10.0f);
                 } catch (...) {
                 }
             } else if (key == "natural_scroll")

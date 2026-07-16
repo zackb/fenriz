@@ -77,6 +77,22 @@ int main() {
     assert(b4.arg == "wpctl set-volume @X 5%+");
     assert(b4.repeat);
 
+    // Out-of-range floats clamp instead of reaching the renderer. opacity feeds
+    // wlr_scene_buffer_set_opacity and scale feeds the output/fractional-scale math,
+    // where 0, negative, or absurd values misrender rather than fail loudly.
+    Config hi = Config::parse("opacity = 5\nscale = 99\n");
+    assert(hi.opacity == 1.0f);
+    assert(hi.scale == 10.0f);
+
+    Config lo = Config::parse("opacity = -1\nscale = 0\n");
+    assert(lo.opacity == 0.0f);
+    assert(lo.scale == 0.25f);
+
+    // Garbage leaves the default intact (stof throws, value untouched).
+    Config junk = Config::parse("opacity = abc\nscale = \n");
+    assert(junk.opacity == 1.0f);
+    assert(junk.scale == 1.0f);
+
     std::printf("config parser: all assertions passed\n");
     return 0;
 }

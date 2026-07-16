@@ -40,6 +40,7 @@ namespace fenriz::lock {
             wlr_scene_node_set_enabled(&server.scene_background->node, !on);
             wlr_scene_node_set_enabled(&server.scene_bottom->node, !on);
             wlr_scene_node_set_enabled(&server.scene_tiles->node, !on);
+            wlr_scene_node_set_enabled(&server.scene_floating->node, !on);
             wlr_scene_node_set_enabled(&server.scene_top->node, !on);
             wlr_scene_node_set_enabled(&server.scene_fullscreen->node, !on);
             wlr_scene_node_set_enabled(&server.scene_overlay->node, !on);
