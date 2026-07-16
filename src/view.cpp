@@ -25,7 +25,9 @@ namespace fenriz {
         }
 
         // Per-buffer effects for a mapped window: round the content corners and apply the
-        // global opacity. Iterated over the xdg surface subtree so every buffer matches.
+        // global opacity. Fullscreen drops all three (border, rounding, opacity) — nothing
+        // should show through a fullscreen window, and scenefx only direct-scans-out at
+        // opacity 1.0. Iterated over the xdg surface subtree so every buffer matches.
         // ponytail: CSD apps (GTK/Firefox) whose buffer includes a shadow margin round the
         // buffer corner, not the visible window edge — clip each buffer to window geometry
         // (SwayFX-style) if that looks wrong. Rounding radius is inset by the border so the
@@ -36,7 +38,7 @@ namespace fenriz {
             const int bw = v->fullscreen ? 0 : s.config.border_width;
             const int r = v->fullscreen ? 0 : std::max(0, s.config.rounding - bw);
             wlr_scene_buffer_set_corner_radius(buf, r);
-            wlr_scene_buffer_set_opacity(buf, s.config.opacity);
+            wlr_scene_buffer_set_opacity(buf, v->fullscreen ? 1.0f : s.config.opacity);
         }
 
         // Tell a toplevel it's tiled on all edges (or none). Advertising the tiled state is
