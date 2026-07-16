@@ -45,9 +45,16 @@ namespace fenriz {
 
         // Scene nodes, created on map (see view_handle_map). scene_tree is the container
         // positioned at the tile origin; surface_tree holds the xdg surface (inset by the
-        // border) and is also the parent for this window's popups. border is the frame rect.
+        // border); border is the frame rect.
+        //
+        // popup_tree is a sibling of surface_tree, not a child, and shares its origin (both
+        // sit at the inner border corner, which is the window-geometry top-left the popup
+        // protocol positions against). Popups must live outside surface_tree because the
+        // toplevel's clip and content effects both sweep that subtree wholesale — a popup
+        // parented under it inherits the parent's clip box and corner radius.
         wlr_scene_tree* scene_tree = nullptr;
         wlr_scene_tree* surface_tree = nullptr;
+        wlr_scene_tree* popup_tree = nullptr;
         wlr_scene_rect* border = nullptr;
 
         wl_listener map;

@@ -73,17 +73,20 @@ namespace fenriz {
                 view->workspace = o->active_ws;
             server.views.push_back(view);
 
-            // Build the scene nodes: a container tree holding the border rect (below) and
-            // the xdg surface subtree (inset by the border in place_view_nodes). The View*
-            // on the container lets scene hit-testing recover the window; base->data lets
-            // popups find their parent scene tree (see on_new_popup in server.cpp).
+            // Build the scene nodes: a container tree holding the border rect (below), the
+            // xdg surface subtree (inset by the border in place_view_nodes), and the popup
+            // tree on top. The View* on the container lets scene hit-testing recover the
+            // window; base->data lets popups find their parent scene tree (see on_new_popup
+            // in server.cpp) — that's popup_tree, not surface_tree, so menus escape the
+            // toplevel's clip and effects.
             view->scene_tree = wlr_scene_tree_create(view->floating ? server.scene_floating : server.scene_tiles);
             view->scene_tree->node.data = view;
             float col[4];
             u32_color(server.config.border_inactive, col);
             view->border = wlr_scene_rect_create(view->scene_tree, 0, 0, col);
             view->surface_tree = wlr_scene_xdg_surface_create(view->scene_tree, view->toplevel->base);
-            view->toplevel->base->data = view->surface_tree;
+            view->popup_tree = wlr_scene_tree_create(view->scene_tree); // created last: draws above
+            view->toplevel->base->data = view->popup_tree;
 
             // New window splits the focused window's tile (focus-aware dwindle).
             tiling::insert(server, view, server.focused_view);
@@ -117,6 +120,7 @@ namespace fenriz {
                 wlr_scene_node_destroy(&view->scene_tree->node);
                 view->scene_tree = nullptr;
                 view->surface_tree = nullptr;
+                view->popup_tree = nullptr;
                 view->border = nullptr;
                 view->toplevel->base->data = nullptr;
             }
@@ -387,6 +391,9 @@ namespace fenriz {
         // so we position it at the inner corner directly — no geometry offset here.
         const int bw = view->fullscreen ? 0 : server.config.border_width;
         wlr_scene_node_set_position(&view->surface_tree->node, bw, bw);
+        // Popups position themselves against the window-geometry origin, which is exactly
+        // where surface_tree sits — so popup_tree has to track it.
+        wlr_scene_node_set_position(&view->popup_tree->node, bw, bw);
 
         // Crop the client to its window geometry so CSD shadow margins (Firefox/GTK/
         // Chromium ship a buffer bigger than the geometry) don't draw over the border
