@@ -577,7 +577,9 @@ namespace fenriz::output {
                 wlr_output_state state;
                 wlr_output_state_init(&state);
                 wlr_output_state_set_enabled(&state, false);
-                wlr_output_commit_state(it->handle, &state);
+                // Check the commit: a rejected one would otherwise be logged as a successful blank below
+                if (!wlr_output_commit_state(it->handle, &state))
+                    wlr_log(WLR_ERROR, "fenriz: output %s: DPMS off commit failed", name_of(it).c_str());
                 wlr_output_state_finish(&state);
             }
             wlr_log(WLR_INFO, "fenriz: display %s %s", name_of(it).c_str(), on ? "on" : "off");
