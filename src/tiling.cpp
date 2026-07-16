@@ -42,10 +42,11 @@ namespace fenriz::tiling {
             h->ratio = std::clamp(h->ratio + dx / h->rect.w, 0.1, 0.9);
         if (Node* w = enclosing_split(leaf, false); w && w->rect.h > 0)
             w->ratio = std::clamp(w->ratio + dy / w->rect.h, 0.1, 0.9);
-        arrange(server);
+
+        arrange(server, false);
     }
 
-    void arrange(Server& server) {
+    void arrange(Server& server, bool animate) {
         // Lay out only the active workspace's tree. Guarded so an empty active workspace
         // (root == null) still falls through to the visibility sync below — otherwise
         // windows left on a now-hidden workspace never get disabled and linger on screen.
@@ -85,7 +86,7 @@ namespace fenriz::tiling {
                 // that weren't placed yet (new maps: box.width == 0) so they don't fly in.
                 const View::Box old = view->box;
                 view->box = {n->rect.x, n->rect.y, n->rect.w, n->rect.h};
-                if (server.config.animation_ms > 0 && old.width > 0) {
+                if (animate && server.config.animation_ms > 0 && old.width > 0) {
                     view->anim_ox += old.x - view->box.x;
                     view->anim_oy += old.y - view->box.y;
                 }

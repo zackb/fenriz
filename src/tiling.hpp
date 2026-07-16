@@ -14,11 +14,10 @@ namespace fenriz {
         };
 
         // Focus-aware dwindle BSP tree. Each leaf holds a View; each internal node splits
-        // its area 50/50 into two children (vertical = side-by-side, else stacked). A new
+        // its area between two children by `ratio` (default 50/50, moved by drag-to-resize;
+        // vertical = side-by-side, else stacked). A new
         // window bisects the *focused* window's tile, so focus on the left column grows the
         // left column — unlike a stateless spiral, which always subdivides the last tile.
-        // ponytail: 50/50 splits only, no persistent manual resize ratios; add per-node
-        // ratios if drag-to-resize is wanted later.
         struct Node {
             View* view = nullptr; // leaf payload (may be null in geometry-only tests)
             Node* parent = nullptr;
@@ -138,8 +137,10 @@ namespace fenriz {
         void resize_split(Server& server, View* v, double dx, double dy);
 
         // Apply the dwindle layout to server.views on the active workspace, setting each
-        // View::box and requesting the toplevel resize.
-        void arrange(Server& server);
+        // View::box and requesting the toplevel resize. `animate` feeds the position delta
+        // into the slide-into-place offset; pass false for changes that must land instantly
+        // (an interactive resize tracks the cursor 1:1; a workspace switch appears in place).
+        void arrange(Server& server, bool animate = true);
 
     } // namespace tiling
 
