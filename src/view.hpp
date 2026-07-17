@@ -28,6 +28,7 @@ namespace fenriz {
         Server* server = nullptr;
         wlr_xdg_toplevel* toplevel = nullptr;
         Box box;
+        Box saved_box; // geometry to restore on un-fullscreen
         int workspace = 0;
         bool mapped = false;
         bool focused = false;

@@ -83,14 +83,10 @@ namespace fenriz::tiling {
             collect_leaves(root, leaves);
             for (Node* n : leaves) {
                 View* view = n->view;
-                if (view->fullscreen) {
-                    // Fullscreen covers the output the window is on — not the whole layout,
-                    // which would span every monitor. It keeps its tree slot so it returns to
-                    // the same tile when restored.
-                    view->box = {full.x, full.y, full.width, full.height};
-                    wlr_xdg_toplevel_set_size(view->toplevel, full.width, full.height);
+                // Fullscreen geometry is applied in the all-views pass below (it must reach
+                // floats too, which aren't leaves).
+                if (view->fullscreen)
                     continue;
-                }
                 // view->box is the full tile (outer border edge); the client is sized to the
                 // inner area so the border frames it and content stays off the rounded edge.
                 // Feed the position delta into the render offset so the window slides from its
@@ -112,8 +108,22 @@ namespace fenriz::tiling {
         // (not just the shown leaves above) so views on hidden workspaces get disabled and
         // a window just moved elsewhere stops rendering — this must run even when every
         // shown workspace is empty.
-        for (View* view : server.views)
+        //
+        // Fullscreen geometry lands here rather than in the leaf loop: a floating window has
+        // left the tree, so a leaf-only pass never sees it and it stays at its float box
+        for (View* view : server.views) {
+            if (view->fullscreen) {
+                // Cover the output the window is on — not the whole layout, which would span
+                // every monitor. A homeless workspace has no output: leave the box as-is.
+                if (output::Output* out = view_output(server, view)) {
+                    wlr_box full;
+                    wlr_output_layout_get_box(server.output_layout, out->handle, &full);
+                    view->box = {full.x, full.y, full.width, full.height};
+                    wlr_xdg_toplevel_set_size(view->toplevel, full.width, full.height);
+                }
+            }
             place_view_nodes(view);
+        }
     }
 
 } // namespace fenriz::tiling

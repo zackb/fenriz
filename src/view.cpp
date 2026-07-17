@@ -55,6 +55,16 @@ namespace fenriz {
             }
         }
 
+        // Single owner of a view's scene-tree parent
+        void restack_view(Server& server, View* view) {
+            if (!view->scene_tree)
+                return;
+            wlr_scene_node_reparent(&view->scene_tree->node,
+                                    view->fullscreen ? server.scene_fullscreen
+                                    : view->floating ? server.scene_floating
+                                                     : server.scene_tiles);
+        }
+
         // Back-most (topmost) visible view on the active workspace, or null.
         View* topmost_visible(Server& server) {
             for (auto it = server.views.rbegin(); it != server.views.rend(); ++it)
@@ -268,14 +278,22 @@ namespace fenriz {
     void set_fullscreen(Server& server, View* view, bool on) {
         if (!view || view->fullscreen == on)
             return;
+        if (on) {
+            view->saved_box = view->box;
+        } else if (view->floating) {
+            // arrange() re-sizes tiles from their tree slot but deliberately never touches a
+            // float's box (that's what preserves free move/resize), so a float's pre-fullscreen
+            // geometry has to be put back and the client told about it here, once.
+            view->box = view->saved_box;
+            const int bw = server.config.border_width;
+            wlr_xdg_toplevel_set_size(
+                view->toplevel, std::max(1, view->box.width - 2 * bw), std::max(1, view->box.height - 2 * bw));
+        }
         view->fullscreen = on;
         wlr_xdg_toplevel_set_fullscreen(view->toplevel, on);
-        // Fullscreen views float above the top layer (below the overlay/lock); restore to
-        // the normal tile tree when cleared. arrange() re-lays out the box + border.
-        if (view->scene_tree)
-            wlr_scene_node_reparent(&view->scene_tree->node,
-                                    on ? server.scene_fullscreen
-                                       : (view->floating ? server.scene_floating : server.scene_tiles));
+        // Fullscreen views sit above the top layer (below the overlay/lock); restore to the
+        // tile/float tree when cleared. arrange() re-lays out the box + border.
+        restack_view(server, view);
         tiling::arrange(server);
     }
 
@@ -292,19 +310,15 @@ namespace fenriz {
         set_tiled(v, !v->floating); // floating -> normal (own size + shadow); tiled -> honor ours
         if (v->floating) {
             // Leave the tree (its slot is reclaimed by the sibling) and keep the current tile
-            // box as the initial floating geometry. Reparent into the floating scene tree so it
-            // sits above the tiles structurally (v is already focused, so focus_view would
-            // no-op — splice the list directly).
+            // box as the initial floating geometry. Move to the list tail so it draws above the
+            // other floats (v is already focused, so focus_view would no-op — splice directly).
             tiling::remove(server, v);
             server.views.remove(v);
             server.views.push_back(v);
-            if (v->scene_tree)
-                wlr_scene_node_reparent(&v->scene_tree->node, server.scene_floating);
         } else {
-            if (v->scene_tree)
-                wlr_scene_node_reparent(&v->scene_tree->node, server.scene_tiles);
             tiling::insert(server, v, nullptr); // re-tile at the spiral tail
         }
+        restack_view(server, v);
         tiling::arrange(server);
     }
 
