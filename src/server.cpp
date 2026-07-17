@@ -314,11 +314,20 @@ namespace fenriz {
 
         // linux-dmabuf lets GPU clients (QtQuick/quickshell, browsers) share their GPU
         // buffers zero-copy instead of falling back to SHM (a per-frame GPU->CPU->upload
-        // treadmill that burns CPU on both sides). Wiring it into the scene also enables
-        // direct scanout for fullscreen. presentation-time gives clients accurate frame
-        // pacing so they throttle to vblank instead of rendering continuously.
-        wlr_linux_dmabuf_v1* dmabuf = wlr_linux_dmabuf_v1_create_with_renderer(display, 5, renderer);
-        wlr_scene_set_linux_dmabuf_v1(scene, dmabuf);
+        // treadmill that burns CPU on both sides). presentation-time gives clients accurate
+        // frame pacing so they throttle to vblank instead of rendering continuously.
+        wlr_linux_dmabuf_v1_create_with_renderer(display, 5, renderer);
+        // deliberately NOT wlr_scene_set_linux_dmabuf_v1(scene, dmabuf) — that opts
+        // into per-surface scanout feedback, and wlr_scene re-evaluates candidacy for every
+        // scene_buffer on any scene change. A workspace switch therefore recompiles feedback
+        // for surfaces that never scan out (bars, wallpapers), minting a fresh format-table
+        // shm fd each time. Clients that only drain mesa's per-surface event queue on
+        // swapbuffers never see those events, so a static surface leaks the fd: quickshell
+        // leaked ~2 fds per switch and hit RLIMIT_NOFILE (1024) after ~478, at which point the
+        // kernel truncates SCM_RIGHTS and libwayland kills the connection.
+        // scanout mode on the actual candidate surface and ships direct scanout as a toggle,
+        // which is why the same client bug never fires there. Cost of leaving this off is
+        // fullscreen direct scanout; re-enable once clients stop leaking.
         wlr_presentation_create(display, backend, 2);
         wlr_single_pixel_buffer_manager_v1_create(display);
         wlr_content_type_manager_v1_create(display, 1);
