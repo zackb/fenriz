@@ -7,6 +7,7 @@
 
 struct wlr_output;
 struct wlr_scene_rect;
+struct wlr_swapchain;
 
 namespace fenriz {
 
@@ -42,6 +43,10 @@ namespace fenriz {
             wl_listener request_state;
             wl_listener destroy;
             timespec last_frame{}; // for frame-rate-independent animation decay
+
+            // Offscreen buffers the scene renders into while this output is zoomed; the frame
+            // is then blitted scaled to fill the output. Null unless zoom is/was active here.
+            wlr_swapchain* zoom_swapchain = nullptr;
         };
 
         // Register the backend's new_output listener.

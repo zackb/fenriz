@@ -24,6 +24,8 @@ int main() {
                        "bind = SUPER SHIFT, 4, movetoworkspace, 5\n"
                        "repeat_delay = 300\n"
                        "repeat_rate = 20\n"
+                       "zoom_mod = alt\n"
+                       "zoom_max = 4.0\n"
                        "binde = , XF86AudioRaiseVolume, exec, wpctl set-volume @X 5%+\n"
                        "garbage line without equals\n";
 
@@ -49,6 +51,10 @@ int main() {
 
     assert(c.repeat_delay == 300);
     assert(c.repeat_rate == 20);
+
+    assert(c.zoom_mod == 8u);           // "alt" -> WLR_MODIFIER_ALT bit
+    assert(c.zoom_max > 3.99f && c.zoom_max < 4.01f);
+    assert(Config{}.zoom_mod == 4u);    // default is CTRL
 
     assert(c.binds.size() == 5);
 

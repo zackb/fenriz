@@ -145,6 +145,11 @@ namespace fenriz {
         wlr_output_manager_v1* output_manager = nullptr;
         wlr_cursor* cursor = nullptr;
 
+        // Screen zoom (modifier + scroll magnifier). zoom is the current, animated level;
+        // zoom_target is what it eases toward. 1.0 = off (fast direct render path).
+        float zoom = 1.0f;
+        float zoom_target = 1.0f;
+
         // Scene graph: the render + damage-tracking layer. Idle outputs commit nothing,
         // so the compositor sleeps instead of repainting every vblank. The trees below
         // are direct children of scene->tree in bottom -> top z-order; views/layers/lock

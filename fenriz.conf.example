@@ -18,6 +18,11 @@ sensitivity      = 0.55          # trackpad/mouse speed, -1.0 (slow) .. 1.0 (fas
 tap_to_click     = true          # trackpad tap = click; 1/2/3 fingers = left/right/middle
 clickfinger      = true          # two-finger press = right-click; false = bottom-right corner
 
+# Screen zoom / magnifier: hold zoom_mod and scroll to zoom in/out around the cursor.
+zoom_mod         = ctrl          # ctrl / alt / super / shift; empty or unknown = off
+zoom_max         = 3.0           # zoom ceiling (1.0 = no zoom)
+zoom_step        = 0.1           # fraction of zoom added per scroll notch
+
 # ---------------------------------------------------------------------------
 # outputs: output = NAME, mode, position, scale     (trailing fields optional)
 #   NAME      connector name, e.g. eDP-1, DP-1, HDMI-A-1 (`wlr-randr` lists them)

@@ -239,6 +239,10 @@ namespace fenriz::cursor {
             Server& server = *c->server;
             wlr_idle_notifier_v1_notify_activity(server.idle_notifier, server.seat);
 
+            // While zoomed, the viewport re-centers on the cursor each frame
+            if (server.zoom > 1.0f)
+                schedule_frame_at_cursor(c);
+
             const double lx = c->cursor->x, ly = c->cursor->y;
             double sx, sy;
             // The scene graph resolves z-order (and the locked-only lock tree) for us.
@@ -382,7 +386,23 @@ namespace fenriz::cursor {
 
         void cursor_axis(wl_listener* listener, void* data) {
             Cursor* c = wl_container_of(listener, c, axis);
+            Server& server = *c->server;
             auto* event = static_cast<wlr_pointer_axis_event*>(data);
+
+            // Modifier + scroll = screen zoom (default CTRL, configurable via zoom_mod).
+            // The compositor consumes the event: the client never sees it.
+            const uint32_t zmod = server.config.zoom_mod;
+            wlr_keyboard* kb = wlr_seat_get_keyboard(server.seat);
+            const uint32_t mods = kb ? wlr_keyboard_get_modifiers(kb) : 0;
+            if (zmod != 0 && (mods & zmod) && event->delta != 0) {
+                const float step = server.config.zoom_step;
+                // Scroll up (negative delta) zooms in, down zooms out
+                float f = event->delta < 0 ? (1.0f + step) : (1.0f / (1.0f + step));
+                server.zoom_target = std::clamp(server.zoom_target * f, 1.0f, server.config.zoom_max);
+                schedule_frame_at_cursor(c);
+                return;
+            }
+
             wlr_seat_pointer_notify_axis(c->server->seat,
                                          event->time_msec,
                                          event->orientation,
@@ -481,9 +501,7 @@ namespace fenriz::cursor {
         }
     }
 
-    View* grabbed_view() {
-        return g_cursor ? g_cursor->grabbed : nullptr;
-    }
+    View* grabbed_view() { return g_cursor ? g_cursor->grabbed : nullptr; }
 
     void warp_to_output(Server& server, output::Output* o) {
         if (!server.cursor || !o)

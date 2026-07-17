@@ -233,6 +233,19 @@ namespace fenriz {
                 cfg.repeat_delay = parse_int(val, cfg.repeat_delay);
             else if (key == "repeat_rate")
                 cfg.repeat_rate = std::max(1, parse_int(val, cfg.repeat_rate)); // avoid /0 in timer
+            else if (key == "zoom_mod")
+                cfg.zoom_mod = mod_from_token(val); // "ctrl"/"alt"/"super"/"shift"; unknown = 0 = off
+            else if (key == "zoom_max") {
+                try {
+                    cfg.zoom_max = std::clamp(std::stof(val), 1.0f, 10.0f);
+                } catch (...) {
+                }
+            } else if (key == "zoom_step") {
+                try {
+                    cfg.zoom_step = std::clamp(std::stof(val), 0.01f, 1.0f);
+                } catch (...) {
+                }
+            }
         }
         return cfg;
     }

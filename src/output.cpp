@@ -61,6 +61,74 @@ namespace fenriz::output {
             return animating;
         }
 
+        // Apply a pending client gamma LUT (wlsunset/gammastep) to an output state, if any.
+        void apply_gamma(Server& server, wlr_output* handle, wlr_output_state* state) {
+            if (!server.gamma_dirty)
+                return;
+            server.gamma_dirty = false;
+            if (server.gamma_control_manager)
+                if (auto* g = wlr_gamma_control_manager_v1_get_control(server.gamma_control_manager, handle))
+                    wlr_gamma_control_v1_apply(g, state);
+        }
+
+        // Zoomed render: draw the whole scene into an offscreen buffer, then blit a
+        // cursor-centered sub-region of it scaled up to fill the output
+        void render_zoomed(Output* output, wlr_scene_output* so, timespec* now) {
+            Server& server = *output->server;
+            wlr_output* handle = output->handle;
+
+            // A swapchain sized/formatted for this output's primary buffer; reused across
+            // frames and reallocated automatically on a mode change.
+            if (!wlr_output_configure_primary_swapchain(handle, nullptr, &output->zoom_swapchain))
+                return;
+
+            // Render the composited scene into a buffer from our offscreen swapchain.
+            wlr_output_state scene_state;
+            wlr_output_state_init(&scene_state);
+            wlr_scene_output_state_options opts = {};
+            opts.swapchain = output->zoom_swapchain;
+            if (!wlr_scene_output_build_state(so, &scene_state, &opts) || !scene_state.buffer) {
+                wlr_output_state_finish(&scene_state);
+                return;
+            }
+            wlr_texture* tex = wlr_texture_from_buffer(server.renderer, scene_state.buffer);
+
+            // Zoom viewport, centered on the cursor and clamped to the output.
+            wlr_box lb; // output box in layout coords (== effective resolution)
+            wlr_output_layout_get_box(server.output_layout, handle, &lb);
+            const double z = server.zoom;
+            double cx = std::clamp(server.cursor->x - lb.x, 0.0, (double)lb.width);
+            double cy = std::clamp(server.cursor->y - lb.y, 0.0, (double)lb.height);
+            double vw = lb.width / z, vh = lb.height / z;
+            double vx = std::clamp(cx - vw / 2, 0.0, lb.width - vw);
+            double vy = std::clamp(cy - vh / 2, 0.0, lb.height - vh);
+            // src_box is in buffer pixels; buffer may be larger than layout box under output scale.
+            const double sx = (double)handle->width / lb.width, sy = (double)handle->height / lb.height;
+
+            wlr_output_state out_state;
+            wlr_output_state_init(&out_state);
+            if (tex) {
+                if (wlr_render_pass* pass = wlr_output_begin_render_pass(handle, &out_state, nullptr)) {
+                    // Plain textured blit — no SceneFX effects needed on the zoom, and its
+                    // pass.h is un-includable here (pulls a private egl.h). The fx_renderer
+                    // still services this base wlr_render_pass call.
+                    wlr_render_texture_options o = {};
+                    o.texture = tex;
+                    o.src_box = {vx * sx, vy * sy, vw * sx, vh * sy};
+                    o.dst_box = {0, 0, handle->width, handle->height};
+                    o.filter_mode = WLR_SCALE_FILTER_BILINEAR;
+                    wlr_render_pass_add_texture(pass, &o);
+                    wlr_render_pass_submit(pass);
+                }
+                wlr_texture_destroy(tex);
+            }
+            apply_gamma(server, handle, &out_state);
+            wlr_output_commit_state(handle, &out_state);
+            wlr_output_state_finish(&out_state);
+            wlr_output_state_finish(&scene_state);
+            wlr_scene_output_send_frame_done(so, now);
+        }
+
         void output_handle_frame(wl_listener* listener, void* data) {
             Output* output = wl_container_of(listener, output, frame);
             (void)data;
@@ -72,10 +140,26 @@ namespace fenriz::output {
             timespec now;
             clock_gettime(CLOCK_MONOTONIC, &now);
 
-            // Only commit when the scene actually needs a repaint (or a gamma LUT change is
-            // pending). An idle, unchanged output commits nothing, so the frame loop goes quiet
-            // instead of re-arming itself every vblank.
-            if (wlr_scene_output_needs_frame(so) || server.gamma_dirty) {
+            // Ease the global zoom level toward its target only on the output holding the cursor
+            const bool has_cursor =
+                wlr_output_layout_output_at(server.output_layout, server.cursor->x, server.cursor->y) == output->handle;
+            bool zoom_animating = false;
+            if (has_cursor && server.zoom != server.zoom_target) {
+                double dt = (now.tv_sec - output->last_frame.tv_sec) + (now.tv_nsec - output->last_frame.tv_nsec) / 1e9;
+                if (dt <= 0 || dt > 1.0)
+                    dt = 1.0 / 60;
+                const double tau = std::max(1, server.config.animation_ms) / 1000.0 * 0.35;
+                server.zoom = server.zoom_target + (server.zoom - server.zoom_target) * std::exp(-dt / tau);
+                if (std::abs(server.zoom - server.zoom_target) < 0.01f)
+                    server.zoom = server.zoom_target;
+                else
+                    zoom_animating = true;
+            }
+            const bool zoomed = has_cursor && server.zoom > 1.0f;
+
+            // Only commit when the scene needs a repaint, a gamma LUT change is pending, or a
+            // zoom is active/animating here. An idle, unchanged output commits nothing.
+            if (wlr_scene_output_needs_frame(so) || server.gamma_dirty || zoomed || zoom_animating) {
                 // (Re)apply SceneFX per-window effects right before rendering. scenefx re-syncs
                 // each surface buffer during its own commit handling (after our commit handler),
                 // resetting opacity to 1.0 — so effects set at commit time never reach the
@@ -84,26 +168,20 @@ namespace fenriz::output {
                     if (view_visible(server, view))
                         apply_view_effects(view);
 
-                wlr_output_state state;
-                wlr_output_state_init(&state);
-                wlr_scene_output_build_state(so, &state, nullptr);
-
-                // Apply any client-set gamma LUT (wlsunset/gammastep) on this commit.
-                if (server.gamma_dirty) {
-                    server.gamma_dirty = false;
-                    if (server.gamma_control_manager) {
-                        if (auto* g =
-                                wlr_gamma_control_manager_v1_get_control(server.gamma_control_manager, output->handle))
-                            wlr_gamma_control_v1_apply(g, &state);
-                    }
+                if (zoomed) {
+                    render_zoomed(output, so, &now);
+                } else {
+                    wlr_output_state state;
+                    wlr_output_state_init(&state);
+                    wlr_scene_output_build_state(so, &state, nullptr);
+                    apply_gamma(server, output->handle, &state);
+                    wlr_output_commit_state(output->handle, &state);
+                    wlr_output_state_finish(&state);
+                    wlr_scene_output_send_frame_done(so, &now);
                 }
-
-                wlr_output_commit_state(output->handle, &state);
-                wlr_output_state_finish(&state);
-                wlr_scene_output_send_frame_done(so, &now);
             }
 
-            if (animate(output, now))
+            if (animate(output, now) || zoom_animating)
                 wlr_output_schedule_frame(output->handle);
         }
 
@@ -145,6 +223,8 @@ namespace fenriz::output {
             server.outputs.remove(output);
 
             close_layer_surfaces(server, output->handle);
+            if (output->zoom_swapchain)
+                wlr_swapchain_destroy(output->zoom_swapchain);
             if (output->bg)
                 wlr_scene_node_destroy(&output->bg->node); // backdrop lives in the session-long tree
 

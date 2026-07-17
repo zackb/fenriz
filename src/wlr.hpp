@@ -19,7 +19,9 @@ extern "C" {
 #include <wlr/backend/libinput.h> // per-device libinput config (natural scroll); pulls in <libinput.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/pass.h>
+#include <wlr/render/swapchain.h>   // offscreen buffers for the zoom magnifier
 #include <wlr/render/wlr_renderer.h>
+#include <wlr/render/wlr_texture.h> // wlr_texture_from_buffer, for the zoom blit
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_content_type_v1.h>
 #include <wlr/types/wlr_cursor.h>

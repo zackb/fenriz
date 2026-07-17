@@ -61,6 +61,9 @@ namespace fenriz {
         bool clickfinger = true;    // two-finger press = right-click; false = bottom-right corner
         int repeat_delay = 250;     // ms a `binde` key is held before it starts repeating
         int repeat_rate = 15;       // `binde` fires per second while held
+        uint32_t zoom_mod = 4;      // modifier + scroll = screen zoom; 4 = CTRL (mirrors WLR_MODIFIER_*), 0 = off
+        float zoom_max = 3.0f;      // ceiling for the zoom level
+        float zoom_step = 0.1f;     // fraction of zoom added/removed per scroll notch
         std::vector<Bind> binds;
         std::vector<std::string> exec_once;                   // commands to run once at startup
         std::vector<std::pair<std::string, std::string>> env; // NAME,VALUE exported before exec-once
