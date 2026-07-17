@@ -9,7 +9,7 @@ and [SceneFX](https://github.com/wlrfx/scenefx).
 
 A Hyprland/niri alternative for minimalists. The goal is a compositor that is small,
 fast, and stays out of the way. Performance and stability are the primary goals over
-tons of features and eye-candy. It tiles your windows, reads a config file, speaks a small IPC, and otherwise
+tons of features and eye-candy. It tiles your windows, reads a config file, speaks a small [IPC](/docs/IPC.md), and otherwise
 does nothing you didn't ask for.
 
 ## Status
