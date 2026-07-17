@@ -95,8 +95,8 @@ namespace fenriz {
             // it must spread out behind the border and surface.
             float scol[4];
             u32_color(server.config.shadow_color, scol);
-            view->shadow = wlr_scene_shadow_create(view->scene_tree, 0, 0, server.config.rounding,
-                                                   (float)server.config.shadow_blur, scol);
+            view->shadow = wlr_scene_shadow_create(
+                view->scene_tree, 0, 0, server.config.rounding, (float)server.config.shadow_blur, scol);
             float col[4];
             u32_color(server.config.border_inactive, col);
             view->border = wlr_scene_rect_create(view->scene_tree, 0, 0, col);
@@ -243,6 +243,12 @@ namespace fenriz {
             wlr_seat_keyboard_notify_enter(server.seat, surface, kb->keycodes, kb->num_keycodes, &kb->modifiers);
     }
 
+    // Move a view to the tail of the list, which is the top of the stacking/cycle order.
+    void raise_to_tail(Server& server, View* v) {
+        server.views.remove(v);
+        server.views.push_back(v);
+    }
+
     void focus_view(Server& server, View* view) {
         // While locked, keyboard focus belongs to the lock surface; a window mapping or a
         // click underneath must not steal it. focused_view is left as-is so it's restored
@@ -274,8 +280,7 @@ namespace fenriz {
         // focused float above the *other* floats so it's on top while in use. Tiled windows
         // keep their list order (raising them would scramble cycle_focus).
         if (view->floating) {
-            server.views.remove(view);
-            server.views.push_back(view);
+            raise_to_tail(server, view);
             if (view->scene_tree)
                 wlr_scene_node_raise_to_top(&view->scene_tree->node);
         }
@@ -347,8 +352,7 @@ namespace fenriz {
             // box as the initial floating geometry. Move to the list tail so it draws above the
             // other floats (v is already focused, so focus_view would no-op — splice directly).
             tiling::remove(server, v);
-            server.views.remove(v);
-            server.views.push_back(v);
+            raise_to_tail(server, v);
         } else {
             tiling::insert(server, v, nullptr); // re-tile at the spiral tail
         }
@@ -540,9 +544,13 @@ namespace fenriz {
         View* v = server.focused_view;
         if (!v || v->workspace == n)
             return;
-        tiling::remove(server, v);
-        v->workspace = n;                   // may be on another output's workspace; we stay put
-        tiling::insert(server, v, nullptr); // append to the target workspace's tree
+        // A floating view isn't in any tree (floating <=> not tiled); only tiled views move
+        // between workspace trees, else insert would leave a phantom leaf in the destination.
+        if (!v->floating)
+            tiling::remove(server, v);
+        v->workspace = n; // may be on another output's workspace; we stay put
+        if (!v->floating)
+            tiling::insert(server, v, nullptr); // append to the target workspace's tree
         // The target workspace may be homeless (no output showing it); give it one so a window
         // sent there isn't stranded invisibly.
         if (!server.workspaces[n].output)

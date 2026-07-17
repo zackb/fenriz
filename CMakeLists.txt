@@ -104,3 +104,10 @@ target_link_libraries(fenriz_keybind_test PRIVATE PkgConfig::XKBCOMMON)
 foreach(t fenriz_config_test fenriz_tiling_test fenriz_keybind_test fenriz_output_test)
     target_compile_options(${t} PRIVATE -UNDEBUG)
 endforeach()
+
+# Register the self-checks with CTest so `ctest` runs them and reports pass/fail.
+enable_testing()
+add_test(NAME config  COMMAND fenriz_config_test)
+add_test(NAME tiling  COMMAND fenriz_tiling_test)
+add_test(NAME keybind COMMAND fenriz_keybind_test)
+add_test(NAME output  COMMAND fenriz_output_test)

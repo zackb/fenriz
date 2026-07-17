@@ -195,7 +195,11 @@ namespace fenriz {
                 // Compile the default keymap from XKB_DEFAULT_* env / system defaults.
                 xkb_context* ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
                 xkb_keymap* keymap = xkb_keymap_new_from_names(ctx, nullptr, XKB_KEYMAP_COMPILE_NO_FLAGS);
-                wlr_keyboard_set_keymap(kb, keymap);
+                // A bad XKB_DEFAULT_* in the env yields a null keymap; set_keymap would assert.
+                if (keymap)
+                    wlr_keyboard_set_keymap(kb, keymap);
+                else
+                    wlr_log(WLR_ERROR, "fenriz: keymap compile failed (check XKB_DEFAULT_*)");
                 xkb_keymap_unref(keymap);
                 xkb_context_unref(ctx);
             }

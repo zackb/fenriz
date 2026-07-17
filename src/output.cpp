@@ -117,6 +117,15 @@ namespace fenriz::output {
             wlr_scene_node_set_position(&o->bg->node, box.x, box.y);
         }
 
+        // Close (client-side) every layer surface anchored to this output before it goes away,
+        // rather than waiting for the client to notice the wl_output global vanish — otherwise a
+        // bar outlives its screen and layer::arrange keeps walking a dangling handle->output.
+        void close_layer_surfaces(Server& server, wlr_output* handle) {
+            for (LayerSurface* ls : std::list<LayerSurface*>(server.layer_surfaces))
+                if (ls->handle->output == handle)
+                    wlr_layer_surface_v1_destroy(ls->handle);
+        }
+
         void output_handle_request_state(wl_listener* listener, void* data) {
             Output* output = wl_container_of(listener, output, request_state);
             auto* event = static_cast<wlr_output_event_request_state*>(data);
@@ -134,6 +143,10 @@ namespace fenriz::output {
             wl_list_remove(&output->request_state.link);
             wl_list_remove(&output->destroy.link);
             server.outputs.remove(output);
+
+            close_layer_surfaces(server, output->handle);
+            if (output->bg)
+                wlr_scene_node_destroy(&output->bg->node); // backdrop lives in the session-long tree
 
             // Any workspace still pointing here must be re-homed before the memory goes away;
             // refresh re-runs the policy against the outputs that remain.
@@ -587,19 +600,15 @@ namespace fenriz::output {
             // ALWAYS (re)commit mode + scale, even when the output already reports itself
             // enabled. A DRM connector arrives already lit, carrying the firmware's mode and
             // scale 1 — so short-circuiting on "it's already enabled" silently skips our scale
-            // and a HiDPI panel runs at 1x. (It looks fine nested, where outputs arrive
-            // disabled, which is exactly how this got missed.)
+            // and a HiDPI panel runs at 1x. (Nested outputs arrive disabled, so this path is
+            // only exercised on real hardware.)
             commit_mode(server, o);
             // Adding to the layout re-creates the wl_output global: clients see the screen
             // appear and build their per-screen surfaces again, no reload needed.
             layout_add(server, o);
             wlr_output_schedule_frame(o->handle);
         } else if (was || o->handle->enabled) {
-            // Close this output's layer surfaces ourselves rather than waiting for clients to
-            // notice the global vanish — otherwise a bar can outlive its screen for a frame.
-            for (LayerSurface* ls : std::list<LayerSurface*>(server.layer_surfaces))
-                if (ls->handle->output == o->handle)
-                    wlr_layer_surface_v1_destroy(ls->handle);
+            close_layer_surfaces(server, o->handle);
 
             // Removing from the layout destroys the wl_output global (wlr_output_layout.h:23):
             // the screen genuinely disappears for clients.

@@ -47,7 +47,7 @@ int main() {
     }
 
     // Focus-aware: focusing the LEFT master and opening a window splits the LEFT column,
-    // not the right — the regression this whole change fixes.
+    // not the right.
     {
         Node* root = nullptr;
         add(root, tag(1), nullptr);

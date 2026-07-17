@@ -489,8 +489,7 @@ namespace fenriz::cursor {
         if (wlr_box_empty(&box))
             return;
         // Already on this output: leave the pointer where the user put it.
-        if (server.cursor->x >= box.x && server.cursor->x < box.x + box.width && server.cursor->y >= box.y &&
-            server.cursor->y < box.y + box.height)
+        if (wlr_box_contains_point(&box, server.cursor->x, server.cursor->y))
             return;
         wlr_cursor_warp(server.cursor, nullptr, box.x + box.width / 2.0, box.y + box.height / 2.0);
         if (g_cursor)
@@ -572,7 +571,8 @@ namespace fenriz::cursor {
         c->new_constraint.notify = on_new_constraint;
         wl_signal_add(&c->constraints->events.new_constraint, &c->new_constraint);
         c->constraint_destroy.notify = on_constraint_destroy;
-        // Cursor is value-initialized, so this link is {null,null} and set_constraint's unconditional
+        // Cursor is value-initialized, so this link is {null,null}, not a valid empty list. Init it
+        // so set_constraint's unconditional wl_list_remove is safe before the first constraint.
         wl_list_init(&c->constraint_destroy.link);
     }
 

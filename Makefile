@@ -17,10 +17,7 @@ install: release
 	cmake --install build/release
 
 test: debug
-	./build/debug/fenriz_config_test
-	./build/debug/fenriz_tiling_test
-	./build/debug/fenriz_keybind_test
-	./build/debug/fenriz_output_test
+	ctest --test-dir build/debug --output-on-failure
 
 .PHONY: fmt
 fmt:
