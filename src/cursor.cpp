@@ -481,6 +481,10 @@ namespace fenriz::cursor {
         }
     }
 
+    View* grabbed_view() {
+        return g_cursor ? g_cursor->grabbed : nullptr;
+    }
+
     void warp_to_output(Server& server, output::Output* o) {
         if (!server.cursor || !o)
             return;

@@ -177,6 +177,19 @@ namespace fenriz {
             // client choose its own dimensions; milestone 3 tiling will impose sizes.
             if (view->toplevel->base->initial_commit)
                 wlr_xdg_toplevel_set_size(view->toplevel, 0, 0);
+            // A floating window sizes itself (we un-tile it, so GTK/Gecko restore their own
+            // natural size + CSD margins and never honor a configure). Track the committed
+            // window geometry so the border/shadow/clip tighten onto the real content instead
+            // of leaving a band of the desktop behind the float showing through. Tiled/
+            // fullscreen boxes stay compositor-authoritative; skip while this view is under an
+            // interactive grab so a lagging commit can't fight the cursor mid-resize.
+            const wlr_box& geo = view->toplevel->base->geometry;
+            if (view->floating && !view->fullscreen && geo.width > 0 && geo.height > 0 &&
+                cursor::grabbed_view() != view) {
+                const int bw = view->server->config.border_width;
+                view->box.width = geo.width + 2 * bw;
+                view->box.height = geo.height + 2 * bw;
+            }
             // A client can change its window geometry after mapping (CSD apps adjust their
             // shadow margin); re-sync the scene nodes so the inset stays correct. No-op
             // until the nodes exist (created on map).

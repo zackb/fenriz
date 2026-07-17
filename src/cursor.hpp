@@ -18,6 +18,9 @@ namespace fenriz {
         // Cancel any interactive grab on `view` (called when it unmaps, before it's freed,
         // so a subsequent motion event can't dereference the dangling grab pointer).
         void forget_view(View* view);
+        // The view under an active interactive move/resize grab, or null. Lets the commit
+        // handler avoid reconciling a float's box from a lagging client geometry mid-drag.
+        View* grabbed_view();
         // Put the cursor in the middle of an output. Used when focus crosses screens, so the
         // pointer doesn't stay behind on the one the user just left.
         void warp_to_output(Server& server, output::Output* o);
