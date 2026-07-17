@@ -3,6 +3,10 @@
 Minimal tiling Wayland compositor built on [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots),
 with transparency, rounded corners, borders, and keybinds from a config file.
 
+<p align="center">
+  <img src="docs/img/demo.png" alt="minfin" width="800">
+</p>
+
 ## Status
 
 Functional minimal tiling compositor: brings up outputs, maps xdg-shell windows in a
