@@ -165,6 +165,35 @@ namespace fenriz {
                 continue;
             }
 
+            if (key == "windowrule") {
+                // name=value fields, comma-separated, any order: class/app_id, title
+                // (regexes), float/center/no_focus (bools), name (label, ignored).
+                // ponytail: split on ',' — a regex with a comma in a quantifier ({2,4})
+                // would break; the common cases don't, upgrade to a smarter tokenizer if needed.
+                WindowRule r;
+                for (const std::string& tok : split(val, ',')) {
+                    size_t e = tok.find('=');
+                    if (e == std::string::npos)
+                        continue;
+                    std::string k = trim(tok.substr(0, e));
+                    std::string v = trim(tok.substr(e + 1));
+                    if (k == "class" || k == "app_id")
+                        r.app_id = v;
+                    else if (k == "title")
+                        r.title = v;
+                    else if (k == "float")
+                        r.floating = parse_bool(v, false);
+                    else if (k == "center")
+                        r.center = parse_bool(v, false);
+                    else if (k == "no_focus")
+                        r.no_focus = parse_bool(v, false);
+                    // `name` and unknown fields: ignored (label only).
+                }
+                if (!r.app_id.empty() || !r.title.empty())
+                    cfg.window_rules.push_back(r);
+                continue;
+            }
+
             if (key == "workspace") {
                 // N, OUTPUT — the workspace's home output, so it returns there on hotplug.
                 std::vector<std::string> parts = split(val, ',');

@@ -35,7 +35,8 @@ namespace fenriz {
         bool mapped = false;
         bool focused = false;
         bool fullscreen = false;
-        bool floating = false; // escaped the BSP tree; free move/resize, drawn above tiles
+        bool floating = false;    // escaped the BSP tree; free move/resize, drawn above tiles
+        bool want_center = false; // window-rule center: applied once the float has real size
         bool urgent = false;   // asked to be activated while unfocused; cleared on focus
 
         // Render offset from box, in logical coords; decays to 0 each frame for the
@@ -94,6 +95,14 @@ namespace fenriz {
     // Toggle floating on the currently focused view: pull it out of the tiling tree (or
     // return it), so it can be freely moved/resized with the mouse.
     void toggle_floating(Server& server);
+
+    // Apply matching `windowrule` config to a just-mapped view (before it's tiled/focused):
+    // sets view->floating / view->want_center from every rule whose app_id/title regex
+    // matches. Returns true if a rule asked for no_focus (caller skips focusing it).
+    bool apply_window_rules(Server& server, View* view);
+
+    // Center a floating view on its output's usable area (from its current box size).
+    void center_view(Server& server, View* view);
 
     // Focus the nearest visible view whose center lies in direction (dx,dy), each in
     // {-1,0,1}: left (-1,0), right (1,0), up (0,-1), down (0,1). No-op if none.

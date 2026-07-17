@@ -128,6 +128,18 @@ int main() {
     assert(ws.ws_home[1].empty()); // never set
     assert(ws.ws_home[2].empty()); // `workspace = 3` with no output is ignored
 
+    // Window rules: name=value fields, any order; `name` is a label and ignored; a rule
+    // with neither class nor title is dropped.
+    Config wr = Config::parse("windowrule = class=^(org\\.pulseaudio\\.pavucontrol)$, float=true, center=true\n"
+                              "windowrule = name=dialogs, title=^$, no_focus=true\n"
+                              "windowrule = float=true\n"); // no match field -> dropped
+    assert(wr.window_rules.size() == 2);
+    assert(wr.window_rules[0].app_id == "^(org\\.pulseaudio\\.pavucontrol)$");
+    assert(wr.window_rules[0].floating && wr.window_rules[0].center);
+    assert(!wr.window_rules[0].no_focus);
+    assert(wr.window_rules[1].title == "^$" && wr.window_rules[1].no_focus);
+    assert(!wr.window_rules[1].floating);
+
     std::printf("config parser: all assertions passed\n");
     return 0;
 }

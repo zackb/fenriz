@@ -117,3 +117,20 @@ binde = , XF86AudioLowerVolume,  exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-
 bind  = , XF86AudioMute,         exec, wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
 binde = , XF86MonBrightnessUp,   exec, brightnessctl set 5%+
 binde = , XF86MonBrightnessDown, exec, brightnessctl set 5%-
+
+# ---------------------------------------------------------------------------
+# window rules: windowrule = <fields>   — fields are name=value, comma-separated,
+# in any order. Match a window when it opens and apply actions to it.
+#
+#   match:   class=REGEX   xdg app_id, regex (fenriz is Wayland-native, no XWayland)
+#            title=REGEX   window title, regex
+#            (omit a field or leave it empty to match anything; `^$` matches unset)
+#   actions: float=true    open floating (out of the tiling layout)
+#            center=true   center it on the screen (pair with float)
+#            no_focus=true don't focus it when it opens
+#   name=LABEL             optional; a human label, ignored by the compositor
+#
+# All matching rules stack. Note: fields split on commas, so a comma inside a regex
+# quantifier ({2,4}) will not work. There is no maximize rule — fenriz already ignores
+# client maximize requests.
+windowrule = name=pavucontrol, class=^(org\.pulseaudio\.pavucontrol)$, float=true, center=true

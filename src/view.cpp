@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <regex>
 
 #include "cursor.hpp"
 #include "ipc.hpp"
@@ -12,6 +13,8 @@
 #include "wlr.hpp"
 
 namespace fenriz {
+
+    void raise_to_tail(Server& server, View* v); // defined below; used in view_handle_map
 
     namespace {
 
@@ -83,6 +86,10 @@ namespace fenriz {
                 view->workspace = o->active_ws;
             server.views.push_back(view);
 
+            // Window rules run before the scene tree is built (it branches on floating) and
+            // before tiling/focus below.
+            const bool no_focus = apply_window_rules(server, view);
+
             // Build the scene nodes: a container tree holding the border rect (below), the
             // xdg surface subtree (inset by the border in place_view_nodes), and the popup
             // tree on top. The View* on the container lets scene hit-testing recover the
@@ -104,8 +111,10 @@ namespace fenriz {
             view->popup_tree = wlr_scene_tree_create(view->scene_tree); // created last: draws above
             view->toplevel->base->data = view->popup_tree;
 
-            // New window splits the focused window's tile (focus-aware dwindle).
-            tiling::insert(server, view, server.focused_view);
+            // New window splits the focused window's tile (focus-aware dwindle) — unless a
+            // rule floated it, in which case it stays out of the tree (floating ⟺ not tiled).
+            if (!view->floating)
+                tiling::insert(server, view, server.focused_view);
 
             // Publish this window to the foreign-toplevel (taskbar) protocol.
             if (server.foreign_toplevel_manager) {
@@ -129,9 +138,13 @@ namespace fenriz {
             // native-resolution buffer. Also re-run whenever it migrates between screens.
             view_update_output(server, view);
 
-            set_tiled(view, true); // new windows map tiled; folds into the arrange configure below
+            // Tiled windows honor our sizing; a floated one sizes itself and draws above tiles.
+            if (view->floating)
+                raise_to_tail(server, view);
+            set_tiled(view, !view->floating); // folds into the arrange configure below
             tiling::arrange(server);
-            focus_view(server, view);
+            if (!no_focus)
+                focus_view(server, view);
             ipc::publish(server);
         }
 
@@ -189,6 +202,11 @@ namespace fenriz {
                 const int bw = view->server->config.border_width;
                 view->box.width = geo.width + 2 * bw;
                 view->box.height = geo.height + 2 * bw;
+                // A window-rule center can only run once the float has its real size (now).
+                if (view->want_center) {
+                    center_view(*view->server, view);
+                    view->want_center = false;
+                }
             }
             // A client can change its window geometry after mapping (CSD apps adjust their
             // shadow margin); re-sync the scene nodes so the inset stays correct. No-op
@@ -371,6 +389,51 @@ namespace fenriz {
         }
         restack_view(server, v);
         tiling::arrange(server);
+    }
+
+    bool apply_window_rules(Server& server, View* view) {
+        // A pattern matches when empty (any) or its regex matches the value; a null
+        // app_id/title is treated as "" so `^$` rules can target unset identity. A bad
+        // regex matches nothing (parser-style: swallow, don't crash).
+        auto matches = [](const std::string& pat, const char* value) {
+            if (pat.empty())
+                return true;
+            try {
+                return std::regex_search(value ? value : "", std::regex(pat));
+            } catch (...) {
+                return false;
+            }
+        };
+        bool no_focus = false;
+        for (const WindowRule& r : server.config.window_rules) {
+            if (!matches(r.app_id, view->toplevel->app_id) || !matches(r.title, view->toplevel->title))
+                continue;
+            if (r.floating)
+                view->floating = true;
+            if (r.center)
+                view->want_center = true;
+            if (r.no_focus)
+                no_focus = true;
+        }
+        return no_focus;
+    }
+
+    void center_view(Server& server, View* view) {
+        output::Output* out = view_output(server, view);
+        if (!out)
+            return;
+        // Prefer the usable area (minus bars); fall back to the full output box, exactly
+        // as tiling::arrange does.
+        int ax = out->usable_area.x, ay = out->usable_area.y;
+        int aw = out->usable_area.width, ah = out->usable_area.height;
+        if (aw <= 0 || ah <= 0) {
+            wlr_box full;
+            wlr_output_layout_get_box(server.output_layout, out->handle, &full);
+            ax = full.x, ay = full.y, aw = full.width, ah = full.height;
+        }
+        view->box.x = ax + (aw - view->box.width) / 2;
+        view->box.y = ay + (ah - view->box.height) / 2;
+        place_view_nodes(view);
     }
 
     void focus_direction(Server& server, int dx, int dy) {

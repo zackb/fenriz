@@ -34,6 +34,17 @@ namespace fenriz {
         bool repeat = false; // re-fire while held (config `binde`), volume/brightness
     };
 
+    // One `windowrule = class=…, float=true, …` entry: match a window by app_id/title
+    // (regex, empty = any) at map time and apply the given actions. fenriz has no
+    // XWayland, so `class` matches the xdg app_id.
+    struct WindowRule {
+        std::string app_id; // regex; empty = match any
+        std::string title;  // regex; empty = match any
+        bool floating = false;
+        bool center = false;
+        bool no_focus = false; // don't take focus when it maps
+    };
+
     // One `output = NAME, mode, position, scale` entry. Unset fields keep their default and
     // fall back to the preferred mode / auto position / the global `scale`.
     struct OutputCfg {
@@ -70,6 +81,8 @@ namespace fenriz {
 
         // Per-output settings, by connector name (`output = eDP-1, preferred, auto, 2.0`).
         std::vector<OutputCfg> outputs;
+        // Window rules, applied in order at map time; all matching rules stack.
+        std::vector<WindowRule> window_rules;
         // Which output the lid controls. Empty = detect by connector name (eDP-/LVDS-/DSI-),
         // which is only a convention: set this when the panel is named something unexpected,
         // or to point the lid at a different screen. Also how clamshell is exercised in a
