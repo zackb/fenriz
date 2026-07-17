@@ -31,6 +31,7 @@ means something changed.
 ```json
 {"outputs":[{"name":"eDP-1","active":1,"focused":true,"x":0,"y":0,"width":2560,"height":1600,"scale":2.0,"internal":true}],
  "lid":"open",
+ "cursor":{"x":100,"y":200},
  "workspaces":{"active":1,"occupied":[1,2,4]},
  "activeWindow":{"appId":"foot","title":"~"}}
 ```
@@ -45,6 +46,7 @@ means something changed.
 | `outputs[].scale` | float | Effective scale for this output. |
 | `outputs[].internal` | bool | True for a built-in laptop panel (by connector name). |
 | `lid` | string | `"open"` or `"closed"`. |
+| `cursor.x/y` | int | Pointer position in layout coordinates (same space as `outputs[].x/y`). **Only current at connect time** — see below. |
 | `workspaces.active` | int | The **focused output's** workspace, 1-indexed. Unchanged meaning on a single screen. |
 | `workspaces.occupied` | int[] | Sorted 1-indexed workspaces with mapped windows, plus whatever each output is showing. |
 | `activeWindow` | object \| null | Focused window, or `null` when nothing is focused. |
@@ -52,6 +54,18 @@ means something changed.
 | `activeWindow.title` | string | Focused window's title. |
 
 Strings are JSON-escaped; control characters other than `\n` are dropped.
+
+### `cursor` is a connect-time reading, not a live feed
+
+Pointer motion is **not** a publish trigger — pushing a line per motion event would flood the
+feed for every client to serve one niche need. The snapshot is built fresh when you connect,
+so `cursor` is exactly right at that moment and then goes stale until some *other* trigger
+(focus, map/unmap, workspace switch) publishes again.
+
+This suits a one-shot client: connect, read one line, place a menu at the pointer, disconnect.
+Do not use it to track the pointer continuously — there is no Wayland-side way for fenriz to
+give you that anyway, and a client wanting live pointer position should be reading its own
+`wl_pointer` events.
 
 ### You do not need this feed to track screens
 

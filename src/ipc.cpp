@@ -94,9 +94,14 @@ namespace fenriz::ipc {
             s += "],\"lid\":\"";
             s += server.lid_closed ? "closed" : "open";
 
+            // Cursor in layout coordinates, so it composes with outputs[].x/y above.
+            s += "\",\"cursor\":{\"x\":";
+            s += std::to_string((int)server.cursor->x);
+            s += ",\"y\":" + std::to_string((int)server.cursor->y);
+
             // workspaces.active stays the focused output's workspace, so existing single-screen
             // bars keep working unchanged; `outputs` above carries the per-screen detail.
-            s += "\",\"workspaces\":{\"active\":";
+            s += "},\"workspaces\":{\"active\":";
             s += std::to_string(focus && focus->active_ws >= 0 ? focus->active_ws + 1 : 0);
             s += ",\"occupied\":[";
             bool first = true;
