@@ -32,7 +32,7 @@ means something changed.
 {"outputs":[{"name":"eDP-1","active":1,"focused":true,"x":0,"y":0,"width":2560,"height":1600,"scale":2.0,"internal":true}],
  "lid":"open",
  "cursor":{"x":100,"y":200},
- "workspaces":{"active":1,"occupied":[1,2,4]},
+ "workspaces":{"active":1,"occupied":[1,2,4],"urgent":[4]},
  "activeWindow":{"appId":"foot","title":"~"}}
 ```
 
@@ -49,6 +49,7 @@ means something changed.
 | `cursor.x/y` | int | Pointer position in layout coordinates (same space as `outputs[].x/y`). **Only current at connect time** — see below. |
 | `workspaces.active` | int | The **focused output's** workspace, 1-indexed. Unchanged meaning on a single screen. |
 | `workspaces.occupied` | int[] | Sorted 1-indexed workspaces with mapped windows, plus whatever each output is showing. |
+| `workspaces.urgent` | int[] | Sorted 1-indexed workspaces holding a window that asked to be activated (xdg-activation) while unfocused. Cleared when the window is focused. Usually empty. |
 | `activeWindow` | object \| null | Focused window, or `null` when nothing is focused. |
 | `activeWindow.appId` | string | Focused window's app id. |
 | `activeWindow.title` | string | Focused window's title. |

@@ -196,6 +196,25 @@ namespace fenriz {
                 *sl->server, output::by_handle(*sl->server, ev->output), ev->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
         }
 
+        // xdg-activation-v1: a client asks for a window to be raised. Mark the
+        // window urgent and let the shell paint its workspace. Focusing it
+        // clears the flag.
+        void on_activation_request(wl_listener* listener, void* data) {
+            SignalListener* sl = wl_container_of(listener, sl, listener);
+            auto* ev = static_cast<wlr_xdg_activation_v1_request_activate_event*>(data);
+            Server& s = *sl->server;
+            for (View* v : s.views) {
+                if (v->toplevel->base->surface != ev->surface)
+                    continue;
+                // Already looking at it: nothing to demand attention about.
+                if (v == s.focused_view || view_visible(s, v))
+                    return;
+                v->urgent = true;
+                ipc::publish(s);
+                return;
+            }
+        }
+
         // idle-inhibit-v1: a client holding an inhibitor (video/fullscreen) keeps the
         // screen awake by suppressing the idle notifier that ext-idle-notify feeds.
         struct IdleInhibitor {
@@ -383,6 +402,12 @@ namespace fenriz {
         l_output_power.server = this;
         l_output_power.listener.notify = on_output_power;
         wl_signal_add(&output_power_manager->events.set_mode, &l_output_power.listener);
+
+        // Windows asking to be raised; marks them urgent for the bar rather than stealing focus.
+        xdg_activation = wlr_xdg_activation_v1_create(display);
+        l_activation_request.server = this;
+        l_activation_request.listener.notify = on_activation_request;
+        wl_signal_add(&xdg_activation->events.request_activate, &l_activation_request.listener);
 
         cursor::init(*this);
 

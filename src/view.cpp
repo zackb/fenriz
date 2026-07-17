@@ -206,6 +206,9 @@ namespace fenriz {
         if (!view || server.locked)
             return;
 
+        // Above the early-return below on purpose
+        view->urgent = false;
+
         if (server.focused_view == view) {
             // Already the focused window, but the seat's keyboard focus can have been grabbed
             // away by a keyboard-interactive layer surface (e.g. a quickshell launcher) while

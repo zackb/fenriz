@@ -22,6 +22,7 @@ struct wlr_xdg_decoration_manager_v1;
 struct wlr_foreign_toplevel_manager_v1;
 struct wlr_gamma_control_manager_v1;
 struct wlr_output_power_manager_v1;
+struct wlr_xdg_activation_v1;
 struct wlr_scene;
 struct wlr_scene_output_layout;
 struct wlr_scene_tree;
@@ -128,6 +129,7 @@ namespace fenriz {
         wlr_foreign_toplevel_manager_v1* foreign_toplevel_manager = nullptr;
         wlr_gamma_control_manager_v1* gamma_control_manager = nullptr;
         wlr_output_power_manager_v1* output_power_manager = nullptr;
+        wlr_xdg_activation_v1* xdg_activation = nullptr;
         wlr_cursor* cursor = nullptr;
 
         // Scene graph: the render + damage-tracking layer. Idle outputs commit nothing,
@@ -157,6 +159,7 @@ namespace fenriz {
         SignalListener l_set_gamma;
         SignalListener l_output_power;
         SignalListener l_new_idle_inhibitor;
+        SignalListener l_activation_request;
     };
 
 } // namespace fenriz

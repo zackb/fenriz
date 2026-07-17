@@ -63,6 +63,11 @@ namespace fenriz::ipc {
                 if (o->enabled && o->active_ws >= 0)
                     occupied.insert(o->active_ws + 1);
 
+            std::set<int> urgent;
+            for (View* v : server.views)
+                if (v->mapped && v->urgent)
+                    urgent.insert(v->workspace + 1);
+
             // Per-output state. This is what lets a shell rebuild itself on hotplug instead of
             // being reloaded: the outputs come and go in this feed as their globals do.
             std::string s = "{\"outputs\":[";
@@ -106,6 +111,14 @@ namespace fenriz::ipc {
             s += ",\"occupied\":[";
             bool first = true;
             for (int id : occupied) {
+                if (!first)
+                    s += ',';
+                first = false;
+                s += std::to_string(id);
+            }
+            s += "],\"urgent\":[";
+            first = true;
+            for (int id : urgent) {
                 if (!first)
                     s += ',';
                 first = false;

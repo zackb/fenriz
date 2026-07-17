@@ -33,6 +33,7 @@ namespace fenriz {
         bool focused = false;
         bool fullscreen = false;
         bool floating = false; // escaped the BSP tree; free move/resize, drawn above tiles
+        bool urgent = false;   // asked to be activated while unfocused; cleared on focus
 
         // Render offset from box, in logical coords; decays to 0 each frame for the
         // slide-into-place animation (see output.cpp). `dragging` holds the offset

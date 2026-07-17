@@ -43,6 +43,7 @@ added in v6, is not advertised).
 | ext-idle-notify-v1 | `wlr_idle_notifier_v1` | `layer.cpp`, `cursor.cpp`, `keyboard.cpp` | Idle detection (swayidle/hypridle) |
 | ext-session-lock-v1 | `wlr_session_lock_manager_v1` | `lock.cpp` | Screen lockers |
 | idle-inhibit-unstable-v1 | `wlr_idle_inhibit_v1` | `server.cpp` | Video/fullscreen apps keep the screen awake (mpv, browsers) |
+| xdg-activation-v1 | `wlr_xdg_activation_v1` | `server.cpp`, `view.cpp` | "Raise me" requests (xdg-open, notifications). Marks the window urgent for the bar instead of stealing focus — Hyprland's `focus_on_activate = false` default. Surfaced as `workspaces.urgent` in [IPC.md](IPC.md). |
 
 Plus a native, non-Wayland control socket (`FENRIZ_SOCKET`) for bars/shells — see
 [IPC.md](IPC.md).
@@ -55,7 +56,6 @@ logic, "L" ≈ substantial subsystem).
 
 | Protocol | Why it matters | Effort |
 |---|---|---|
-| xdg-activation-v1 | Activation tokens: launchers/notifications requesting focus or "raise me" | S–M |
 | wlr-output-management-v1 | Dynamic output config (kanshi, wlr-randr, nwg-displays) — currently config-file only | M |
 | pointer-constraints-v1 + relative-pointer-v1 | Mouse lock/warp for games and FPS aiming | M |
 | keyboard-shortcuts-inhibit-v1 | Let VMs / remote-desktop / terminal multiplexers capture compositor binds | S |
