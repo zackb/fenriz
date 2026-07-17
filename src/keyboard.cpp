@@ -119,6 +119,21 @@ namespace fenriz {
             wl_event_source_timer_update(server.repeat_timer, server.config.repeat_delay);
         }
 
+        // Does the focused surface hold an active keyboard-shortcuts inhibitor?
+        bool shortcuts_inhibited(Server& server) {
+            if (!server.shortcuts_inhibit_manager)
+                return false;
+            wlr_surface* focused = server.seat->keyboard_state.focused_surface;
+            if (!focused)
+                return false;
+            wlr_keyboard_shortcuts_inhibitor_v1* inhibitor;
+            wl_list_for_each(inhibitor, &server.shortcuts_inhibit_manager->inhibitors, link) {
+                if (inhibitor->surface == focused && inhibitor->active)
+                    return true;
+            }
+            return false;
+        }
+
         void keyboard_handle_key(wl_listener* listener, void* data) {
             Keyboard* keyboard = wl_container_of(listener, keyboard, key);
             auto* event = static_cast<wlr_keyboard_key_event*>(data);
@@ -137,7 +152,7 @@ namespace fenriz {
             bool handled = false;
             // While locked, compositor keybinds are disabled — every key goes to the lock
             // surface so the user can type their password (and can't switch workspace etc.).
-            if (!server.locked && event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+            if (!server.locked && !shortcuts_inhibited(server) && event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
                 // Match binds against base-level (unshifted) keysyms so a bind like
                 // "SUPER SHIFT, E" resolves to XKB_KEY_e, matching the config parser.
                 xkb_layout_index_t layout = xkb_state_key_get_layout(kb->xkb_state, keycode);
@@ -173,13 +188,17 @@ namespace fenriz {
 
         void new_keyboard(Server& server, wlr_input_device* device) {
             wlr_keyboard* kb = wlr_keyboard_from_input_device(device);
+            // A virtual keyboard (wtype/ydotool/wayvnc) supplies its own keymap
+            const bool virt = wlr_input_device_get_virtual_keyboard(device) != nullptr;
 
-            // Compile the default keymap from XKB_DEFAULT_* env / system defaults.
-            xkb_context* ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-            xkb_keymap* keymap = xkb_keymap_new_from_names(ctx, nullptr, XKB_KEYMAP_COMPILE_NO_FLAGS);
-            wlr_keyboard_set_keymap(kb, keymap);
-            xkb_keymap_unref(keymap);
-            xkb_context_unref(ctx);
+            if (!virt) {
+                // Compile the default keymap from XKB_DEFAULT_* env / system defaults.
+                xkb_context* ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+                xkb_keymap* keymap = xkb_keymap_new_from_names(ctx, nullptr, XKB_KEYMAP_COMPILE_NO_FLAGS);
+                wlr_keyboard_set_keymap(kb, keymap);
+                xkb_keymap_unref(keymap);
+                xkb_context_unref(ctx);
+            }
             wlr_keyboard_set_repeat_info(kb, 60, 200);
 
             Keyboard* keyboard = new Keyboard{};
@@ -192,10 +211,67 @@ namespace fenriz {
             keyboard->destroy.notify = keyboard_handle_destroy;
             wl_signal_add(&device->events.destroy, &keyboard->destroy);
 
-            wlr_seat_set_keyboard(server.seat, kb);
+            // Handing a keymap-less keyboard to the seat makes it broadcast an invalid keymap fd that clients can't
+            // mmap
+            if (!virt)
+                wlr_seat_set_keyboard(server.seat, kb);
+        }
+
+        // An inhibitor may only take effect while its own surface has keyboard focus
+        void sync_inhibitors(Server& server) {
+            wlr_surface* focused = server.seat->keyboard_state.focused_surface;
+            wlr_keyboard_shortcuts_inhibitor_v1* inhibitor;
+            wl_list_for_each(inhibitor, &server.shortcuts_inhibit_manager->inhibitors, link) {
+                const bool want = inhibitor->surface == focused;
+                if (want && !inhibitor->active)
+                    wlr_keyboard_shortcuts_inhibitor_v1_activate(inhibitor);
+                else if (!want && inhibitor->active)
+                    wlr_keyboard_shortcuts_inhibitor_v1_deactivate(inhibitor);
+            }
+        }
+
+        // Keyboard focus moved. This is the seat's own signal rather than a hook in view.cpp's focus_surface
+        void on_keyboard_focus_change(wl_listener* listener, void* data) {
+            SignalListener* sl = wl_container_of(listener, sl, listener);
+            (void)data;
+            sync_inhibitors(*sl->server);
+        }
+
+        void on_new_inhibitor(wl_listener* listener, void* data) {
+            SignalListener* sl = wl_container_of(listener, sl, listener);
+            (void)data;
+            // wlroots has already linked it into manager->inhibitors, and drops it there on destroy
+            sync_inhibitors(*sl->server);
+        }
+
+        void on_new_virtual_keyboard(wl_listener* listener, void* data) {
+            SignalListener* sl = wl_container_of(listener, sl, listener);
+            auto* vkbd = static_cast<wlr_virtual_keyboard_v1*>(data);
+            // Straight into the normal keyboard path: it's a wlr_keyboard like any other,
+            // and new_keyboard leaves its client-supplied keymap alone.
+            handle_new_input(*sl->server, &vkbd->keyboard.base);
         }
 
     } // namespace
+
+    void init_keyboard(Server& server) {
+        // virtual-keyboard: wtype/ydotool/wayvnc and on-screen keyboards synthesize keys.
+        server.virtual_keyboard_manager = wlr_virtual_keyboard_manager_v1_create(server.display);
+        server.l_new_virtual_keyboard.server = &server;
+        server.l_new_virtual_keyboard.listener.notify = on_new_virtual_keyboard;
+        wl_signal_add(&server.virtual_keyboard_manager->events.new_virtual_keyboard,
+                      &server.l_new_virtual_keyboard.listener);
+
+        // keyboard-shortcuts-inhibit: let a focused VM / remote-desktop client swallow binds.
+        server.shortcuts_inhibit_manager = wlr_keyboard_shortcuts_inhibit_v1_create(server.display);
+        server.l_new_inhibitor.server = &server;
+        server.l_new_inhibitor.listener.notify = on_new_inhibitor;
+        wl_signal_add(&server.shortcuts_inhibit_manager->events.new_inhibitor, &server.l_new_inhibitor.listener);
+
+        server.l_keyboard_focus_change.server = &server;
+        server.l_keyboard_focus_change.listener.notify = on_keyboard_focus_change;
+        wl_signal_add(&server.seat->keyboard_state.events.focus_change, &server.l_keyboard_focus_change.listener);
+    }
 
     void handle_new_input(Server& server, wlr_input_device* device) {
         switch (device->type) {

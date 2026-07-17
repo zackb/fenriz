@@ -29,6 +29,22 @@ namespace fenriz::cursor {
             wl_listener request_set_cursor;
             wl_listener request_set_shape;
 
+            // Touchpad swipe/pinch/hold, forwarded verbatim to the focused client.
+            wlr_pointer_gestures_v1* gestures;
+            wl_listener swipe_begin, swipe_update, swipe_end;
+            wl_listener pinch_begin, pinch_update, pinch_end;
+            wl_listener hold_begin, hold_end;
+
+            wlr_virtual_pointer_manager_v1* virtual_pointers;
+            wl_listener new_virtual_pointer;
+
+            // pointer-constraints: a client (a game) pins or fences the pointer to its surface.
+            wlr_pointer_constraints_v1* constraints;
+            wlr_relative_pointer_manager_v1* relative_pointers;
+            wl_listener new_constraint;
+            wlr_pointer_constraint_v1* active = nullptr;
+            wl_listener constraint_destroy; // linked only while `active` is set
+
             Grab grab = Grab::None;
             View* grabbed = nullptr;
             uint32_t resize_edges = 0; // WLR_EDGE_* corner chosen at resize-grab start
@@ -136,6 +152,88 @@ namespace fenriz::cursor {
                 wlr_output_schedule_frame(o);
         }
 
+        void on_constraint_destroy(wl_listener* listener, void* data);
+
+        // Put the cursor where the client asked it to reappear (the locked_pointer
+        void warp_to_hint(Cursor* c) {
+            wlr_pointer_constraint_v1* con = c->active;
+            if (con->type != WLR_POINTER_CONSTRAINT_V1_LOCKED || !con->current.cursor_hint.enabled)
+                return;
+            for (View* v : c->server->views) {
+                if (v->toplevel->base->surface != con->surface || !v->surface_tree)
+                    continue;
+                int lx, ly;
+                if (!wlr_scene_node_coords(&v->surface_tree->node, &lx, &ly))
+                    return; // not currently drawn (other workspace) — nowhere to warp to
+                wlr_cursor_warp(c->cursor, nullptr, lx + con->current.cursor_hint.x, ly + con->current.cursor_hint.y);
+                wlr_seat_pointer_warp(c->server->seat, con->current.cursor_hint.x, con->current.cursor_hint.y);
+                return;
+            }
+        }
+
+        // Take or drop the pointer constraint. Null drops whatever is held.
+        void set_constraint(Cursor* c, wlr_pointer_constraint_v1* con) {
+            if (c->active == con)
+                return;
+            if (c->active) {
+                warp_to_hint(c);
+                // Unsubscribe before send_deactivated, which may destroy a oneshot constraint outright
+                wl_list_remove(&c->constraint_destroy.link);
+                wl_list_init(&c->constraint_destroy.link);
+                wlr_pointer_constraint_v1* old = c->active;
+                c->active = nullptr;
+                wlr_pointer_constraint_v1_send_deactivated(old);
+            }
+            c->active = con;
+            if (con) {
+                wl_signal_add(&con->events.destroy, &c->constraint_destroy);
+                wlr_pointer_constraint_v1_send_activated(con);
+            }
+        }
+
+        void on_constraint_destroy(wl_listener* listener, void* data) {
+            Cursor* c = wl_container_of(listener, c, constraint_destroy);
+            (void)data;
+            // Drop it without the deactivate/warp dance — it's already going away.
+            wl_list_remove(&c->constraint_destroy.link);
+            wl_list_init(&c->constraint_destroy.link);
+            c->active = nullptr;
+        }
+
+        void on_new_constraint(wl_listener* listener, void* data) {
+            Cursor* c = wl_container_of(listener, c, new_constraint);
+            auto* con = static_cast<wlr_pointer_constraint_v1*>(data);
+            // A game typically maps, takes focus, and only then asks for the lock — by which
+            // point no motion is coming to notice it in process_motion. Activate on the spot
+            // if its surface already holds the pointer.
+            if (con->surface == c->server->seat->pointer_state.focused_surface)
+                set_constraint(c, con);
+        }
+
+        // Clip a motion delta to the active constraint. True means swallow the motion
+        // entirely; dx/dy are adjusted in place otherwise.
+        bool constrain(Cursor* c, double* dx, double* dy) {
+            // A session lock or an interactive grab outranks a client's pointer lock
+            if (c->active && (c->server->locked || c->grab != Grab::None))
+                set_constraint(c, nullptr);
+            if (!c->active)
+                return false;
+
+            double sx, sy;
+            if (scene_surface_at(*c->server, c->cursor->x, c->cursor->y, &sx, &sy) != c->active->surface)
+                return false;
+            if (c->active->type == WLR_POINTER_CONSTRAINT_V1_LOCKED)
+                return true; // pinned: the cursor does not move at all
+
+            // clip to the region
+            double cx, cy;
+            if (!wlr_region_confine(&c->active->region, sx, sy, sx + *dx, sy + *dy, &cx, &cy))
+                return true;
+            *dx = cx - sx;
+            *dy = cy - sy;
+            return false;
+        }
+
         // Update pointer focus + cursor image for the surface under the cursor.
         void process_motion(Cursor* c, uint32_t time) {
             Server& server = *c->server;
@@ -145,6 +243,13 @@ namespace fenriz::cursor {
             double sx, sy;
             // The scene graph resolves z-order (and the locked-only lock tree) for us.
             wlr_surface* surface = scene_surface_at(server, lx, ly, &sx, &sy);
+
+            // Pointer focus is changing right here, and a constraint only ever applies to
+            // the surface that holds it
+            set_constraint(c,
+                           surface
+                               ? wlr_pointer_constraints_v1_constraint_for_surface(c->constraints, surface, server.seat)
+                               : nullptr);
 
             if (!surface) {
                 // Over empty desktop: show the default cursor and drop pointer focus.
@@ -159,8 +264,25 @@ namespace fenriz::cursor {
         void cursor_motion(wl_listener* listener, void* data) {
             Cursor* c = wl_container_of(listener, c, motion);
             auto* event = static_cast<wlr_pointer_motion_event*>(data);
+
+            // relative motion is what a pointer-locked client
+            wlr_relative_pointer_manager_v1_send_relative_motion(c->relative_pointers,
+                                                                 c->server->seat,
+                                                                 (uint64_t)event->time_msec * 1000,
+                                                                 event->delta_x,
+                                                                 event->delta_y,
+                                                                 event->unaccel_dx,
+                                                                 event->unaccel_dy);
+
+            double dx = event->delta_x, dy = event->delta_y;
+            if (constrain(c, &dx, &dy)) {
+                // The cursor stays put; process_motion would only re-send enter/motion.
+                wlr_idle_notifier_v1_notify_activity(c->server->idle_notifier, c->server->seat);
+                return;
+            }
+
             const double ox = c->cursor->x, oy = c->cursor->y;
-            wlr_cursor_move(c->cursor, &event->pointer->base, event->delta_x, event->delta_y);
+            wlr_cursor_move(c->cursor, &event->pointer->base, dx, dy);
             if (process_grab(c, c->cursor->x - ox, c->cursor->y - oy)) {
                 if (c->grabbed)
                     place_view_nodes(c->grabbed); // reflect the move now; no client damage drives the drag
@@ -173,8 +295,24 @@ namespace fenriz::cursor {
         void cursor_motion_absolute(wl_listener* listener, void* data) {
             Cursor* c = wl_container_of(listener, c, motion_absolute);
             auto* event = static_cast<wlr_pointer_motion_absolute_event*>(data);
+
+            double lx, ly;
+            wlr_cursor_absolute_to_layout_coords(c->cursor, &event->pointer->base, event->x, event->y, &lx, &ly);
             const double ox = c->cursor->x, oy = c->cursor->y;
-            wlr_cursor_warp_absolute(c->cursor, &event->pointer->base, event->x, event->y);
+            double dx = lx - ox, dy = ly - oy;
+
+            // An absolute event carries no unaccelerated delta, and needs none
+            wlr_relative_pointer_manager_v1_send_relative_motion(
+                c->relative_pointers, c->server->seat, (uint64_t)event->time_msec * 1000, dx, dy, dx, dy);
+
+            if (constrain(c, &dx, &dy)) {
+                wlr_idle_notifier_v1_notify_activity(c->server->idle_notifier, c->server->seat);
+                return;
+            }
+
+            // warp_closest(ox+dx, oy+dy) is what wlr_cursor_warp_absolute does internally,
+            // so this is identical when unconstrained
+            wlr_cursor_warp_closest(c->cursor, &event->pointer->base, ox + dx, oy + dy);
             if (process_grab(c, c->cursor->x - ox, c->cursor->y - oy)) {
                 if (c->grabbed)
                     place_view_nodes(c->grabbed);
@@ -258,6 +396,62 @@ namespace fenriz::cursor {
             Cursor* c = wl_container_of(listener, c, frame);
             (void)data;
             wlr_seat_pointer_notify_frame(c->server->seat);
+        }
+
+        // Touchpad gestures
+        void gesture_swipe_begin(wl_listener* listener, void* data) {
+            Cursor* c = wl_container_of(listener, c, swipe_begin);
+            auto* e = static_cast<wlr_pointer_swipe_begin_event*>(data);
+            wlr_pointer_gestures_v1_send_swipe_begin(c->gestures, c->server->seat, e->time_msec, e->fingers);
+        }
+
+        void gesture_swipe_update(wl_listener* listener, void* data) {
+            Cursor* c = wl_container_of(listener, c, swipe_update);
+            auto* e = static_cast<wlr_pointer_swipe_update_event*>(data);
+            wlr_pointer_gestures_v1_send_swipe_update(c->gestures, c->server->seat, e->time_msec, e->dx, e->dy);
+        }
+
+        void gesture_swipe_end(wl_listener* listener, void* data) {
+            Cursor* c = wl_container_of(listener, c, swipe_end);
+            auto* e = static_cast<wlr_pointer_swipe_end_event*>(data);
+            wlr_pointer_gestures_v1_send_swipe_end(c->gestures, c->server->seat, e->time_msec, e->cancelled);
+        }
+
+        void gesture_pinch_begin(wl_listener* listener, void* data) {
+            Cursor* c = wl_container_of(listener, c, pinch_begin);
+            auto* e = static_cast<wlr_pointer_pinch_begin_event*>(data);
+            wlr_pointer_gestures_v1_send_pinch_begin(c->gestures, c->server->seat, e->time_msec, e->fingers);
+        }
+
+        void gesture_pinch_update(wl_listener* listener, void* data) {
+            Cursor* c = wl_container_of(listener, c, pinch_update);
+            auto* e = static_cast<wlr_pointer_pinch_update_event*>(data);
+            wlr_pointer_gestures_v1_send_pinch_update(
+                c->gestures, c->server->seat, e->time_msec, e->dx, e->dy, e->scale, e->rotation);
+        }
+
+        void gesture_pinch_end(wl_listener* listener, void* data) {
+            Cursor* c = wl_container_of(listener, c, pinch_end);
+            auto* e = static_cast<wlr_pointer_pinch_end_event*>(data);
+            wlr_pointer_gestures_v1_send_pinch_end(c->gestures, c->server->seat, e->time_msec, e->cancelled);
+        }
+
+        void gesture_hold_begin(wl_listener* listener, void* data) {
+            Cursor* c = wl_container_of(listener, c, hold_begin);
+            auto* e = static_cast<wlr_pointer_hold_begin_event*>(data);
+            wlr_pointer_gestures_v1_send_hold_begin(c->gestures, c->server->seat, e->time_msec, e->fingers);
+        }
+
+        void gesture_hold_end(wl_listener* listener, void* data) {
+            Cursor* c = wl_container_of(listener, c, hold_end);
+            auto* e = static_cast<wlr_pointer_hold_end_event*>(data);
+            wlr_pointer_gestures_v1_send_hold_end(c->gestures, c->server->seat, e->time_msec, e->cancelled);
+        }
+
+        void on_new_virtual_pointer(wl_listener* listener, void* data) {
+            Cursor* c = wl_container_of(listener, c, new_virtual_pointer);
+            auto* event = static_cast<wlr_virtual_pointer_v1_new_pointer_event*>(data);
+            attach_pointer(*c->server, &event->new_pointer->pointer.base);
         }
 
         void request_set_cursor(wl_listener* listener, void* data) {
@@ -347,6 +541,39 @@ namespace fenriz::cursor {
         wlr_cursor_shape_manager_v1* shape_mgr = wlr_cursor_shape_manager_v1_create(server.display, 1);
         c->request_set_shape.notify = request_set_shape;
         wl_signal_add(&shape_mgr->events.request_set_shape, &c->request_set_shape);
+
+        // pointer-gestures: touchpad swipe/pinch/hold straight through to the client.
+        c->gestures = wlr_pointer_gestures_v1_create(server.display);
+        c->swipe_begin.notify = gesture_swipe_begin;
+        wl_signal_add(&c->cursor->events.swipe_begin, &c->swipe_begin);
+        c->swipe_update.notify = gesture_swipe_update;
+        wl_signal_add(&c->cursor->events.swipe_update, &c->swipe_update);
+        c->swipe_end.notify = gesture_swipe_end;
+        wl_signal_add(&c->cursor->events.swipe_end, &c->swipe_end);
+        c->pinch_begin.notify = gesture_pinch_begin;
+        wl_signal_add(&c->cursor->events.pinch_begin, &c->pinch_begin);
+        c->pinch_update.notify = gesture_pinch_update;
+        wl_signal_add(&c->cursor->events.pinch_update, &c->pinch_update);
+        c->pinch_end.notify = gesture_pinch_end;
+        wl_signal_add(&c->cursor->events.pinch_end, &c->pinch_end);
+        c->hold_begin.notify = gesture_hold_begin;
+        wl_signal_add(&c->cursor->events.hold_begin, &c->hold_begin);
+        c->hold_end.notify = gesture_hold_end;
+        wl_signal_add(&c->cursor->events.hold_end, &c->hold_end);
+
+        // virtual-pointer: wlr-randr's sibling for input
+        c->virtual_pointers = wlr_virtual_pointer_manager_v1_create(server.display);
+        c->new_virtual_pointer.notify = on_new_virtual_pointer;
+        wl_signal_add(&c->virtual_pointers->events.new_virtual_pointer, &c->new_virtual_pointer);
+
+        // pointer-constraints + relative-pointer: mouse lock for games.
+        c->relative_pointers = wlr_relative_pointer_manager_v1_create(server.display);
+        c->constraints = wlr_pointer_constraints_v1_create(server.display);
+        c->new_constraint.notify = on_new_constraint;
+        wl_signal_add(&c->constraints->events.new_constraint, &c->new_constraint);
+        c->constraint_destroy.notify = on_constraint_destroy;
+        // Cursor is value-initialized, so this link is {null,null} and set_constraint's unconditional
+        wl_list_init(&c->constraint_destroy.link);
     }
 
     void attach_pointer(Server& server, wlr_input_device* device) {

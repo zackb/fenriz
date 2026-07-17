@@ -5,6 +5,7 @@
 struct wlr_xdg_toplevel;
 struct wlr_surface;
 struct wlr_foreign_toplevel_handle_v1;
+struct wlr_ext_foreign_toplevel_handle_v1;
 struct wlr_scene_tree;
 struct wlr_scene_rect;
 
@@ -44,6 +45,9 @@ namespace fenriz {
 
         // wlr-foreign-toplevel handle (taskbar/window-list protocol); live while mapped.
         wlr_foreign_toplevel_handle_v1* foreign_handle = nullptr;
+        // ext-foreign-toplevel-list handle: the standardized successor, list-only (it can't
+        // activate or close), so it runs alongside foreign_handle rather than replacing it.
+        wlr_ext_foreign_toplevel_handle_v1* ext_foreign_handle = nullptr;
 
         // Scene nodes, created on map (see view_handle_map). scene_tree is the container
         // positioned at the tile origin; surface_tree holds the xdg surface (inset by the

@@ -124,6 +124,9 @@ namespace fenriz {
         // Apply the config's `output = ...` entries to every live output (mode/position/scale).
         void apply_config(Server& server);
 
+        // Broadcast current head state (mode/scale/position) to wlr-output-management clients
+        void publish_heads(Server& server);
+
         // Find an output by name / by its wlr_output, or null.
         Output* by_name(Server& server, const std::string& name);
         Output* by_handle(Server& server, const wlr_output* handle);

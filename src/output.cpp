@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <ctime>
 
 #include "cursor.hpp"
@@ -314,12 +316,103 @@ namespace fenriz::output {
             }
         }
 
+        std::string fmt(const char* f, ...) {
+            char buf[64];
+            va_list ap;
+            va_start(ap, f);
+            std::vsnprintf(buf, sizeof(buf), f, ap);
+            va_end(ap);
+            return buf;
+        }
+
+        // Ask the backend whether a client's whole configuration is possible, atomically.
+        bool backend_accepts(Server& server, wlr_output_configuration_v1* config) {
+            size_t len = 0;
+            wlr_backend_output_state* states = wlr_output_configuration_v1_build_state(config, &len);
+            if (!states)
+                return false;
+            const bool ok = wlr_backend_test(server.backend, states, len);
+            for (size_t i = 0; i < len; i++)
+                wlr_output_state_finish(&states[i].base);
+            free(states);
+            return ok;
+        }
+
+        // Fold one client-configured head into the runtime config.
+        void store_head(Server& server, const wlr_output_head_v1_state& s) {
+            OutputCfg cfg;
+            cfg.name = s.output->name ? s.output->name : "";
+            if (!s.enabled)
+                cfg.mode = "disable";
+            else if (s.mode)
+                cfg.mode = fmt("%dx%d@%.3f", s.mode->width, s.mode->height, s.mode->refresh / 1000.0);
+            else if (s.custom_mode.width)
+                cfg.mode = fmt("%dx%d@%.3f", s.custom_mode.width, s.custom_mode.height, s.custom_mode.refresh / 1000.0);
+            else
+                cfg.mode = "preferred";
+            cfg.position = fmt("%dx%d", s.x, s.y);
+            cfg.scale = s.scale;
+
+            // Replace rather than append: kanshi re-applies on every hotplug, and appending
+            // would grow config.outputs without bound over a session.
+            std::erase_if(server.config.outputs, [&](const OutputCfg& c) { return c.name == cfg.name; });
+            server.config.outputs.push_back(cfg);
+        }
+
+        void handle_manager_config(Server& server, wlr_output_configuration_v1* config, bool test_only) {
+            if (!backend_accepts(server, config)) {
+                wlr_output_configuration_v1_send_failed(config);
+            } else if (test_only) {
+                wlr_output_configuration_v1_send_succeeded(config);
+            } else {
+                wlr_output_configuration_head_v1* head;
+                wl_list_for_each(head, &config->heads, link) store_head(server, head->state);
+                apply_config(server); // commits mode/scale/position, evacuates workspaces, republishes
+                wlr_output_configuration_v1_send_succeeded(config);
+            }
+            wlr_output_configuration_v1_destroy(config); // ours to free either way
+        }
+
+        void on_output_apply(wl_listener* listener, void* data) {
+            SignalListener* sl = wl_container_of(listener, sl, listener);
+            handle_manager_config(*sl->server, static_cast<wlr_output_configuration_v1*>(data), false);
+        }
+
+        void on_output_test(wl_listener* listener, void* data) {
+            SignalListener* sl = wl_container_of(listener, sl, listener);
+            handle_manager_config(*sl->server, static_cast<wlr_output_configuration_v1*>(data), true);
+        }
+
     } // namespace
+
+    void publish_heads(Server& server) {
+        if (!server.output_manager)
+            return;
+        wlr_output_configuration_v1* config = wlr_output_configuration_v1_create();
+        for (Output* o : server.outputs) {
+            wlr_output_configuration_head_v1* head = wlr_output_configuration_head_v1_create(config, o->handle);
+            // The head is pre-filled from wlr_output, but position isn't the output's to know
+            wlr_box box;
+            wlr_output_layout_get_box(server.output_layout, o->handle, &box);
+            head->state.x = box.x;
+            head->state.y = box.y;
+        }
+        wlr_output_manager_v1_set_configuration(server.output_manager, config); // takes ownership
+    }
 
     void register_handlers(Server& server) {
         server.l_new_output.server = &server;
         server.l_new_output.listener.notify = on_new_output;
         wl_signal_add(&server.backend->events.new_output, &server.l_new_output.listener);
+
+        // wlr-output-management: kanshi / wlr-randr / nwg-displays drive mode, scale and position at runtime
+        server.output_manager = wlr_output_manager_v1_create(server.display);
+        server.l_output_apply.server = &server;
+        server.l_output_apply.listener.notify = on_output_apply;
+        wl_signal_add(&server.output_manager->events.apply, &server.l_output_apply.listener);
+        server.l_output_test.server = &server;
+        server.l_output_test.listener.notify = on_output_test;
+        wl_signal_add(&server.output_manager->events.test, &server.l_output_test.listener);
     }
 
     std::string name_of(const Output* o) { return o && o->handle && o->handle->name ? o->handle->name : ""; }
@@ -471,6 +564,9 @@ namespace fenriz::output {
             focus_topmost_visible(server);
 
         cursor::clamp_to_layout(server);
+        // The one place head state is broadcast: every output event (hotplug, destroy, lid,
+        // IPC, reload) funnels through here via refresh().
+        publish_heads(server);
         ipc::publish(server);
     }
 

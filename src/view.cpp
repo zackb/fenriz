@@ -109,6 +109,15 @@ namespace fenriz {
                 if (view->toplevel->app_id)
                     wlr_foreign_toplevel_handle_v1_set_app_id(view->foreign_handle, view->toplevel->app_id);
             }
+            // and to its standardized successor
+            if (server.ext_foreign_toplevel_list) {
+                wlr_ext_foreign_toplevel_handle_v1_state state = {
+                    .title = view->toplevel->title,
+                    .app_id = view->toplevel->app_id,
+                };
+                view->ext_foreign_handle =
+                    wlr_ext_foreign_toplevel_handle_v1_create(server.ext_foreign_toplevel_list, &state);
+            }
 
             // HiDPI: announce the view's own output + that output's scale, so it renders a
             // native-resolution buffer. Also re-run whenever it migrates between screens.
@@ -141,6 +150,10 @@ namespace fenriz {
                 wlr_foreign_toplevel_handle_v1_destroy(view->foreign_handle);
                 view->foreign_handle = nullptr;
             }
+            if (view->ext_foreign_handle) {
+                wlr_ext_foreign_toplevel_handle_v1_destroy(view->ext_foreign_handle);
+                view->ext_foreign_handle = nullptr;
+            }
             if (server.focused_view == view)
                 server.focused_view = nullptr;
             tiling::arrange(server);
@@ -163,11 +176,24 @@ namespace fenriz {
             place_view_nodes(view);
         }
 
+        // Push title+app_id to the ext-foreign-toplevel handle. Unlike the wlr protocol's
+        // independent setters, update_state takes both at once
+        void ext_foreign_update(View* view) {
+            if (!view->ext_foreign_handle)
+                return;
+            wlr_ext_foreign_toplevel_handle_v1_state state = {
+                .title = view->toplevel->title,
+                .app_id = view->toplevel->app_id,
+            };
+            wlr_ext_foreign_toplevel_handle_v1_update_state(view->ext_foreign_handle, &state);
+        }
+
         void view_handle_set_title(wl_listener* listener, void* data) {
             View* view = wl_container_of(listener, view, set_title);
             (void)data;
             if (view->foreign_handle && view->toplevel->title)
                 wlr_foreign_toplevel_handle_v1_set_title(view->foreign_handle, view->toplevel->title);
+            ext_foreign_update(view);
             if (view->focused)
                 ipc::publish(*view->server); // refresh activeWindow.title in the feed
         }
@@ -177,6 +203,7 @@ namespace fenriz {
             (void)data;
             if (view->foreign_handle && view->toplevel->app_id)
                 wlr_foreign_toplevel_handle_v1_set_app_id(view->foreign_handle, view->toplevel->app_id);
+            ext_foreign_update(view);
             if (view->focused)
                 ipc::publish(*view->server);
         }

@@ -18,7 +18,7 @@ added in v6, is not advertised).
 
 | Protocol | wlroots type (version) | Where | Enables |
 |---|---|---|---|
-| wl_compositor | `wlr_compositor` (v5) | `server.cpp` | Core surfaces |
+| wl_compositor | `wlr_compositor` (v6) | `server.cpp` | Core surfaces (v6: `preferred_buffer_scale`/`transform`) |
 | wl_subcompositor | `wlr_subcompositor` | `server.cpp` | Subsurfaces (client-side compositing) |
 | wl_shm | via `wlr_renderer_init_wl_display` | `server.cpp` | Shared-memory buffers |
 | linux-dmabuf-v1 (+ legacy wl_drm) | via renderer init (GLES2) | `server.cpp` | GPU buffer sharing / zero-copy |
@@ -34,6 +34,9 @@ added in v6, is not advertised).
 | wlr-data-control-unstable-v1 | `wlr_data_control_manager_v1` | `server.cpp` | Clipboard managers (wl-clipboard, cliphist) |
 | ext-data-control-v1 | `wlr_ext_data_control_manager_v1` (v1) | `server.cpp` | Standardized clipboard-manager successor |
 | wp-viewporter | `wlr_viewporter` | `server.cpp` | Buffer scaling/cropping (fractional scale) |
+| wp-presentation-time | `wlr_presentation` (v2) | `server.cpp` | Accurate vsync/frame timing for video players and games |
+| single-pixel-buffer-v1 | `wlr_single_pixel_buffer_manager_v1` | `server.cpp` | Tiny correctness protocol many toolkits probe for |
+| content-type-v1 | `wlr_content_type_manager_v1` (v1) | `server.cpp` | Clients hint "this is video/game" for scheduling/tearing policy |
 | fractional-scale-v1 | `wlr_fractional_scale_manager_v1` (v1) | `server.cpp`, `layer.cpp`, `view.cpp` | Crisp HiDPI at fractional scales |
 | cursor-shape-v1 | `wlr_cursor_shape_manager_v1` (v1) | `cursor.cpp` | Named cursors from clients |
 | wlr-foreign-toplevel-management-v1 | `wlr_foreign_toplevel_manager_v1` | `server.cpp`, `view.cpp` | Taskbars / window lists |
@@ -44,6 +47,14 @@ added in v6, is not advertised).
 | ext-session-lock-v1 | `wlr_session_lock_manager_v1` | `lock.cpp` | Screen lockers |
 | idle-inhibit-unstable-v1 | `wlr_idle_inhibit_v1` | `server.cpp` | Video/fullscreen apps keep the screen awake (mpv, browsers) |
 | xdg-activation-v1 | `wlr_xdg_activation_v1` | `server.cpp`, `view.cpp` | "Raise me" requests (xdg-open, notifications). Marks the window urgent for the bar instead of stealing focus — Hyprland's `focus_on_activate = false` default. Surfaced as `workspaces.urgent` in [IPC.md](IPC.md). |
+| ext-foreign-toplevel-list-v1 | `wlr_ext_foreign_toplevel_list_v1` (v1) | `server.cpp`, `view.cpp` | Standardized taskbar protocol. List-only (no activate/close), so it runs *alongside* the wlr one — every view carries both handles |
+| virtual-keyboard-v1 | `wlr_virtual_keyboard_manager_v1` | `keyboard.cpp` | Synthesized keys (wtype, on-screen keyboards, wayvnc). A virtual keyboard keeps its client-supplied keymap — `new_keyboard` skips the system-layout override for it |
+| wlr-virtual-pointer-v1 | `wlr_virtual_pointer_manager_v1` | `cursor.cpp` | Synthesized pointer input (ydotool, wayvnc, automated testing) |
+| keyboard-shortcuts-inhibit-v1 | `wlr_keyboard_shortcuts_inhibit_manager_v1` | `keyboard.cpp` | A focused VM / remote-desktop client swallows compositor binds. Honored only while the inhibitor's own surface has keyboard focus |
+| pointer-gestures-v1 | `wlr_pointer_gestures_v1` | `cursor.cpp` | Touchpad swipe/pinch/hold forwarded to clients (pinch-to-zoom) |
+| pointer-constraints-v1 | `wlr_pointer_constraints_v1` (v1) | `cursor.cpp` | Pointer lock/confine for games. A session lock or interactive grab outranks it |
+| relative-pointer-v1 | `wlr_relative_pointer_manager_v1` | `cursor.cpp` | Raw pointer deltas — what a pointer-locked client steers with |
+| wlr-output-management-v1 | `wlr_output_manager_v1` (v4) | `output.cpp` | Dynamic output config (kanshi, wlr-randr, nwg-displays). An apply is folded into `config.outputs`, so it shares every path with the config file; a config reload re-asserts the file |
 
 Plus a native, non-Wayland control socket (`FENRIZ_SOCKET`) for bars/shells — see
 [IPC.md](IPC.md).
@@ -56,23 +67,13 @@ logic, "L" ≈ substantial subsystem).
 
 | Protocol | Why it matters | Effort |
 |---|---|---|
-| wlr-output-management-v1 | Dynamic output config (kanshi, wlr-randr, nwg-displays) — currently config-file only | M |
-| pointer-constraints-v1 + relative-pointer-v1 | Mouse lock/warp for games and FPS aiming | M |
-| keyboard-shortcuts-inhibit-v1 | Let VMs / remote-desktop / terminal multiplexers capture compositor binds | S |
+| **XWayland** | X11-only apps (games, legacy tools). Large, standalone subsystem — a deliberate scope decision, not a drop-in | L |
 | text-input-v3 + input-method-v2 | IMEs (fcitx5/ibus), CJK and emoji input — a real gap for non-Latin input | L |
-| virtual-keyboard-v1 + virtual-pointer-v1 | wtype / ydotool / wayvnc, on-screen keyboards, automated testing | S |
-| wp-presentation-time | Accurate vsync/frame timing for video players and games | S |
-| tearing-control-v1 | Opt-in tearing for latency-sensitive fullscreen games | S |
-| pointer-gestures-unstable-v1 | Forward touchpad swipe/pinch to clients | S |
-| single-pixel-buffer-v1 | Tiny correctness protocol many toolkits probe for | S |
-| content-type-v1 | Clients hint "this is video/game" for scheduling/tearing policy | S |
-| ext-foreign-toplevel-list-v1 | Standardized successor to the wlr taskbar protocol | S |
-| security-context-v1 | Identify Flatpak-sandboxed clients (restrict privileged protocols) | S–M |
 | ext-image-copy-capture-v1 / wlr-export-dmabuf-v1 | Efficient (dmabuf) screen recording — wf-recorder, better OBS path | M |
 | tablet-v2 | Drawing tablets (Wacom) | M |
 | linux-drm-syncobj-v1 (explicit sync) | Reduce flicker/latency on some GPU drivers | M |
-| **XWayland** | X11-only apps (games, legacy tools). Large, standalone subsystem — a deliberate scope decision, not a drop-in | L |
-| bump wl_compositor v5 → v6 | Advertises `preferred_buffer_scale`/`transform`; helps toolkit HiDPI for xdg-toplevels | S |
+| tearing-control-v1 | Opt-in tearing for latency-sensitive fullscreen games. Not the S it looks like: the global alone is a no-op, the output commit path has to set the tearing page-flip flag | S–M |
+| security-context-v1 | Identify Flatpak-sandboxed clients (restrict privileged protocols). Would also give virtual-keyboard/virtual-pointer a basis to filter on — today any client may synthesize input | S–M |
 
 ## Won't implement
 

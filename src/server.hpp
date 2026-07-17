@@ -23,6 +23,10 @@ struct wlr_foreign_toplevel_manager_v1;
 struct wlr_gamma_control_manager_v1;
 struct wlr_output_power_manager_v1;
 struct wlr_xdg_activation_v1;
+struct wlr_virtual_keyboard_manager_v1;
+struct wlr_keyboard_shortcuts_inhibit_manager_v1;
+struct wlr_ext_foreign_toplevel_list_v1;
+struct wlr_output_manager_v1;
 struct wlr_scene;
 struct wlr_scene_output_layout;
 struct wlr_scene_tree;
@@ -130,6 +134,15 @@ namespace fenriz {
         wlr_gamma_control_manager_v1* gamma_control_manager = nullptr;
         wlr_output_power_manager_v1* output_power_manager = nullptr;
         wlr_xdg_activation_v1* xdg_activation = nullptr;
+        wlr_virtual_keyboard_manager_v1* virtual_keyboard_manager = nullptr;
+        wlr_keyboard_shortcuts_inhibit_manager_v1* shortcuts_inhibit_manager = nullptr;
+        // ext-foreign-toplevel-list: the standardized taskbar protocol. List-only (no
+        // activate/close), so it supplements foreign_toplevel_manager rather than replacing
+        // it — both globals are live and every view carries a handle for each.
+        wlr_ext_foreign_toplevel_list_v1* ext_foreign_toplevel_list = nullptr;
+        // wlr-output-management: kanshi/wlr-randr. An apply is folded into config.outputs
+        // (see store_head in output.cpp), so there's no second source of truth to reconcile.
+        wlr_output_manager_v1* output_manager = nullptr;
         wlr_cursor* cursor = nullptr;
 
         // Scene graph: the render + damage-tracking layer. Idle outputs commit nothing,
@@ -160,6 +173,11 @@ namespace fenriz {
         SignalListener l_output_power;
         SignalListener l_new_idle_inhibitor;
         SignalListener l_activation_request;
+        SignalListener l_new_virtual_keyboard;
+        SignalListener l_new_inhibitor;
+        SignalListener l_keyboard_focus_change;
+        SignalListener l_output_apply;
+        SignalListener l_output_test;
     };
 
 } // namespace fenriz

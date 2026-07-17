@@ -307,7 +307,10 @@ namespace fenriz {
             return false;
         }
 
-        wlr_compositor_create(display, 5, renderer);
+        // v6 adds wl_surface.preferred_buffer_scale/transform: the compositor tells each
+        // surface the scale to render at, instead of the client inferring it from the
+        // wl_outputs it happens to overlap. Better HiDPI for toolkits that honor it.
+        wlr_compositor_create(display, 6, renderer);
         wlr_subcompositor_create(display);
         wlr_data_device_manager_create(display);
 
@@ -392,6 +395,10 @@ namespace fenriz {
         wlr_xdg_output_manager_v1_create(display, output_layout);
         wlr_screencopy_manager_v1_create(display);
         foreign_toplevel_manager = wlr_foreign_toplevel_manager_v1_create(display);
+        // ext-foreign-toplevel-list is the standardized successor, but list-only: no
+        // activate/close/fullscreen requests. Taskbars that want to *act* on a window still
+        // need the wlr protocol above, so both stay live and each view carries both handles.
+        ext_foreign_toplevel_list = wlr_ext_foreign_toplevel_list_v1_create(display, 1);
         gamma_control_manager = wlr_gamma_control_manager_v1_create(display);
         l_set_gamma.server = this;
         l_set_gamma.listener.notify = on_set_gamma;
@@ -410,6 +417,7 @@ namespace fenriz {
         wl_signal_add(&xdg_activation->events.request_activate, &l_activation_request.listener);
 
         cursor::init(*this);
+        init_keyboard(*this); // virtual-keyboard + shortcuts-inhibit; needs the seat above
 
         layer::init(*this); // creates idle_notifier; must precede idle-inhibit wiring below
         lock::init(*this);

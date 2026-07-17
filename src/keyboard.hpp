@@ -9,6 +9,9 @@ namespace fenriz {
 
     class Server;
 
+    // Create the keyboard-side protocol globals (virtual-keyboard, shortcuts-inhibit).
+    void init_keyboard(Server& server);
+
     // Set up a newly-attached input device (keyboards handled here; pointers -> cursor).
     void handle_new_input(Server& server, wlr_input_device* device);
 
