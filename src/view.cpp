@@ -91,6 +91,12 @@ namespace fenriz {
             // toplevel's clip and effects.
             view->scene_tree = wlr_scene_tree_create(view->floating ? server.scene_floating : server.scene_tiles);
             view->scene_tree->node.data = view;
+            // Shadow first so it's the bottom-most child (z-order = insertion order):
+            // it must spread out behind the border and surface.
+            float scol[4];
+            u32_color(server.config.shadow_color, scol);
+            view->shadow = wlr_scene_shadow_create(view->scene_tree, 0, 0, server.config.rounding,
+                                                   (float)server.config.shadow_blur, scol);
             float col[4];
             u32_color(server.config.border_inactive, col);
             view->border = wlr_scene_rect_create(view->scene_tree, 0, 0, col);
@@ -141,6 +147,7 @@ namespace fenriz {
                 view->surface_tree = nullptr;
                 view->popup_tree = nullptr;
                 view->border = nullptr;
+                view->shadow = nullptr;
                 view->toplevel->base->data = nullptr;
             }
             cursor::forget_view(view); // drop any in-flight mouse grab before the view is gone
@@ -477,6 +484,15 @@ namespace fenriz {
             float col[4];
             u32_color(view == server.focused_view ? server.config.border_active : server.config.border_inactive, col);
             wlr_scene_rect_set_color(view->border, col);
+        }
+
+        // Soft glow: only the focused, non-fullscreen window. Sized to the box; the blur
+        // spills outside as a halo while the opaque window occludes the solid center.
+        const bool glow = server.config.shadow && !view->fullscreen && view == server.focused_view;
+        wlr_scene_node_set_enabled(&view->shadow->node, glow);
+        if (glow) {
+            wlr_scene_shadow_set_size(view->shadow, view->box.width, view->box.height);
+            wlr_scene_shadow_set_corner_radius(view->shadow, server.config.rounding);
         }
     }
 

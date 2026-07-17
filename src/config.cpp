@@ -194,6 +194,12 @@ namespace fenriz {
                 cfg.border_active = parse_color(val, cfg.border_active);
             else if (key == "border_inactive")
                 cfg.border_inactive = parse_color(val, cfg.border_inactive);
+            else if (key == "shadow")
+                cfg.shadow = parse_bool(val, cfg.shadow);
+            else if (key == "shadow_color")
+                cfg.shadow_color = parse_color(val, cfg.shadow_color);
+            else if (key == "shadow_blur")
+                cfg.shadow_blur = parse_int(val, cfg.shadow_blur);
             else if (key == "gaps")
                 cfg.gaps = parse_int(val, cfg.gaps);
             else if (key == "rounding")

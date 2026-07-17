@@ -8,6 +8,7 @@ struct wlr_foreign_toplevel_handle_v1;
 struct wlr_ext_foreign_toplevel_handle_v1;
 struct wlr_scene_tree;
 struct wlr_scene_rect;
+struct wlr_scene_shadow;
 
 namespace fenriz {
 
@@ -62,6 +63,7 @@ namespace fenriz {
         wlr_scene_tree* surface_tree = nullptr;
         wlr_scene_tree* popup_tree = nullptr;
         wlr_scene_rect* border = nullptr;
+        wlr_scene_shadow* shadow = nullptr; // soft glow, bottom-most; enabled only when focused
 
         wl_listener map;
         wl_listener unmap;

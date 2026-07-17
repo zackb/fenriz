@@ -12,6 +12,9 @@ int main() {
                        "opacity = 0.9\n"
                        "sensitivity = 2.5\n" // out of range -> clamped to 1.0
                        "border_active = 0x33ccffff\n"
+                       "shadow = off\n"
+                       "shadow_color = 0xaabbcc80\n"
+                       "shadow_blur = 24\n"
                        "exec-once = waybar --config /etc/x\n"
                        "env = QT_QPA_PLATFORMTHEME,qt6ct\n"
                        "env = FOO,a,b,c\n" // value keeps commas; only the first splits
@@ -31,6 +34,9 @@ int main() {
     assert(c.opacity > 0.89f && c.opacity < 0.91f);
     assert(c.sensitivity == 1.0f); // 2.5 clamped into [-1, 1]
     assert(c.border_active == 0x33ccffffu);
+    assert(c.shadow == false);
+    assert(c.shadow_color == 0xaabbcc80u);
+    assert(c.shadow_blur == 24);
 
     // exec-once keeps the full command (not comma-split like binds).
     assert(c.exec_once.size() == 1);
