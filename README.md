@@ -12,6 +12,14 @@ fast, and stays out of the way. Performance and stability are the primary goals 
 tons of features and eye-candy. It tiles your windows, reads a config file, speaks a small [IPC](/docs/IPC.md), and otherwise
 does nothing you didn't ask for.
 
+## Goals
+
+- Great tiling support: dwindle BSP layout, floating, fullscreen, and per-window rules.
+- As performant as possible, with a small codebase, minimal dependencies, and extremely low resource use.
+- Stable and predictable: no surprises, no crashes, no memory leaks, no breaking changes every other release.
+- Perfect multi-monitor and clamshell support out of the box (see #multi-monitor-and-clamshell).
+- Integration with existing Wayland tools: quickshell, swaybar, waybar, wlogout, wdisplays, wlr-randr, etc.
+
 ## Status
 
 Usable daily driver. Brings up outputs (multi-monitor + clamshell), tiles xdg-shell
