@@ -156,10 +156,17 @@ namespace fenriz::output {
                     zoom_animating = true;
             }
             const bool zoomed = has_cursor && server.zoom > 1.0f;
+            // The zoom path renders via a manual pass into the output's own buffers, which the
+            // scene's damage tracking never sees. Returning to the direct (damage-tracked) path
+            // would then leave stale zoom pixels in undamaged regions, so the first unzoomed
+            // frame must force a whole-output repaint. ponytail: only cleans the cursor's output;
+            // zooming then moving to another output mid-zoom can strand a stale frame there.
+            const bool exiting_zoom = output->zoom_active && !zoomed;
 
             // Only commit when the scene needs a repaint, a gamma LUT change is pending, or a
-            // zoom is active/animating here. An idle, unchanged output commits nothing.
-            if (wlr_scene_output_needs_frame(so) || server.gamma_dirty || zoomed || zoom_animating) {
+            // zoom is active/animating/just-ended here. An idle, unchanged output commits nothing.
+            if (wlr_scene_output_needs_frame(so) || server.gamma_dirty || zoomed || zoom_animating ||
+                exiting_zoom) {
                 // (Re)apply SceneFX per-window effects right before rendering. scenefx re-syncs
                 // each surface buffer during its own commit handling (after our commit handler),
                 // resetting opacity to 1.0 — so effects set at commit time never reach the
@@ -171,6 +178,8 @@ namespace fenriz::output {
                 if (zoomed) {
                     render_zoomed(output, so, &now);
                 } else {
+                    if (exiting_zoom)
+                        wlr_damage_ring_add_whole(&so->damage_ring); // propagates to every buffer via rotate
                     wlr_output_state state;
                     wlr_output_state_init(&state);
                     wlr_scene_output_build_state(so, &state, nullptr);
@@ -180,6 +189,7 @@ namespace fenriz::output {
                     wlr_scene_output_send_frame_done(so, &now);
                 }
             }
+            output->zoom_active = zoomed;
 
             if (animate(output, now) || zoom_animating)
                 wlr_output_schedule_frame(output->handle);

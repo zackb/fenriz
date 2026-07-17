@@ -47,6 +47,7 @@ namespace fenriz {
             // Offscreen buffers the scene renders into while this output is zoomed; the frame
             // is then blitted scaled to fill the output. Null unless zoom is/was active here.
             wlr_swapchain* zoom_swapchain = nullptr;
+            bool zoom_active = false; // rendered zoomed last frame; drives the exit full-repaint
         };
 
         // Register the backend's new_output listener.
