@@ -1,9 +1,9 @@
 #include "server.hpp"
 
-#include <csignal>
 #include <cstdlib>
 #include <cstring>
 #include <sys/inotify.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "cursor.hpp"
@@ -265,10 +265,21 @@ namespace fenriz {
     void spawn(const std::string& cmd) {
         if (cmd.empty())
             return;
-        if (fork() == 0) {
-            execl("/bin/sh", "/bin/sh", "-c", cmd.c_str(), (char*)nullptr);
-            _exit(1);
+        // Double-fork so the command reparents to init and fenriz never has a long-lived
+        // child to reap. We deliberately do NOT set SIGCHLD to SIG_IGN: that disposition
+        // survives execve and would leak into wlroots' Xwayland, whose keymap compile
+        // wait4()s its xkbcomp child
+        pid_t pid = fork();
+        if (pid == 0) {
+            setsid();
+            if (fork() == 0) {
+                execl("/bin/sh", "/bin/sh", "-c", cmd.c_str(), (char*)nullptr);
+                _exit(127);
+            }
+            _exit(0);
         }
+        if (pid > 0)
+            waitpid(pid, nullptr, 0); // reap the intermediate; grandchild is init's now
     }
 
     Server::Server() { config = Config::load(); }
@@ -287,8 +298,6 @@ namespace fenriz {
     }
 
     bool Server::start() {
-        // Reap exec'd children (see keyboard spawn) without wait() bookkeeping.
-        signal(SIGCHLD, SIG_IGN);
 
         display = wl_display_create();
         wl_event_loop* loop = wl_display_get_event_loop(display);

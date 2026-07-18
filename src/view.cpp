@@ -651,9 +651,9 @@ namespace fenriz {
         // so we position it at the inner corner directly — no geometry offset here.
         const int bw = view->fullscreen ? 0 : server.config.border_width;
         wlr_scene_node_set_position(&view->surface_tree->node, bw, bw);
-        // Popups position themselves against the window-geometry origin, which is exactly
-        // where surface_tree sits — so popup_tree has to track it.
-        wlr_scene_node_set_position(&view->popup_tree->node, bw, bw);
+        // Popups position themselves against the window-geometry origin, which is exactly where surface_tree sits
+        if (view->popup_tree)
+            wlr_scene_node_set_position(&view->popup_tree->node, bw, bw);
 
         // Crop the client to its window geometry so CSD shadow margins (Firefox/GTK/
         // Chromium ship a buffer bigger than the geometry) don't draw over the border

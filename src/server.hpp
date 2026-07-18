@@ -63,8 +63,9 @@ namespace fenriz {
     };
 
     // Launch a shell command detached (`/bin/sh -c cmd`); no-op on empty. Used for
-    // keybind `exec` actions and `exec-once` startup commands. Children are reaped via
-    // SIGCHLD=SIG_IGN (set in Server::start).
+    // keybind `exec` actions and `exec-once` startup commands. Double-forks so the command
+    // reparents to init, fenriz keeps no long-lived children and never sets SIGCHLD to
+    // SIG_IGN (which would leak into Xwayland and break its keymap compile).
     void spawn(const std::string& cmd);
 
     // Re-read fenriz.conf and apply it live
