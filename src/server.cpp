@@ -462,6 +462,14 @@ namespace fenriz {
         setenv("WAYLAND_DISPLAY", socket, true);
         wlr_log(WLR_INFO, "fenriz running on WAYLAND_DISPLAY=%s", socket);
 
+        // Screen sharing: xdg-desktop-portal picks its backend by XDG_CURRENT_DESKTOP.
+        // Identify as fenriz so the fenriz-portals.conf routes ScreenCast to the
+        // wlr backend, which captures via our wlr-screencopy global.
+        setenv("XDG_CURRENT_DESKTOP", "fenriz:wlroots", 1);
+        // The portal runs as a systemd/D-Bus user service and reads its own activation
+        // env, not ours, push the vars it needs.
+        spawn("dbus-update-activation-environment --systemd XDG_CURRENT_DESKTOP WAYLAND_DISPLAY");
+
         // Control socket (FENRIZ_SOCKET) — needs WAYLAND_DISPLAY set, and must be up before
         // exec_once so bars/tools spawned below inherit the env and can connect immediately.
         ipc::init(*this);

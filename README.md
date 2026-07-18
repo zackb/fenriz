@@ -55,10 +55,10 @@ make run        # build debug and launch
 
 ## Run
 
-Nested inside an existing Wayland session (opens a window), or from a TTY for the DRM
-backend. Config is read from `$XDG_CONFIG_HOME/fenriz/fenriz.conf` (or
-`~/.config/fenriz/fenriz.conf`); see `fenriz.conf.example`. HiDPI: set `scale` in the
-config (fractional supported, e.g. `scale = 1.5`).
+```
+make install      # install to /usr/local/bin/fenriz
+fenriz            # launch the compositor (from a TTY or inside an existing Wayland session)
+```
 
 ## Multi-monitor and clamshell
 
@@ -78,6 +78,19 @@ output    = eDP-1, preferred, auto, 2.0    # per-screen mode/position/scale
 output    = DP-1,  3840x2160@144, auto, 1.0
 workspace = 3, DP-1                        # pin ws3 to the big monitor, always
 ```
+
+## Screen sharing
+
+fenriz exposes `wlr-screencopy`, so screen sharing in Zoom, Discord, OBS, and
+browser apps (Google Meet, etc.) works through `xdg-desktop-portal` and its wlroots
+backend. You'll need to install the runtime pieces and make sure the user services are running:
+
+```
+sudo pacman -S xdg-desktop-portal xdg-desktop-portal-wlr pipewire wireplumber
+```
+
+fenriz sets `XDG_CURRENT_DESKTOP=fenriz:wlroots` and installs
+`fenriz-portals.conf`, which routes `ScreenCast`/`RemoteDesktop` to the `wlr` backend automatically.
 
 ## IPC
 

@@ -83,6 +83,11 @@ configure_file(fenriz.desktop.in fenriz.desktop @ONLY)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/fenriz.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions)
 
+# Screen-sharing: route ScreenCast/RemoteDesktop to the wlr portal backend. Matched
+# by the "fenriz" component of XDG_CURRENT_DESKTOP (set in Server::start).
+install(FILES fenriz-portals.conf
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal)
+
 # Self-checks (built, not installed). Pure logic, deliberately decoupled from the
 # wlroots compositor stack so they build and run without a display.
 #
