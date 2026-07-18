@@ -335,6 +335,12 @@ namespace fenriz::cursor {
             auto* event = static_cast<wlr_pointer_button_event*>(data);
             Server& server = *c->server;
 
+            // Pointer focus is otherwise only refreshed on motion, so a click after the scene
+            // changed under a stationary cursor (popup closed, window mapped, workspace switched)
+            // would forward to a stale/blank pointer focus and be dropped. Rebase first.
+            if (c->grab == Grab::None)
+                process_motion(c, event->time_msec);
+
             if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
                 // End an interactive drag. A tiled move resolves into a swap with the tile the
                 // window is dropped on.
@@ -392,6 +398,8 @@ namespace fenriz::cursor {
             Cursor* c = wl_container_of(listener, c, axis);
             Server& server = *c->server;
             auto* event = static_cast<wlr_pointer_axis_event*>(data);
+
+            process_motion(c, event->time_msec); // rebase pointer focus; see cursor_button
 
             // Modifier + scroll = screen zoom (default CTRL, configurable via zoom_mod).
             // The compositor consumes the event: the client never sees it.
