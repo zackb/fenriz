@@ -50,7 +50,7 @@ namespace fenriz::layer {
             // If this surface held the keyboard, hand it back to the focused window.
             if (server.seat->keyboard_state.focused_surface == ls->handle->surface) {
                 if (server.focused_view)
-                    focus_surface(server, server.focused_view->toplevel->base->surface);
+                    focus_surface(server, view_surface(server.focused_view));
                 else
                     wlr_seat_keyboard_notify_clear_focus(server.seat);
             }

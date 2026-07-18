@@ -3,6 +3,7 @@
 #include <wayland-server-core.h>
 
 struct wlr_xdg_toplevel;
+struct wlr_xwayland_surface;
 struct wlr_surface;
 struct wlr_foreign_toplevel_handle_v1;
 struct wlr_ext_foreign_toplevel_handle_v1;
@@ -21,14 +22,23 @@ namespace fenriz {
     // (pointers + POD + wl_listener only) so wl_container_of recovers it cleanly.
     class View {
     public:
+        // Which shell this window came from. Xdg is a Wayland-native toplevel; Xwl is an
+        // XWayland (X11) surface. Exactly one of `toplevel`/`xwl` is set; the free functions
+        // below (view_surface/view_app_id/…) branch on this so the tiling/focus/render path
+        // stays shell-agnostic.
+        enum class Kind { Xdg, Xwl };
+
         View(Server& server, wlr_xdg_toplevel* toplevel);
+        View(Server& server, wlr_xwayland_surface* xwl);
 
         struct Box {
             int x = 0, y = 0, width = 0, height = 0;
         };
 
         Server* server = nullptr;
-        wlr_xdg_toplevel* toplevel = nullptr;
+        Kind kind = Kind::Xdg;
+        wlr_xdg_toplevel* toplevel = nullptr; // set when kind == Xdg
+        wlr_xwayland_surface* xwl = nullptr;  // set when kind == Xwl
         Box box;
         Box saved_box; // geometry to restore on un-fullscreen
         int workspace = 0;
@@ -37,7 +47,7 @@ namespace fenriz {
         bool fullscreen = false;
         bool floating = false;    // escaped the BSP tree; free move/resize, drawn above tiles
         bool want_center = false; // window-rule center: applied once the float has real size
-        bool urgent = false;   // asked to be activated while unfocused; cleared on focus
+        bool urgent = false;      // asked to be activated while unfocused; cleared on focus
 
         // Render offset from box, in logical coords; decays to 0 each frame for the
         // slide-into-place animation (see output.cpp). `dragging` holds the offset
@@ -71,9 +81,28 @@ namespace fenriz {
         wl_listener commit;
         wl_listener destroy;
         wl_listener set_title;
-        wl_listener set_app_id;
+        wl_listener set_app_id; // xwl: reused for the set_class signal
         wl_listener request_fullscreen;
+
+        // XWayland-only. An X surface gets its wlr_surface late, so map/unmap/commit are wired
+        // on the surface at `associate` and torn down at `dissociate` (see xwayland.cpp).
+        wl_listener associate;
+        wl_listener dissociate;
+        wl_listener request_configure; // X client asks to move/resize itself
+        wl_listener request_activate;  // X client asks for focus
     };
+
+    // Shell-agnostic accessors. Each branches on View::kind so the tiling/focus/render code
+    // never touches wlr_xdg_toplevel / wlr_xwayland_surface directly.
+    wlr_surface* view_surface(View* view);
+    const char* view_app_id(View* view); // xdg app_id, or X11 WM_CLASS
+    const char* view_title(View* view);
+    void view_set_activated(View* view, bool activated);
+    void view_set_fullscreen(View* view, bool on);
+    void view_close(View* view); // ask the client to close (kill-active keybind)
+    // Tell the client its on-screen geometry: xdg gets a size, X gets an absolute-coords
+    // configure (position + size). Computed from view->box minus the border.
+    void view_configure(View* view);
 
     // Route seat keyboard input to a surface (notify_enter with the current keyboard
     // state). Used by focus_view and by layer surfaces that grab the keyboard.

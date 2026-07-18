@@ -13,6 +13,8 @@ struct wlr_allocator;
 struct wlr_output;
 struct wlr_output_layout;
 struct wlr_seat;
+struct wlr_compositor;
+struct wlr_xwayland;
 struct wlr_xdg_shell;
 struct wlr_cursor;
 struct wlr_layer_shell_v1;
@@ -120,6 +122,8 @@ namespace fenriz {
 
         wl_display* display = nullptr;
         wlr_backend* backend = nullptr;
+        wlr_compositor* compositor = nullptr; // stored: wlr_xwayland_create needs it
+        wlr_xwayland* xwayland = nullptr;     // null if XWayland failed to start
         wlr_renderer* renderer = nullptr;
         wlr_allocator* allocator = nullptr;
         wlr_output_layout* output_layout = nullptr;
@@ -166,6 +170,7 @@ namespace fenriz {
         wlr_scene_tree* scene_lock = nullptr; // ext-session-lock, above everything
 
         SignalListener l_new_output;
+        SignalListener l_new_xwayland_surface;
         SignalListener l_new_toplevel;
         SignalListener l_new_popup;
         SignalListener l_new_input;

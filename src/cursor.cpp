@@ -131,9 +131,7 @@ namespace fenriz::cursor {
                 } else {
                     v->box.height = std::max(1, v->box.height + (int)dy);
                 }
-                const int bw = server.config.border_width;
-                wlr_xdg_toplevel_set_size(
-                    v->toplevel, std::max(1, v->box.width - 2 * bw), std::max(1, v->box.height - 2 * bw));
+                view_configure(v); // size the client to the new inner box (shell-agnostic)
                 return true;
             }
             case Grab::ResizeTile:
@@ -160,7 +158,7 @@ namespace fenriz::cursor {
             if (con->type != WLR_POINTER_CONSTRAINT_V1_LOCKED || !con->current.cursor_hint.enabled)
                 return;
             for (View* v : c->server->views) {
-                if (v->toplevel->base->surface != con->surface || !v->surface_tree)
+                if (view_surface(v) != con->surface || !v->surface_tree)
                     continue;
                 int lx, ly;
                 if (!wlr_scene_node_coords(&v->surface_tree->node, &lx, &ly))

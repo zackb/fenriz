@@ -35,8 +35,8 @@ namespace fenriz {
     };
 
     // One `windowrule = class=…, float=true, …` entry: match a window by app_id/title
-    // (regex, empty = any) at map time and apply the given actions. fenriz has no
-    // XWayland, so `class` matches the xdg app_id.
+    // (regex, empty = any) at map time and apply the given actions. `class` matches the
+    // xdg app_id for Wayland windows and the X11 WM_CLASS for XWayland ones (view_app_id).
     struct WindowRule {
         std::string app_id; // regex; empty = match any
         std::string title;  // regex; empty = match any

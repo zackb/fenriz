@@ -19,7 +19,7 @@ extern "C" {
 #include <wlr/backend/libinput.h> // per-device libinput config (natural scroll); pulls in <libinput.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/pass.h>
-#include <wlr/render/swapchain.h>   // offscreen buffers for the zoom magnifier
+#include <wlr/render/swapchain.h> // offscreen buffers for the zoom magnifier
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/render/wlr_texture.h> // wlr_texture_from_buffer, for the zoom blit
 #include <wlr/types/wlr_compositor.h>
@@ -80,6 +80,12 @@ extern "C" {
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
+#include <xcb/xcb.h>
+#include <xcb/xcb_ewmh.h>
+#include <xcb/xcb_icccm.h>
+#define class class_
+#include <wlr/xwayland.h>
+#undef class
 #include <wlr/util/edges.h>
 #include <wlr/util/log.h>
 #include <wlr/util/region.h> // wlr_region_confine, for pointer-constraints

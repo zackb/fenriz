@@ -128,9 +128,9 @@ namespace fenriz::ipc {
             View* f = server.focused_view;
             if (f && f->mapped) {
                 s += "{\"appId\":\"";
-                json_escape(s, f->toplevel->app_id);
+                json_escape(s, view_app_id(f)); // xdg app_id or X11 WM_CLASS
                 s += "\",\"title\":\"";
-                json_escape(s, f->toplevel->title);
+                json_escape(s, view_title(f));
                 s += "\"}";
             } else {
                 s += "null";

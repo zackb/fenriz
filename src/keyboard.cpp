@@ -301,7 +301,7 @@ namespace fenriz {
             break;
         case Action::KillActive:
             if (server.focused_view)
-                wlr_xdg_toplevel_send_close(server.focused_view->toplevel);
+                view_close(server.focused_view);
             break;
         case Action::Exit:
             server.stop();

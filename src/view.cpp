@@ -48,6 +48,8 @@ namespace fenriz {
         // what makes GTK/Gecko honor the size we configure and drop their CSD shadow/rounding
         // on those edges.
         void set_tiled(View* view, bool tiled) {
+            if (view->kind != View::Kind::Xdg)
+                return; // X11 has no tiled/maximized state to advertise; we just size it
             wlr_xdg_toplevel* tl = view->toplevel;
             if (wl_resource_get_version(tl->resource) >= 2) { // TILED_* states since v2
                 uint32_t edges =
@@ -107,9 +109,15 @@ namespace fenriz {
             float col[4];
             u32_color(server.config.border_inactive, col);
             view->border = wlr_scene_rect_create(view->scene_tree, 0, 0, col);
-            view->surface_tree = wlr_scene_xdg_surface_create(view->scene_tree, view->toplevel->base);
-            view->popup_tree = wlr_scene_tree_create(view->scene_tree); // created last: draws above
-            view->toplevel->base->data = view->popup_tree;
+            if (view->kind == View::Kind::Xdg) {
+                view->surface_tree = wlr_scene_xdg_surface_create(view->scene_tree, view->toplevel->base);
+                view->popup_tree = wlr_scene_tree_create(view->scene_tree); // created last: draws above
+                view->toplevel->base->data = view->popup_tree;
+            } else {
+                // X11: a plain surface subtree (no xdg geometry, no popup_tree — X child windows
+                // are override-redirect surfaces, out of scope for this managed-only cut).
+                view->surface_tree = wlr_scene_subsurface_tree_create(view->scene_tree, view->xwl->surface);
+            }
 
             // New window splits the focused window's tile (focus-aware dwindle) — unless a
             // rule floated it, in which case it stays out of the tree (floating ⟺ not tiled).
@@ -119,16 +127,16 @@ namespace fenriz {
             // Publish this window to the foreign-toplevel (taskbar) protocol.
             if (server.foreign_toplevel_manager) {
                 view->foreign_handle = wlr_foreign_toplevel_handle_v1_create(server.foreign_toplevel_manager);
-                if (view->toplevel->title)
-                    wlr_foreign_toplevel_handle_v1_set_title(view->foreign_handle, view->toplevel->title);
-                if (view->toplevel->app_id)
-                    wlr_foreign_toplevel_handle_v1_set_app_id(view->foreign_handle, view->toplevel->app_id);
+                if (view_title(view))
+                    wlr_foreign_toplevel_handle_v1_set_title(view->foreign_handle, view_title(view));
+                if (view_app_id(view))
+                    wlr_foreign_toplevel_handle_v1_set_app_id(view->foreign_handle, view_app_id(view));
             }
             // and to its standardized successor
             if (server.ext_foreign_toplevel_list) {
                 wlr_ext_foreign_toplevel_handle_v1_state state = {
-                    .title = view->toplevel->title,
-                    .app_id = view->toplevel->app_id,
+                    .title = view_title(view),
+                    .app_id = view_app_id(view),
                 };
                 view->ext_foreign_handle =
                     wlr_ext_foreign_toplevel_handle_v1_create(server.ext_foreign_toplevel_list, &state);
@@ -161,7 +169,8 @@ namespace fenriz {
                 view->popup_tree = nullptr;
                 view->border = nullptr;
                 view->shadow = nullptr;
-                view->toplevel->base->data = nullptr;
+                if (view->kind == View::Kind::Xdg)
+                    view->toplevel->base->data = nullptr;
             }
             cursor::forget_view(view); // drop any in-flight mouse grab before the view is gone
             server.views.remove(view);
@@ -188,15 +197,20 @@ namespace fenriz {
             (void)data;
             // The initial commit must be answered with a configure. Size 0,0 lets the
             // client choose its own dimensions; milestone 3 tiling will impose sizes.
-            if (view->toplevel->base->initial_commit)
+            // (X11 has no initial-commit handshake — its configure is driven separately.)
+            if (view->kind == View::Kind::Xdg && view->toplevel->base->initial_commit)
                 wlr_xdg_toplevel_set_size(view->toplevel, 0, 0);
             // A floating window sizes itself (we un-tile it, so GTK/Gecko restore their own
             // natural size + CSD margins and never honor a configure). Track the committed
-            // window geometry so the border/shadow/clip tighten onto the real content instead
-            // of leaving a band of the desktop behind the float showing through. Tiled/
-            // fullscreen boxes stay compositor-authoritative; skip while this view is under an
-            // interactive grab so a lagging commit can't fight the cursor mid-resize.
-            const wlr_box& geo = view->toplevel->base->geometry;
+            // size so the border/shadow/clip tighten onto the real content instead of leaving
+            // a band of the desktop behind the float showing through. Tiled/fullscreen boxes
+            // stay compositor-authoritative; skip while this view is under an interactive grab
+            // so a lagging commit can't fight the cursor mid-resize. xdg reports a window
+            // geometry (CSD margin excluded); X11 has none, so use the raw surface size.
+            const bool xdg = view->kind == View::Kind::Xdg;
+            const wlr_box geo =
+                xdg ? view->toplevel->base->geometry
+                    : wlr_box{0, 0, view->xwl->surface->current.width, view->xwl->surface->current.height};
             if (view->floating && !view->fullscreen && geo.width > 0 && geo.height > 0 &&
                 cursor::grabbed_view() != view) {
                 const int bw = view->server->config.border_width;
@@ -220,8 +234,8 @@ namespace fenriz {
             if (!view->ext_foreign_handle)
                 return;
             wlr_ext_foreign_toplevel_handle_v1_state state = {
-                .title = view->toplevel->title,
-                .app_id = view->toplevel->app_id,
+                .title = view_title(view),
+                .app_id = view_app_id(view),
             };
             wlr_ext_foreign_toplevel_handle_v1_update_state(view->ext_foreign_handle, &state);
         }
@@ -229,18 +243,19 @@ namespace fenriz {
         void view_handle_set_title(wl_listener* listener, void* data) {
             View* view = wl_container_of(listener, view, set_title);
             (void)data;
-            if (view->foreign_handle && view->toplevel->title)
-                wlr_foreign_toplevel_handle_v1_set_title(view->foreign_handle, view->toplevel->title);
+            if (view->foreign_handle && view_title(view))
+                wlr_foreign_toplevel_handle_v1_set_title(view->foreign_handle, view_title(view));
             ext_foreign_update(view);
             if (view->focused)
                 ipc::publish(*view->server); // refresh activeWindow.title in the feed
         }
 
+        // Wired to xdg set_app_id and (for X11) the set_class signal; both map to view_app_id.
         void view_handle_set_app_id(wl_listener* listener, void* data) {
             View* view = wl_container_of(listener, view, set_app_id);
             (void)data;
-            if (view->foreign_handle && view->toplevel->app_id)
-                wlr_foreign_toplevel_handle_v1_set_app_id(view->foreign_handle, view->toplevel->app_id);
+            if (view->foreign_handle && view_app_id(view))
+                wlr_foreign_toplevel_handle_v1_set_app_id(view->foreign_handle, view_app_id(view));
             ext_foreign_update(view);
             if (view->focused)
                 ipc::publish(*view->server);
@@ -251,7 +266,9 @@ namespace fenriz {
             (void)data;
             // requested.fullscreen may arrive before map; set_fullscreen just records the
             // flag + configures, and the map handler's arrange applies the box once visible.
-            set_fullscreen(*view->server, view, view->toplevel->requested.fullscreen);
+            const bool want =
+                view->kind == View::Kind::Xdg ? view->toplevel->requested.fullscreen : view->xwl->fullscreen;
+            set_fullscreen(*view->server, view, want);
         }
 
         void view_handle_destroy(wl_listener* listener, void* data) {
@@ -267,7 +284,121 @@ namespace fenriz {
             delete view;
         }
 
+        // ---- XWayland-only callbacks ----------------------------------------------------
+        // An X surface gets its wlr_surface late and can lose it (dissociate) without being
+        // destroyed, so map/unmap/commit are wired here at associate and dropped at dissociate.
+
+        void view_handle_associate(wl_listener* listener, void* data) {
+            View* view = wl_container_of(listener, view, associate);
+            (void)data;
+            view->map.notify = view_handle_map;
+            wl_signal_add(&view->xwl->surface->events.map, &view->map);
+            view->unmap.notify = view_handle_unmap;
+            wl_signal_add(&view->xwl->surface->events.unmap, &view->unmap);
+            view->commit.notify = view_handle_commit;
+            wl_signal_add(&view->xwl->surface->events.commit, &view->commit);
+        }
+
+        void view_handle_dissociate(wl_listener* listener, void* data) {
+            View* view = wl_container_of(listener, view, dissociate);
+            (void)data;
+            wl_list_remove(&view->map.link);
+            wl_list_remove(&view->unmap.link);
+            wl_list_remove(&view->commit.link);
+        }
+
+        void view_handle_request_configure(wl_listener* listener, void* data) {
+            View* view = wl_container_of(listener, view, request_configure);
+            auto* ev = static_cast<wlr_xwayland_surface_configure_event*>(data);
+            // Unmapped, or a free-floating window: let the client place/size itself and just
+            // ack it. A tiled or fullscreen window is compositor-authoritative — re-assert our
+            // geometry so the X app can't fight the layout.
+            if (!view->mapped || (view->floating && !view->fullscreen)) {
+                wlr_xwayland_surface_configure(view->xwl, ev->x, ev->y, ev->width, ev->height);
+                if (view->mapped) {
+                    const int bw = view->server->config.border_width;
+                    view->box = {ev->x - bw, ev->y - bw, ev->width + 2 * bw, ev->height + 2 * bw};
+                    place_view_nodes(view);
+                }
+            } else {
+                view_configure(view);
+            }
+        }
+
+        void view_handle_request_activate(wl_listener* listener, void* data) {
+            View* view = wl_container_of(listener, view, request_activate);
+            (void)data;
+            if (view->mapped)
+                focus_view(*view->server, view);
+        }
+
+        void view_xwl_handle_destroy(wl_listener* listener, void* data) {
+            View* view = wl_container_of(listener, view, destroy);
+            (void)data;
+            // map/unmap/commit were already removed at dissociate (wlroots dissociates before
+            // destroy); remove only the surface-independent links wired in the ctor.
+            wl_list_remove(&view->destroy.link);
+            wl_list_remove(&view->set_title.link);
+            wl_list_remove(&view->set_app_id.link);
+            wl_list_remove(&view->request_fullscreen.link);
+            wl_list_remove(&view->associate.link);
+            wl_list_remove(&view->dissociate.link);
+            wl_list_remove(&view->request_configure.link);
+            wl_list_remove(&view->request_activate.link);
+            delete view;
+        }
+
     } // namespace
+
+    wlr_surface* view_surface(View* view) {
+        return view->kind == View::Kind::Xdg ? view->toplevel->base->surface : view->xwl->surface;
+    }
+
+    const char* view_app_id(View* view) {
+        // X11 has no app_id; WM_CLASS is the closest analogue (window rules match on it, and
+        // `class` was renamed to `class_` in wlr.hpp for the C++ keyword clash).
+        return view->kind == View::Kind::Xdg ? view->toplevel->app_id : view->xwl->class_;
+    }
+
+    const char* view_title(View* view) {
+        return view->kind == View::Kind::Xdg ? view->toplevel->title : view->xwl->title;
+    }
+
+    void view_set_activated(View* view, bool activated) {
+        if (view->kind == View::Kind::Xdg)
+            wlr_xdg_toplevel_set_activated(view->toplevel, activated);
+        else
+            wlr_xwayland_surface_activate(view->xwl, activated);
+    }
+
+    void view_set_fullscreen(View* view, bool on) {
+        if (view->kind == View::Kind::Xdg)
+            wlr_xdg_toplevel_set_fullscreen(view->toplevel, on);
+        else
+            wlr_xwayland_surface_set_fullscreen(view->xwl, on);
+    }
+
+    void view_close(View* view) {
+        if (view->kind == View::Kind::Xdg)
+            wlr_xdg_toplevel_send_close(view->toplevel);
+        else
+            wlr_xwayland_surface_close(view->xwl);
+    }
+
+    void view_configure(View* view) {
+        const int bw = view->fullscreen ? 0 : view->server->config.border_width;
+        const int cw = std::max(1, view->box.width - 2 * bw);
+        const int ch = std::max(1, view->box.height - 2 * bw);
+        if (view->kind == View::Kind::Xdg) {
+            wlr_xdg_toplevel_set_size(view->toplevel, cw, ch);
+        } else {
+            // X clients position themselves in absolute layout coords, so a bare size isn't
+            // enough — send the on-screen origin (tile corner, inside the border) too.
+            // ponytail: fires an X ConfigureNotify per arrange; wlroots dedupes unchanged
+            // geometry, so this stays quiet unless the tile actually moved.
+            wlr_xwayland_surface_configure(view->xwl, view->box.x + bw, view->box.y + bw, (uint16_t)cw, (uint16_t)ch);
+        }
+    }
 
     void focus_surface(Server& server, wlr_surface* surface) {
         if (wlr_keyboard* kb = wlr_seat_get_keyboard(server.seat))
@@ -295,13 +426,13 @@ namespace fenriz {
             // away by a keyboard-interactive layer surface (e.g. a quickshell launcher) while
             // this stayed focused_view. Re-assert it so a click / cycle / workspace-return
             // reclaims the keyboard instead of no-opping and stranding input.
-            focus_surface(server, view->toplevel->base->surface);
+            focus_surface(server, view_surface(view));
             return;
         }
 
         View* prev = server.focused_view;
         if (prev) {
-            wlr_xdg_toplevel_set_activated(prev->toplevel, false);
+            view_set_activated(prev, false);
             prev->focused = false;
             if (prev->foreign_handle)
                 wlr_foreign_toplevel_handle_v1_set_activated(prev->foreign_handle, false);
@@ -318,7 +449,7 @@ namespace fenriz {
 
         server.focused_view = view;
         view->focused = true;
-        wlr_xdg_toplevel_set_activated(view->toplevel, true);
+        view_set_activated(view, true);
         if (view->foreign_handle)
             wlr_foreign_toplevel_handle_v1_set_activated(view->foreign_handle, true);
 
@@ -327,14 +458,14 @@ namespace fenriz {
         if (prev)
             place_view_nodes(prev);
 
-        focus_surface(server, view->toplevel->base->surface);
+        focus_surface(server, view_surface(view));
         ipc::publish(server);
     }
 
     void clear_focus(Server& server) {
         if (server.focused_view) {
             View* prev = server.focused_view;
-            wlr_xdg_toplevel_set_activated(prev->toplevel, false);
+            view_set_activated(prev, false);
             prev->focused = false;
             if (prev->foreign_handle)
                 wlr_foreign_toplevel_handle_v1_set_activated(prev->foreign_handle, false);
@@ -348,19 +479,17 @@ namespace fenriz {
     void set_fullscreen(Server& server, View* view, bool on) {
         if (!view || view->fullscreen == on)
             return;
-        if (on) {
+        if (on)
             view->saved_box = view->box;
-        } else if (view->floating) {
+        else if (view->floating)
             // arrange() re-sizes tiles from their tree slot but deliberately never touches a
             // float's box (that's what preserves free move/resize), so a float's pre-fullscreen
-            // geometry has to be put back and the client told about it here, once.
+            // geometry has to be put back here, once.
             view->box = view->saved_box;
-            const int bw = server.config.border_width;
-            wlr_xdg_toplevel_set_size(
-                view->toplevel, std::max(1, view->box.width - 2 * bw), std::max(1, view->box.height - 2 * bw));
-        }
-        view->fullscreen = on;
-        wlr_xdg_toplevel_set_fullscreen(view->toplevel, on);
+        view->fullscreen = on; // before view_configure: it insets by the border only when not fullscreen
+        view_set_fullscreen(view, on);
+        if (!on && view->floating)
+            view_configure(view); // tell the restored float its geometry (fullscreen flag now cleared)
         // Fullscreen views sit above the top layer (below the overlay/lock); restore to the
         // tile/float tree when cleared. arrange() re-lays out the box + border.
         restack_view(server, view);
@@ -406,7 +535,7 @@ namespace fenriz {
         };
         bool no_focus = false;
         for (const WindowRule& r : server.config.window_rules) {
-            if (!matches(r.app_id, view->toplevel->app_id) || !matches(r.title, view->toplevel->title))
+            if (!matches(r.app_id, view_app_id(view)) || !matches(r.title, view_title(view)))
                 continue;
             if (r.floating)
                 view->floating = true;
@@ -478,7 +607,7 @@ namespace fenriz {
         output::Output* o = view_output(server, view);
         if (!o || !view->mapped)
             return;
-        wlr_surface* surface = view->toplevel->base->surface;
+        wlr_surface* surface = view_surface(view);
         wlr_surface_send_enter(surface, o->handle);
         // Scale is per-output now, so a window dragged/evacuated to another screen must be
         // told the new one or it renders at the old scale (blurry or oversharp).
@@ -535,7 +664,10 @@ namespace fenriz {
         if (view->fullscreen) {
             wlr_scene_subsurface_tree_set_clip(&view->surface_tree->node, nullptr);
         } else {
-            const wlr_box& geo = view->toplevel->base->geometry;
+            // xdg reports a window geometry whose origin is the CSD content corner (shadow
+            // margin excluded); anchor the clip there. X11 has no geometry — its buffer is the
+            // window, so anchor at 0,0.
+            const wlr_box geo = view->kind == View::Kind::Xdg ? view->toplevel->base->geometry : wlr_box{0, 0, 0, 0};
             wlr_box clip = {
                 geo.x, geo.y, std::max(1, view->box.width - 2 * bw), std::max(1, view->box.height - 2 * bw)};
             wlr_scene_subsurface_tree_set_clip(&view->surface_tree->node, &clip);
@@ -654,6 +786,26 @@ namespace fenriz {
         wl_signal_add(&toplevel->events.set_app_id, &set_app_id);
         request_fullscreen.notify = view_handle_request_fullscreen;
         wl_signal_add(&toplevel->events.request_fullscreen, &request_fullscreen);
+    }
+
+    View::View(Server& server, wlr_xwayland_surface* xwl) : server(&server), kind(Kind::Xwl), xwl(xwl) {
+        // map/unmap/commit are wired on the wlr_surface at `associate` (it doesn't exist yet).
+        associate.notify = view_handle_associate;
+        wl_signal_add(&xwl->events.associate, &associate);
+        dissociate.notify = view_handle_dissociate;
+        wl_signal_add(&xwl->events.dissociate, &dissociate);
+        destroy.notify = view_xwl_handle_destroy;
+        wl_signal_add(&xwl->events.destroy, &destroy);
+        set_title.notify = view_handle_set_title;
+        wl_signal_add(&xwl->events.set_title, &set_title);
+        set_app_id.notify = view_handle_set_app_id; // X11 WM_CLASS
+        wl_signal_add(&xwl->events.set_class, &set_app_id);
+        request_fullscreen.notify = view_handle_request_fullscreen;
+        wl_signal_add(&xwl->events.request_fullscreen, &request_fullscreen);
+        request_configure.notify = view_handle_request_configure;
+        wl_signal_add(&xwl->events.request_configure, &request_configure);
+        request_activate.notify = view_handle_request_activate;
+        wl_signal_add(&xwl->events.request_activate, &request_activate);
     }
 
 } // namespace fenriz
