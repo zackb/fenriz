@@ -42,6 +42,8 @@ added in v6, is not advertised).
 | cursor-shape-v1 | `wlr_cursor_shape_manager_v1` (v1) | `cursor.cpp` | Named cursors from clients |
 | wlr-foreign-toplevel-management-v1 | `wlr_foreign_toplevel_manager_v1` | `server.cpp`, `view.cpp` | Taskbars / window lists |
 | wlr-screencopy-v1 | `wlr_screencopy_manager_v1` | `server.cpp` | Screenshots (grim), simple capture |
+| ext-image-copy-capture-v1 | `wlr_ext_image_copy_capture_manager_v1` (v1) | `server.cpp` | Modern dmabuf/shm capture with damage — the efficient screen-recording path; screencopy stays for grim |
+| ext-image-capture-source-v1 | `wlr_ext_output_image_capture_source_manager_v1` + `wlr_ext_foreign_toplevel_image_capture_source_manager_v1` (v1) | `server.cpp`, `view.cpp` | Per-output and **per-window** capture sources for xdg-desktop-portal-wlr. Window capture renders each toplevel into a private mirror scene (`View::capture_scene`) so it works regardless of workspace visibility |
 | wlr-gamma-control-v1 | `wlr_gamma_control_manager_v1` | `server.cpp`, `output.cpp` | Night light (wlsunset/gammastep) |
 | wlr-output-power-management-v1 | `wlr_output_power_manager_v1` | `server.cpp`, `output.cpp` | DPMS (wlopm, hypridle) |
 | ext-idle-notify-v1 | `wlr_idle_notifier_v1` | `layer.cpp`, `cursor.cpp`, `keyboard.cpp` | Idle detection (swayidle/hypridle) |
@@ -69,7 +71,6 @@ logic, "L" ≈ substantial subsystem).
 | Protocol | Why it matters | Effort |
 |---|---|---|
 | text-input-v3 + input-method-v2 | IMEs (fcitx5/ibus), CJK and emoji input — a real gap for non-Latin input | L |
-| ext-image-copy-capture-v1 / wlr-export-dmabuf-v1 | Efficient (dmabuf) screen recording — wf-recorder, better OBS path | M |
 | tablet-v2 | Drawing tablets (Wacom) | M |
 | linux-drm-syncobj-v1 (explicit sync) | Reduce flicker/latency on some GPU drivers | M |
 | tearing-control-v1 | Opt-in tearing for latency-sensitive fullscreen games. Not the S it looks like: the global alone is a no-op, the output commit path has to set the tearing page-flip flag | S–M |
@@ -83,6 +84,7 @@ records the current stance, not a vow — the debatable ones are flagged.
 | Protocol | Why not |
 |---|---|
 | wl_shell | Deprecated; replaced by xdg-shell |
+| wlr-export-dmabuf-v1 | Superseded — ext-image-copy-capture-v1 covers efficient dmabuf capture (output + window) with damage; export-dmabuf is the older output-only wlroots protocol |
 | zxdg-shell-v6 (and older unstable xdg-shell) | Obsolete; stable xdg-shell is supported |
 | fullscreen-shell-unstable-v1 | Single-fullscreen-surface kiosk model — not a WM |
 | ivi-shell | In-vehicle infotainment; irrelevant |
