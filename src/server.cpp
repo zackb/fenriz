@@ -189,6 +189,28 @@ namespace fenriz {
             wlr_output_schedule_frame(ev->output);
         }
 
+        // ext-image-copy-capture: a portal (xdg-desktop-portal-wlr) asks to capture one
+        // window. Map the ext-foreign-toplevel handle back to our View and hand the portal a
+        // capture source backed by that window's scene node — this is what enables per-window
+        // screen sharing (plain screencopy is output-only).
+        void on_new_ext_capture_request(wl_listener* listener, void* data) {
+            SignalListener* sl = wl_container_of(listener, sl, listener);
+            auto* req =
+                static_cast<wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request*>(data);
+            Server& server = *sl->server;
+            for (View* v : server.views) {
+                if (v->ext_foreign_handle == req->toplevel_handle && v->scene_tree) {
+                    wlr_ext_image_capture_source_v1* src =
+                        wlr_ext_image_capture_source_v1_create_with_scene_node(
+                            &v->scene_tree->node, wl_display_get_event_loop(server.display),
+                            server.allocator, server.renderer);
+                    wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request_accept(req, src);
+                    return;
+                }
+            }
+            // Unknown/unmapped handle: don't accept; wlroots hands the client an inert source.
+        }
+
         // wlr-output-power-management: a shell/idle daemon (wlopm, hypridle) toggles DPMS.
         // Shares set_dpms with the IPC `dpms` command. The request names an output — honor it
         // rather than blanking whichever one happens to be first.
@@ -418,6 +440,17 @@ namespace fenriz {
         // activate/close/fullscreen requests. Taskbars that want to *act* on a window still
         // need the wlr protocol above, so both stay live and each view carries both handles.
         ext_foreign_toplevel_list = wlr_ext_foreign_toplevel_list_v1_create(display, 1);
+
+        // ext-image-copy-capture: modern successor to wlr-screencopy; coexists with it.
+        // xdg-desktop-portal-wlr prefers this path, and the foreign-toplevel source below
+        // is what enables *per-window* screen sharing (screencopy alone is output-only).
+        wlr_ext_image_copy_capture_manager_v1_create(display, 1);           // copy engine
+        wlr_ext_output_image_capture_source_manager_v1_create(display, 1);  // one source per output
+        ext_toplevel_capture = wlr_ext_foreign_toplevel_image_capture_source_manager_v1_create(display, 1);
+        l_new_ext_capture_request.server = this;
+        l_new_ext_capture_request.listener.notify = on_new_ext_capture_request;
+        wl_signal_add(&ext_toplevel_capture->events.new_request, &l_new_ext_capture_request.listener);
+
         gamma_control_manager = wlr_gamma_control_manager_v1_create(display);
         l_set_gamma.server = this;
         l_set_gamma.listener.notify = on_set_gamma;

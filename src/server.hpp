@@ -28,6 +28,7 @@ struct wlr_xdg_activation_v1;
 struct wlr_virtual_keyboard_manager_v1;
 struct wlr_keyboard_shortcuts_inhibit_manager_v1;
 struct wlr_ext_foreign_toplevel_list_v1;
+struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1;
 struct wlr_output_manager_v1;
 struct wlr_scene;
 struct wlr_scene_output_layout;
@@ -146,6 +147,9 @@ namespace fenriz {
         // activate/close), so it supplements foreign_toplevel_manager rather than replacing
         // it — both globals are live and every view carries a handle for each.
         wlr_ext_foreign_toplevel_list_v1* ext_foreign_toplevel_list = nullptr;
+        // ext-image-copy-capture per-window source: portals capture a single window through
+        // this (plain screencopy is output-only). Handler maps the request to a View.
+        wlr_ext_foreign_toplevel_image_capture_source_manager_v1* ext_toplevel_capture = nullptr;
         // wlr-output-management: kanshi/wlr-randr. An apply is folded into config.outputs
         // (see store_head in output.cpp), so there's no second source of truth to reconcile.
         wlr_output_manager_v1* output_manager = nullptr;
@@ -183,6 +187,7 @@ namespace fenriz {
         SignalListener l_set_primary_selection;
         SignalListener l_start_drag;
         SignalListener l_set_gamma;
+        SignalListener l_new_ext_capture_request;
         SignalListener l_output_power;
         SignalListener l_new_idle_inhibitor;
         SignalListener l_activation_request;
