@@ -32,6 +32,10 @@ fractional scale, xdg-activation, gamma/output-power, data-control, screencopy, 
 XWayland: managed X11 toplevels (games, IDEs, older GTK/Qt apps) tile and focus like
 native windows. Override-redirect popups (X11 menus/tooltips) aren't handled yet.
 
+## User guide
+
+Full setup, config, and screen-sharing walkthrough: [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+
 ## Dependencies
 
 wlroots 0.20, scenefx 0.5, wayland-server, xkbcommon, pixman, libinput, EGL, GLESv2.
