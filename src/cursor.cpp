@@ -261,6 +261,12 @@ namespace fenriz::cursor {
             }
             wlr_seat_pointer_notify_enter(server.seat, surface, sx, sy);
             wlr_seat_pointer_notify_motion(server.seat, time, sx, sy);
+
+            // Focus follows pointer: the view under the moving cursor gains focus.
+            // focus_view no-ops when the view is already focused, so per-event calls are cheap.
+            if (server.config.focus_follows_pointer)
+                if (View* v = view_at_point(server, lx, ly))
+                    focus_view(server, v);
         }
 
         void cursor_motion(wl_listener* listener, void* data) {

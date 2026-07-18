@@ -251,6 +251,8 @@ namespace fenriz {
                 cfg.tap_to_click = parse_bool(val, cfg.tap_to_click);
             else if (key == "clickfinger")
                 cfg.clickfinger = parse_bool(val, cfg.clickfinger);
+            else if (key == "focus_follows_pointer")
+                cfg.focus_follows_pointer = parse_bool(val, cfg.focus_follows_pointer);
             else if (key == "sensitivity") {
                 try {
                     cfg.sensitivity = std::clamp(std::stof(val), -1.0f, 1.0f);

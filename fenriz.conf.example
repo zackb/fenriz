@@ -17,6 +17,7 @@ natural_scroll   = true          # scroll/content follows fingers; false = tradi
 sensitivity      = 0.55          # trackpad/mouse speed, -1.0 (slow) .. 1.0 (fast)
 tap_to_click     = true          # trackpad tap = click; 1/2/3 fingers = left/right/middle
 clickfinger      = true          # two-finger press = right-click; false = bottom-right corner
+focus_follows_pointer = true     # window under the moving cursor gains focus; false = click-to-focus only
 
 # Screen zoom / magnifier: hold zoom_mod and scroll to zoom in/out around the cursor.
 zoom_mod         = ctrl          # ctrl / alt / super / shift; empty or unknown = off
