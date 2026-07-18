@@ -14,7 +14,7 @@ does nothing you didn't ask for.
 
 ## Goals
 
-- Great tiling support: dwindle BSP layout, floating, fullscreen, and per-window rules.
+- Great tiling support: dwindle BSP layout, floating, fullscreen, pinned, and per-window rules.
 - As performant as possible, with a small codebase, minimal dependencies, and extremely low resource use.
 - Stable and predictable: no surprises, no crashes, no memory leaks, no breaking changes every other release.
 - Perfect multi-monitor and clamshell support out of the box (see [Multi-monitor and Clamshell](#multi-monitor-and-clamshell)).
