@@ -22,6 +22,7 @@ added in v6, is not advertised).
 | wl_subcompositor | `wlr_subcompositor` | `server.cpp` | Subsurfaces (client-side compositing) |
 | wl_shm | via `wlr_renderer_init_wl_display` | `server.cpp` | Shared-memory buffers |
 | linux-dmabuf-v1 (+ legacy wl_drm) | via renderer init (GLES2) | `server.cpp` | GPU buffer sharing / zero-copy |
+| linux-drm-syncobj-v1 (explicit sync) | `wlr_linux_drm_syncobj_manager_v1` (v1) | `server.cpp` | Explicit GPU fencing (wait/signal timelines) — less flicker/latency. The `wlr_scene` surface helpers implement the per-surface protocol; guarded on renderer **and** backend `features.timeline` (real-hw only, nested skips it) |
 | wl_seat (keyboard + pointer) | `wlr_seat` | `server.cpp`, `keyboard.cpp`, `cursor.cpp` | Input routing |
 | wl_output | `wlr_output_layout` | `server.cpp`, `output.cpp` | Output advertisement, mode/scale |
 | xdg-output-unstable-v1 | `wlr_xdg_output_manager_v1` | `server.cpp` | Logical output geometry for bars/tools |
@@ -72,7 +73,6 @@ logic, "L" ≈ substantial subsystem).
 |---|---|---|
 | text-input-v3 + input-method-v2 | IMEs (fcitx5/ibus), CJK and emoji input — a real gap for non-Latin input | L |
 | tablet-v2 | Drawing tablets (Wacom) | M |
-| linux-drm-syncobj-v1 (explicit sync) | Reduce flicker/latency on some GPU drivers | M |
 | tearing-control-v1 | Opt-in tearing for latency-sensitive fullscreen games. Not the S it looks like: the global alone is a no-op, the output commit path has to set the tearing page-flip flag | S–M |
 | security-context-v1 | Identify Flatpak-sandboxed clients (restrict privileged protocols). Would also give virtual-keyboard/virtual-pointer a basis to filter on — today any client may synthesize input | S–M |
 

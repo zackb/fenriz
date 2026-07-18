@@ -386,6 +386,13 @@ namespace fenriz {
         // treadmill that burns CPU on both sides). presentation-time gives clients accurate
         // frame pacing so they throttle to vblank instead of rendering continuously.
         wlr_linux_dmabuf_v1_create_with_renderer(display, 5, renderer);
+        // Explicit sync (wp_linux_drm_syncobj_v1): only advertise when renderer AND
+        // backend support wait/signal timelines
+        {
+            int drm_fd = wlr_renderer_get_drm_fd(renderer);
+            if (drm_fd >= 0 && renderer->features.timeline && backend->features.timeline)
+                wlr_linux_drm_syncobj_manager_v1_create(display, 1, drm_fd);
+        }
         // deliberately NOT wlr_scene_set_linux_dmabuf_v1(scene, dmabuf) — that opts into
         // per-surface scanout feedback, and wlr_scene re-mints a format-table shm fd for every
         // scene_buffer on any scene change (e.g. a workspace switch), including surfaces that
