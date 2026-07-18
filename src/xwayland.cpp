@@ -36,7 +36,9 @@ namespace fenriz::xwayland {
             // View (cursor.cpp), while surface hit-testing still routes pointer input to it.
             wlr_scene_node_set_position(&u->surface_tree->node, u->xwl->x, u->xwl->y);
             wlr_scene_node_raise_to_top(&u->surface_tree->node);
-            if (wlr_xwayland_surface_override_redirect_wants_focus(u->xwl))
+            // Not while locked: an override-redirect window must not steal the keyboard from
+            // the lock surface (focus_view guards this for managed windows).
+            if (wlr_xwayland_surface_override_redirect_wants_focus(u->xwl) && !u->server->locked)
                 focus_surface(*u->server, u->xwl->surface);
         }
 
@@ -72,7 +74,7 @@ namespace fenriz::xwayland {
         void unmanaged_request_activate(wl_listener* listener, void* data) {
             Unmanaged* u = wl_container_of(listener, u, request_activate);
             (void)data;
-            if (u->xwl->surface && u->xwl->surface->mapped &&
+            if (u->xwl->surface && u->xwl->surface->mapped && !u->server->locked &&
                 wlr_xwayland_surface_override_redirect_wants_focus(u->xwl))
                 focus_surface(*u->server, u->xwl->surface);
         }

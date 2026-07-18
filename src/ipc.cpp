@@ -1,5 +1,6 @@
 #include "ipc.hpp"
 
+#include <cerrno>
 #include <cstdlib>
 #include <cstring>
 #include <set>
@@ -30,7 +31,8 @@ namespace fenriz::ipc {
             wl_event_loop* loop = nullptr;
             int listen_fd = -1;
             std::vector<Client> clients;
-            std::string last; // last broadcast snapshot; skip re-sending if unchanged
+            std::string last;             // last broadcast snapshot; skip re-sending if unchanged
+            bool publish_pending = false; // an idle broadcast is already queued this iteration
         };
         IpcState* g = nullptr;
 
@@ -151,10 +153,29 @@ namespace fenriz::ipc {
             }
         }
 
-        // Send one line; drop the client if the pipe is broken.
+        // Send one line, looping partial writes. Drop the client only on a real error, not on
+        // EAGAIN backpressure from the non-blocking socket. ponytail: no per-client output
+        // buffer — a slow client that stalls mid-line is dropped rather than buffered; add
+        // buffering only if a real streaming consumer needs it.
         void send_line(int fd, const std::string& line) {
-            if (send(fd, line.data(), line.size(), MSG_NOSIGNAL) < 0)
-                drop_client(fd);
+            size_t off = 0;
+            while (off < line.size()) {
+                ssize_t n = send(fd, line.data() + off, line.size() - off, MSG_NOSIGNAL);
+                if (n > 0) {
+                    off += (size_t)n;
+                    continue;
+                }
+                if (n < 0 && errno == EINTR)
+                    continue;
+                if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                    if (off == 0)
+                        return;      // nothing sent: skip this update, the next supersedes it
+                    drop_client(fd); // mid-line: framing is broken, can't recover without a buffer
+                    return;
+                }
+                drop_client(fd); // EPIPE/ECONNRESET or n == 0: client is gone
+                return;
+            }
         }
 
         // Pull a "key":"value" string out of a command line. Same substring approach as the
@@ -228,7 +249,13 @@ namespace fenriz::ipc {
             auto* st = static_cast<IpcState*>(data);
             char buf[4096];
             ssize_t n = recv(fd, buf, sizeof(buf), 0);
-            if (n <= 0) { // EOF or error -> client gone
+            if (n < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+                    return 0; // spurious wakeup, not a disconnect
+                drop_client(fd);
+                return 0;
+            }
+            if (n == 0) { // orderly EOF -> client gone
                 drop_client(fd);
                 return 0;
             }
@@ -294,19 +321,39 @@ namespace fenriz::ipc {
         wlr_log(WLR_INFO, "fenriz ipc: listening on FENRIZ_SOCKET=%s", path.c_str());
     }
 
+    namespace {
+        // The actual broadcast, run once per event-loop iteration from the idle source
+        // scheduled by publish(). Coalescing here means a burst of publish() calls (e.g. a
+        // focused window rewriting its title many times a second) builds the snapshot once,
+        // not once per call.
+        void do_publish() {
+            g->publish_pending = false;
+            if (g->clients.empty()) // nobody listening: don't build the snapshot at all
+                return;
+            std::string s = snapshot(*g->server);
+            if (s == g->last)
+                return;
+            g->last = s;
+            // Snapshot the fds first: send_line may drop clients (EPIPE) and mutate g->clients.
+            std::vector<int> fds;
+            for (const Client& c : g->clients)
+                fds.push_back(c.fd);
+            for (int fd : fds)
+                send_line(fd, s);
+        }
+
+        void publish_idle(void* data) {
+            (void)data;
+            do_publish();
+        }
+    } // namespace
+
     void publish(Server& server) {
-        if (!g)
+        (void)server;
+        if (!g || g->publish_pending)
             return;
-        std::string s = snapshot(server);
-        if (s == g->last)
-            return;
-        g->last = s;
-        // Snapshot the fds first: send_line may drop clients (EPIPE) and mutate g->clients.
-        std::vector<int> fds;
-        for (const Client& c : g->clients)
-            fds.push_back(c.fd);
-        for (int fd : fds)
-            send_line(fd, s);
+        g->publish_pending = true;
+        wl_event_loop_add_idle(g->loop, publish_idle, nullptr);
     }
 
 } // namespace fenriz::ipc

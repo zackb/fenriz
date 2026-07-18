@@ -37,7 +37,9 @@ namespace fenriz::layer {
                     wlr_fractional_scale_v1_notify_scale(surface, output::scale_of(*ls->server, o));
             }
 
-            if (ls->handle->current.keyboard_interactive != ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE)
+            // Never let a layer surface grab the keyboard while locked
+            if (ls->handle->current.keyboard_interactive != ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE &&
+                !ls->server->locked)
                 focus_surface(*ls->server, surface);
             arrange(*ls->server);
         }

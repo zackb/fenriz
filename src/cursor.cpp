@@ -56,9 +56,14 @@ namespace fenriz::cursor {
         // Surface under (lx,ly) via the scene graph, honoring z-order. While locked, only
         // the lock tree is considered so input can't reach the desktop. *sx,*sy return
         // surface-local coords on hit.
-        wlr_surface* scene_surface_at(Server& server, double lx, double ly, double* sx, double* sy) {
+        // hit_out (optional) receives the raw node under the point, even when it isn't a
+        // buffer surface — lets a caller derive the owning View without a second scene walk.
+        wlr_surface* scene_surface_at(Server& server, double lx, double ly, double* sx, double* sy,
+                                      wlr_scene_node** hit_out = nullptr) {
             wlr_scene_node* root = server.locked ? &server.scene_lock->node : &server.scene->tree.node;
             wlr_scene_node* node = wlr_scene_node_at(root, lx, ly, sx, sy);
+            if (hit_out)
+                *hit_out = node;
             if (!node || node->type != WLR_SCENE_NODE_BUFFER)
                 return nullptr;
             wlr_scene_surface* ss = wlr_scene_surface_try_from_buffer(wlr_scene_buffer_from_node(node));
@@ -243,8 +248,10 @@ namespace fenriz::cursor {
 
             const double lx = c->cursor->x, ly = c->cursor->y;
             double sx, sy;
-            // The scene graph resolves z-order (and the locked-only lock tree) for us.
-            wlr_surface* surface = scene_surface_at(server, lx, ly, &sx, &sy);
+            // The scene graph resolves z-order (and the locked-only lock tree) for us. Keep the
+            // hit node so focus-follows-pointer can find the View from it, no second walk.
+            wlr_scene_node* hit = nullptr;
+            wlr_surface* surface = scene_surface_at(server, lx, ly, &sx, &sy, &hit);
 
             // Pointer focus is changing right here, and a constraint only ever applies to
             // the surface that holds it
@@ -262,10 +269,11 @@ namespace fenriz::cursor {
             wlr_seat_pointer_notify_enter(server.seat, surface, sx, sy);
             wlr_seat_pointer_notify_motion(server.seat, time, sx, sy);
 
-            // Focus follows pointer: the view under the moving cursor gains focus.
+            // Focus follows pointer: the view under the moving cursor gains focus. Reuse the
+            // hit node from above instead of a second scene_node_at.
             // focus_view no-ops when the view is already focused, so per-event calls are cheap.
             if (server.config.focus_follows_pointer)
-                if (View* v = view_at_point(server, lx, ly))
+                if (View* v = hit ? view_from_node(hit) : nullptr)
                     focus_view(server, v);
         }
 

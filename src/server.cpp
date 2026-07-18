@@ -110,6 +110,26 @@ namespace fenriz {
             wlr_xdg_surface* parent = wlr_xdg_surface_try_from_wlr_surface(popup->parent);
             if (!parent || !parent->data)
                 return;
+            // parent->data holds a raw scene tree wlroots never invalidates. If the owning
+            // toplevel has unmapped, view_handle_unmap freed its whole scene subtree
+            wlr_xdg_surface* root = parent;
+            while (root->role == WLR_XDG_SURFACE_ROLE_POPUP) {
+                wlr_xdg_surface* up =
+                    root->popup->parent ? wlr_xdg_surface_try_from_wlr_surface(root->popup->parent) : nullptr;
+                if (!up)
+                    return; // non-xdg (layer-shell) root: not placed here
+                root = up;
+            }
+            if (root->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
+                bool alive = false;
+                for (View* v : sl->server->views)
+                    if (v->toplevel == root->toplevel && v->scene_tree) {
+                        alive = true;
+                        break;
+                    }
+                if (!alive)
+                    return; // toplevel unmapped: parent->data is freed
+            }
             popup_create(*sl->server, popup, static_cast<wlr_scene_tree*>(parent->data));
         }
 
