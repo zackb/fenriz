@@ -525,6 +525,17 @@ namespace fenriz {
     }
 
     bool apply_window_rules(Server& server, View* view) {
+        // Auto-float toplevels the client places itself: a parent link (dialogs,
+        // modals, Chromium's "sharing your screen" bubble) or a fixed non-resizable size.
+        if (view->kind == View::Kind::Xdg) {
+            const wlr_xdg_toplevel_state& st = view->toplevel->current;
+            const bool fixed =
+                st.max_width > 0 && st.max_width == st.min_width && st.max_height > 0 && st.max_height == st.min_height;
+            if (view->toplevel->parent || fixed) {
+                view->floating = true;
+                view->want_center = true; // center on output like a rule-floated window
+            }
+        }
         // A pattern matches when empty (any) or its regex matches the value; a null
         // app_id/title is treated as "" so `^$` rules can target unset identity. A bad
         // regex matches nothing (parser-style: swallow, don't crash).
