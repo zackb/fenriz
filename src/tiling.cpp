@@ -78,7 +78,6 @@ namespace fenriz::tiling {
             const int gap = server.config.gaps;
             place(root, {ax + gap, ay + gap, aw - 2 * gap, ah - 2 * gap}, gap);
 
-            const int bw = server.config.border_width;
             std::vector<Node*> leaves;
             collect_leaves(root, leaves);
             for (Node* n : leaves) {
@@ -98,9 +97,7 @@ namespace fenriz::tiling {
                     view->anim_ox += old.x - view->box.x;
                     view->anim_oy += old.y - view->box.y;
                 }
-                int cw = std::max(1, n->rect.w - 2 * bw);
-                int ch = std::max(1, n->rect.h - 2 * bw);
-                wlr_xdg_toplevel_set_size(view->toplevel, cw, ch);
+                view_configure(view); // size the client to the inner tile area (shell-agnostic)
             }
         }
 
@@ -119,7 +116,7 @@ namespace fenriz::tiling {
                     wlr_box full;
                     wlr_output_layout_get_box(server.output_layout, out->handle, &full);
                     view->box = {full.x, full.y, full.width, full.height};
-                    wlr_xdg_toplevel_set_size(view->toplevel, full.width, full.height);
+                    view_configure(view); // fullscreen: bw=0, so the client fills the output
                 }
             }
             place_view_nodes(view);

@@ -120,7 +120,7 @@ namespace fenriz::lock {
             end_lock_scene(*g->server);
             // Restore keyboard focus to the window that had it before the lock.
             if (g->server->focused_view)
-                focus_surface(*g->server, g->server->focused_view->toplevel->base->surface);
+                focus_surface(*g->server, view_surface(g->server->focused_view));
             else
                 wlr_seat_keyboard_notify_clear_focus(g->server->seat);
             redraw();
@@ -200,7 +200,7 @@ namespace fenriz::lock {
             wlr_session_lock_v1_destroy(g->session);
         // Restore keyboard focus like on_unlock does.
         if (server.focused_view)
-            focus_surface(server, server.focused_view->toplevel->base->surface);
+            focus_surface(server, view_surface(server.focused_view));
         else
             wlr_seat_keyboard_notify_clear_focus(server.seat);
         redraw();

@@ -16,6 +16,7 @@
 #include "tiling.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
+#include "xwayland.hpp"
 
 namespace fenriz {
 
@@ -210,7 +211,7 @@ namespace fenriz {
             auto* ev = static_cast<wlr_xdg_activation_v1_request_activate_event*>(data);
             Server& s = *sl->server;
             for (View* v : s.views) {
-                if (v->toplevel->base->surface != ev->surface)
+                if (view_surface(v) != ev->surface)
                     continue;
                 // Already looking at it: nothing to demand attention about.
                 if (v == s.focused_view || view_visible(s, v))
@@ -316,7 +317,7 @@ namespace fenriz {
         // v6 adds wl_surface.preferred_buffer_scale/transform: the compositor tells each
         // surface the scale to render at, instead of the client inferring it from the
         // wl_outputs it happens to overlap. Better HiDPI for toolkits that honor it.
-        wlr_compositor_create(display, 6, renderer);
+        compositor = wlr_compositor_create(display, 6, renderer); // stored for wlr_xwayland_create
         wlr_subcompositor_create(display);
         wlr_data_device_manager_create(display);
 
@@ -392,6 +393,10 @@ namespace fenriz {
         wlr_primary_selection_v1_device_manager_create(display);
         wlr_data_control_manager_v1_create(display);
         wlr_ext_data_control_manager_v1_create(display, 1);
+
+        // XWayland: managed X11 toplevels. Needs the compositor + seat (both live now), and
+        // exports DISPLAY so exec-once X clients (run below) can find it.
+        xwayland::setup(*this);
 
         // Let external tools see the display and windows, grab screenshots, tune gamma.
         wlr_xdg_output_manager_v1_create(display, output_layout);

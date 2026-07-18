@@ -165,8 +165,7 @@ namespace fenriz::output {
 
             // Only commit when the scene needs a repaint, a gamma LUT change is pending, or a
             // zoom is active/animating/just-ended here. An idle, unchanged output commits nothing.
-            if (wlr_scene_output_needs_frame(so) || server.gamma_dirty || zoomed || zoom_animating ||
-                exiting_zoom) {
+            if (wlr_scene_output_needs_frame(so) || server.gamma_dirty || zoomed || zoom_animating || exiting_zoom) {
                 // (Re)apply SceneFX per-window effects right before rendering. scenefx re-syncs
                 // each surface buffer during its own commit handling (after our commit handler),
                 // resetting opacity to 1.0 — so effects set at commit time never reach the

@@ -29,7 +29,8 @@ borders, per-window opacity, rounded corners, and an optional soft shadow. Inclu
 session lock, and a set of the common wlroots protocols (foreign-toplevel/taskbar,
 fractional scale, xdg-activation, gamma/output-power, data-control, screencopy, …).
 
-No XWayland yet; Wayland-native clients only.
+XWayland: managed X11 toplevels (games, IDEs, older GTK/Qt apps) tile and focus like
+native windows. Override-redirect popups (X11 menus/tooltips) aren't handled yet.
 
 ## Dependencies
 

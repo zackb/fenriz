@@ -13,6 +13,7 @@ pkg_check_modules(WAYLAND   REQUIRED IMPORTED_TARGET wayland-server)
 pkg_check_modules(XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
 pkg_check_modules(PIXMAN    REQUIRED IMPORTED_TARGET pixman-1)
 pkg_check_modules(LIBINPUT  REQUIRED IMPORTED_TARGET libinput)
+pkg_check_modules(XCB       REQUIRED IMPORTED_TARGET xcb xcb-icccm xcb-ewmh)
 
 # wlroots' wlr_layer_shell_v1.h includes the generated wlr-layer-shell protocol
 # server header, which this wlroots package does not ship. Generate it ourselves
@@ -53,6 +54,7 @@ add_executable(fenriz
     src/lock.cpp
     src/decoration.cpp
     src/ipc.cpp
+    src/xwayland.cpp
     ${LAYER_SHELL_HEADER}
     ${OUTPUT_POWER_HEADER}
 )
@@ -69,6 +71,7 @@ target_link_libraries(fenriz PRIVATE
     PkgConfig::XKBCOMMON
     PkgConfig::PIXMAN
     PkgConfig::LIBINPUT
+    PkgConfig::XCB
 )
 
 include(GNUInstallDirs)
