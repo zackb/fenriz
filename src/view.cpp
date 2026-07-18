@@ -185,6 +185,9 @@ namespace fenriz {
             }
             if (server.focused_view == view)
                 server.focused_view = nullptr;
+            for (Workspace& ws : server.workspaces)
+                if (ws.last_focused == view) // don't leave a dangling pointer to freed memory
+                    ws.last_focused = nullptr;
             tiling::arrange(server);
             // Move focus to another visible window so the keyboard isn't left dangling.
             if (!server.focused_view)
@@ -448,6 +451,7 @@ namespace fenriz {
         }
 
         server.focused_view = view;
+        server.workspaces[view->workspace].last_focused = view; // remembered for workspace return
         view->focused = true;
         view_set_activated(view, true);
         if (view->foreign_handle)
@@ -733,12 +737,16 @@ namespace fenriz {
 
         // Focus follows the workspace to its output (sway semantics). Warp the cursor when
         // focus crosses screens, or the pointer is left behind on the old one.
-        View* target = nullptr;
-        for (auto it = server.views.rbegin(); it != server.views.rend(); ++it)
-            if (view_visible(server, *it) && view_output(server, *it) == o) {
-                target = *it;
-                break;
-            }
+        // Prefer the view that was focused when we last left this workspace.
+        View* target = ws.last_focused;
+        if (!target || !view_visible(server, target) || view_output(server, target) != o) {
+            target = nullptr;
+            for (auto it = server.views.rbegin(); it != server.views.rend(); ++it)
+                if (view_visible(server, *it) && view_output(server, *it) == o) {
+                    target = *it;
+                    break;
+                }
+        }
         if (target)
             focus_view(server, target);
         else

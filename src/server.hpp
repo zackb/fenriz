@@ -58,6 +58,7 @@ namespace fenriz {
     struct Workspace {
         tiling::Node* root = nullptr;
         output::Output* output = nullptr; // null = unassigned (no screen); tree is kept
+        View* last_focused = nullptr;     // restored on workspace return; cleared when it dies
         std::string home;                 // configured output name; empty = no preference
         std::string origin;               // output it was evacuated off; empty = none
     };
