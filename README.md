@@ -1,6 +1,6 @@
 # fenriz
 
-A minimal tiling Wayland compositor built on [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots)
+A fast, stable tiling Wayland compositor built on [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots)
 and [SceneFX](https://github.com/wlrfx/scenefx).
 
 <p align="center">
@@ -17,20 +17,12 @@ does nothing you didn't ask for.
 - Great tiling support: dwindle BSP layout, floating, fullscreen, and per-window rules.
 - As performant as possible, with a small codebase, minimal dependencies, and extremely low resource use.
 - Stable and predictable: no surprises, no crashes, no memory leaks, no breaking changes every other release.
-- Perfect multi-monitor and clamshell support out of the box (see #multi-monitor-and-clamshell).
+- Perfect multi-monitor and clamshell support out of the box (see [Multi-monitor and Clamshell](#multi-monitor-and-clamshell)).
 - Integration with existing Wayland tools: quickshell, swaybar, waybar, wlogout, wdisplays, wlr-randr, etc.
 
 ## Status
 
-Usable daily driver. Brings up outputs (multi-monitor + clamshell), tiles xdg-shell
-windows in a dwindle BSP layout, floating and fullscreen, keyboard/pointer input with
-config keybinds and click/drag-to-move/resize. Rendering is via wlr_scene + SceneFX:
-borders, per-window opacity, rounded corners, and an optional soft shadow. Includes a
-session lock, and a set of the common wlroots protocols (foreign-toplevel/taskbar,
-fractional scale, xdg-activation, gamma/output-power, data-control, screencopy, …).
-
-XWayland: managed X11 toplevels (games, IDEs, older GTK/Qt apps) tile and focus like
-native windows. Override-redirect popups (X11 menus/tooltips) aren't handled yet.
+I use this as my daily driver. It is stable and usable, but still under active development. Expect bugs, missing features, and rough edges.
 
 ## User guide
 
@@ -83,11 +75,11 @@ output    = DP-1,  3840x2160@144, auto, 1.0
 workspace = 3, DP-1                        # pin ws3 to the big monitor, always
 ```
 
-## Screen sharing
+## Screen sharing, recording
 
-fenriz exposes `wlr-screencopy`, so screen sharing in Zoom, Discord, OBS, and
-browser apps (Google Meet, etc.) works through `xdg-desktop-portal` and its wlroots
-backend. You'll need to install the runtime pieces and make sure the user services are running:
+fenriz supports screen sharing through the `wlr-screencopy` and `ext-image-copy-capture` protocols.
+It works through `xdg-desktop-portal` and its wlroots backend. You'll need to install the runtime pieces 
+and make sure the user services are running:
 
 ```
 sudo pacman -S xdg-desktop-portal xdg-desktop-portal-wlr pipewire wireplumber
@@ -119,4 +111,5 @@ src/
   lock.*          session lock (ext-session-lock)
   ipc.*           FENRIZ_SOCKET control socket (see docs/IPC.md)
   config.*        Hyprland-style config parser
+  xwayland.*      XWayland support (X11 apps)
 ```
