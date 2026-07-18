@@ -161,6 +161,12 @@ namespace fenriz {
             (void)data;
             Server& server = *view->server;
             view->mapped = false;
+            // Tear down the per-window capture mirror first
+            if (view->capture_scene) {
+                wlr_scene_node_destroy(&view->capture_scene->tree.node);
+                view->capture_scene = nullptr;
+                view->capture_source = nullptr; // freed transitively above
+            }
             if (view->scene_tree) {
                 // Frees the whole subtree (border + surface + any popups).
                 wlr_scene_node_destroy(&view->scene_tree->node);

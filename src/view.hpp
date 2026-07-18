@@ -10,6 +10,8 @@ struct wlr_ext_foreign_toplevel_handle_v1;
 struct wlr_scene_tree;
 struct wlr_scene_rect;
 struct wlr_scene_shadow;
+struct wlr_scene;
+struct wlr_ext_image_capture_source_v1;
 
 namespace fenriz {
 
@@ -75,6 +77,12 @@ namespace fenriz {
         wlr_scene_tree* popup_tree = nullptr;
         wlr_scene_rect* border = nullptr;
         wlr_scene_shadow* shadow = nullptr; // soft glow, bottom-most; enabled only when focused
+
+        // Per-window screen capture (ext-image-copy-capture): a private scene mirroring just
+        // this window's surface, so a portal can capture it isolated from workspace visibility.
+        // Built lazily on first capture request; torn down on unmap. See on_new_ext_capture_request.
+        wlr_scene* capture_scene = nullptr;
+        wlr_ext_image_capture_source_v1* capture_source = nullptr; // freed via capture_scene teardown
 
         wl_listener map;
         wl_listener unmap;
