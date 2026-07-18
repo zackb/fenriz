@@ -25,8 +25,14 @@ int main() {
     // The bind matcher compares the config-parsed sym against the base-level sym of the
     // pressed key, plus the modifier mask. evdev KEY_T=20 -> xkb 28, KEY_E=18 -> xkb 26.
     Config c = Config::parse("bind = SUPER, T, exec, foo\n"
-                             "bind = SUPER SHIFT, E, exit\n");
-    assert(c.binds.size() == 2);
+                             "bind = SUPER SHIFT, E, exit\n"
+                             "bind = SUPER, P, pin\n");
+    assert(c.binds.size() == 3);
+
+    // "pin" keyword parses to Action::Pin (floating-only stay-across-workspaces).
+    assert(c.binds[2].action == Action::Pin);
+    assert(c.binds[2].sym == base_sym(km, 33)); // 'p', evdev KEY_P=25 -> xkb 33
+    assert(c.binds[2].mods == 64u);             // LOGO
 
     // Plain letter: SUPER+t resolves to the same sym the config stored.
     assert(c.binds[0].sym == base_sym(km, 28)); // 't'

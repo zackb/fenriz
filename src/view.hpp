@@ -48,6 +48,7 @@ namespace fenriz {
         bool focused = false;
         bool fullscreen = false;
         bool floating = false;    // escaped the BSP tree; free move/resize, drawn above tiles
+        bool pinned = false;      // floating window shown on every workspace of its output
         bool want_center = false; // window-rule center: applied once the float has real size
         bool urgent = false;      // asked to be activated while unfocused; cleared on focus
 
@@ -126,12 +127,17 @@ namespace fenriz {
     // Make a view cover the whole output (no border/gap, above the bar) or restore it
     // to tiling. Driven by client set_fullscreen requests and the fullscreen keybind.
     void set_fullscreen(Server& server, View* view, bool on);
+
     // Toggle fullscreen on the currently focused view.
     void toggle_fullscreen(Server& server);
 
     // Toggle floating on the currently focused view: pull it out of the tiling tree (or
     // return it), so it can be freely moved/resized with the mouse.
     void toggle_floating(Server& server);
+
+    // Toggle "pin" on the focused view (floating-only): a pinned float follows the active
+    // workspace on its output, so it stays visible across workspace switches.
+    void toggle_pin(Server& server);
 
     // Apply matching `windowrule` config to a just-mapped view (before it's tiled/focused):
     // sets view->floating / view->want_center from every rule whose app_id/title regex

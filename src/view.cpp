@@ -524,10 +524,18 @@ namespace fenriz {
             tiling::remove(server, v);
             raise_to_tail(server, v);
         } else {
+            v->pinned = false;                  // a tiled window can't be pinned
             tiling::insert(server, v, nullptr); // re-tile at the spiral tail
         }
         restack_view(server, v);
         tiling::arrange(server);
+    }
+
+    void toggle_pin(Server& server) {
+        View* v = server.focused_view;
+        if (!v || !v->floating) // pin is floating-only
+            return;
+        v->pinned = !v->pinned;
     }
 
     bool apply_window_rules(Server& server, View* view) {
@@ -750,6 +758,11 @@ namespace fenriz {
 
         // The workspace that output was showing steps aside; this one takes its place.
         o->active_ws = n;
+
+        // Pinned floats follow the output to whatever workspace it now shows.
+        for (View* v : server.views)
+            if (v->pinned && view_output(server, v) == o)
+                v->workspace = n;
         tiling::arrange(server, false); // no slide: a workspace switch appears in place
 
         // Focus follows the workspace to its output (sway semantics). Warp the cursor when
@@ -776,6 +789,8 @@ namespace fenriz {
         n = std::clamp(n, 0, WS_COUNT - 1);
         View* v = server.focused_view;
         if (!v || v->workspace == n)
+            return;
+        if (v->pinned) // a pinned float belongs to all workspaces of its output; don't strand it
             return;
         // A floating view isn't in any tree (floating <=> not tiled); only tiled views move
         // between workspace trees, else insert would leave a phantom leaf in the destination.

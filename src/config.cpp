@@ -104,6 +104,8 @@ namespace fenriz {
             return Action::Workspace;
         if (s == "movetoworkspace")
             return Action::MoveToWorkspace;
+        if (s == "pin")
+            return Action::Pin;
         return Action::None;
     }
 

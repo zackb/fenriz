@@ -24,6 +24,7 @@ namespace fenriz {
         ToggleFloat,
         Workspace,       // arg = workspace number 1..10
         MoveToWorkspace, // arg = workspace number 1..10
+        Pin,             // toggle pin (float shown on all workspaces) on focused view
     };
 
     struct Bind {

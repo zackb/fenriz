@@ -333,6 +333,9 @@ namespace fenriz {
         case Action::ToggleFloat:
             toggle_floating(server);
             break;
+        case Action::Pin:
+            toggle_pin(server);
+            break;
         case Action::Workspace:
         case Action::MoveToWorkspace: {
             int n = 0;
