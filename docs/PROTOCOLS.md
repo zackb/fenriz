@@ -26,7 +26,7 @@ added in v6, is not advertised).
 | wl_output | `wlr_output_layout` | `server.cpp`, `output.cpp` | Output advertisement, mode/scale |
 | xdg-output-unstable-v1 | `wlr_xdg_output_manager_v1` | `server.cpp` | Logical output geometry for bars/tools |
 | xdg-shell (wm_base) | `wlr_xdg_shell` (v3) | `server.cpp`, `view.cpp` | Application windows, popups |
-| XWayland | `wlr_xwayland` (lazy) | `xwayland.cpp`, `view.cpp` | X11 apps (games, IDEs, legacy tools). Managed toplevels only — they tile/focus as native windows via the shared `View`; override-redirect popups (X11 menus/tooltips) are deferred |
+| XWayland | `wlr_xwayland` (lazy) | `xwayland.cpp`, `view.cpp` | X11 apps (games, IDEs, legacy tools). Managed toplevels tile/focus as native windows via the shared `View`; override-redirect surfaces (X11 menus/tooltips/dropdowns) render in a dedicated `scene_unmanaged` layer as non-`View` `Unmanaged` objects |
 | wlr-layer-shell-v1 | `wlr_layer_shell_v1` (v4) | `layer.cpp` | Bars / wallpapers / launchers (quickshell) |
 | xdg-decoration-unstable-v1 | `wlr_xdg_decoration_manager_v1` | `decoration.cpp` | Server-side decorations (forced SSD) |
 | org_kde_kwin_server_decoration | `wlr_server_decoration_manager` | `decoration.cpp` | SSD lever GTK/libadwaita honors |
@@ -68,7 +68,6 @@ logic, "L" ≈ substantial subsystem).
 
 | Protocol | Why it matters | Effort |
 |---|---|---|
-| **XWayland override-redirect** | X11 menus/tooltips/DND/splash. Managed toplevels already work (see Supported); this is the remaining unmanaged-surface path | M |
 | text-input-v3 + input-method-v2 | IMEs (fcitx5/ibus), CJK and emoji input — a real gap for non-Latin input | L |
 | ext-image-copy-capture-v1 / wlr-export-dmabuf-v1 | Efficient (dmabuf) screen recording — wf-recorder, better OBS path | M |
 | tablet-v2 | Drawing tablets (Wacom) | M |
