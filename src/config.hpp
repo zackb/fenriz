@@ -57,7 +57,7 @@ namespace fenriz {
 
     struct Config {
         int border_width = 2;
-        uint32_t border_active = 0x33ccffff;   // RGBA
+        uint32_t border_active = 0x16b8f3ff;   // RGBA
         uint32_t border_inactive = 0x444444ff; // RGBA
         bool shadow = true;                    // soft glow behind the focused window
         uint32_t shadow_color = 0x33ccff66;    // RGBA — soft aqua halo, matches border_active hue
@@ -66,17 +66,17 @@ namespace fenriz {
         int rounding = 10;
         int animation_ms = 150; // slide-into-place duration; 0 = instant (no animation)
         float opacity = 1.0f;
-        float scale = 1.0f;         // output scale; fractional (e.g. 1.5) supported, 1.0 = off
-        bool natural_scroll = true; // libinput scroll direction; false = traditional wheel
-        float sensitivity = 0.0f;   // libinput pointer accel speed, -1.0 (slow) .. 1.0 (fast); 0 = default
-        bool tap_to_click = true;   // trackpad tap = click (1/2/3 fingers = left/right/middle)
-        bool clickfinger = true;    // two-finger press = right-click; false = bottom-right corner
+        float scale = 1.0f;                // output scale; fractional (e.g. 1.5) supported, 1.0 = off
+        bool natural_scroll = true;        // libinput scroll direction; false = traditional wheel
+        float sensitivity = 0.0f;          // libinput pointer accel speed, -1.0 (slow) .. 1.0 (fast); 0 = default
+        bool tap_to_click = true;          // trackpad tap = click (1/2/3 fingers = left/right/middle)
+        bool clickfinger = true;           // two-finger press = right-click; false = bottom-right corner
         bool focus_follows_pointer = true; // window under the moving cursor gains focus
-        int repeat_delay = 250;     // ms a `binde` key is held before it starts repeating
-        int repeat_rate = 15;       // `binde` fires per second while held
-        uint32_t zoom_mod = 4;      // modifier + scroll = screen zoom; 4 = CTRL (mirrors WLR_MODIFIER_*), 0 = off
-        float zoom_max = 3.0f;      // ceiling for the zoom level
-        float zoom_step = 0.1f;     // fraction of zoom added/removed per scroll notch
+        int repeat_delay = 250;            // ms a `binde` key is held before it starts repeating
+        int repeat_rate = 15;              // `binde` fires per second while held
+        uint32_t zoom_mod = 4;  // modifier + scroll = screen zoom; 4 = CTRL (mirrors WLR_MODIFIER_*), 0 = off
+        float zoom_max = 3.0f;  // ceiling for the zoom level
+        float zoom_step = 0.1f; // fraction of zoom added/removed per scroll notch
         std::vector<Bind> binds;
         std::vector<std::string> exec_once;                   // commands to run once at startup
         std::vector<std::pair<std::string, std::string>> env; // NAME,VALUE exported before exec-once
