@@ -65,13 +65,17 @@ namespace fenriz {
             if (!o)
                 return false;
 
-            // usable_area is already layout coords with the bars' exclusive zones removed, so
-            // menus stay clear of them. Shift it into the toplevel's window-geometry space:
-            // that origin is where surface_tree/popup_tree sit, and is what popup geometry is
-            // positioned against (see place_view_nodes).
+            // usable_area is layout coords with the bars' exclusive zones removed, so menus
+            // stay clear of them. unconstrain_from_box wants the box in the root toplevel's
+            // *surface* coordinate space: wlr_xdg_popup_get_toplevel_coords converts the popup
+            // into surface coords by adding the toplevel's window-geometry offset. So shift the
+            // usable area from layout coords to that same surface origin.
+            // layout is (view->box + bw) - geometry, hence the + geometry here. CSD clients
+            // (GTK/Firefox/Zen) ship a large shadow-margin geometry offset; omitting it left the
+            // box shifted up-left by the margin, so bottom-anchored menus spilled off-screen.
             const int bw = view->fullscreen ? 0 : server.config.border_width;
-            *out = {o->usable_area.x - (view->box.x + bw),
-                    o->usable_area.y - (view->box.y + bw),
+            *out = {o->usable_area.x - (view->box.x + bw) + root->geometry.x,
+                    o->usable_area.y - (view->box.y + bw) + root->geometry.y,
                     o->usable_area.width,
                     o->usable_area.height};
             return true;
@@ -105,6 +109,7 @@ namespace fenriz {
             Popup* p = wl_container_of(listener, p, reposition);
             (void)data;
             unconstrain_popup(*p->server, p->popup);
+            wlr_xdg_surface_schedule_configure(p->popup->base);
         }
 
         void on_popup_destroy(wl_listener* listener, void* data) {
