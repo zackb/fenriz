@@ -121,14 +121,17 @@ namespace fenriz {
                 root = up;
             }
             if (root->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
-                bool alive = false;
+                View* owner = nullptr;
                 for (View* v : sl->server->views)
                     if (v->toplevel == root->toplevel && v->scene_tree) {
-                        alive = true;
+                        owner = v;
                         break;
                     }
-                if (!alive)
+                if (!owner)
                     return; // toplevel unmapped: parent->data is freed
+                // Popups live inside the owner's scene subtree, so they can't rise above a
+                // sibling tiled toplevel. Raise the owner's tree.
+                wlr_scene_node_raise_to_top(&owner->scene_tree->node);
             }
             popup_create(*sl->server, popup, static_cast<wlr_scene_tree*>(parent->data));
         }
@@ -192,7 +195,7 @@ namespace fenriz {
 
         void on_drag_icon_destroy(wl_listener* listener, void*) {
             SignalListener* sl = wl_container_of(listener, sl, listener);
-            sl->server->drag_icon = nullptr; // scene node is freed by wlroots; just drop our handle
+            sl->server->drag_icon = nullptr;    // scene node is freed by wlroots; just drop our handle
             wl_list_remove(&sl->listener.link); // re-arm for the next drag
         }
 
