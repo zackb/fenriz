@@ -175,6 +175,7 @@ namespace fenriz {
         wlr_scene_tree* scene_unmanaged = nullptr;  // X11 override-redirect (menus/tooltips)
         wlr_scene_tree* scene_overlay = nullptr;
         wlr_scene_tree* scene_lock = nullptr; // ext-session-lock, above everything
+        wlr_scene_tree* drag_icon = nullptr;  // active DnD icon node; NULL when no drag
 
         SignalListener l_new_output;
         SignalListener l_new_xwayland_surface;
@@ -186,6 +187,7 @@ namespace fenriz {
         SignalListener l_set_selection;
         SignalListener l_set_primary_selection;
         SignalListener l_start_drag;
+        SignalListener l_drag_icon_destroy;
         SignalListener l_set_gamma;
         SignalListener l_new_ext_capture_request;
         SignalListener l_output_power;

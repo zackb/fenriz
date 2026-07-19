@@ -242,6 +242,11 @@ namespace fenriz::cursor {
             Server& server = *c->server;
             wlr_idle_notifier_v1_notify_activity(server.idle_notifier, server.seat);
 
+            // A DnD icon tracks the cursor. Update before any early-out so it follows over empty
+            // desktop too; the scene helper adds the icon surface's own offset to this position.
+            if (server.drag_icon)
+                wlr_scene_node_set_position(&server.drag_icon->node, (int)c->cursor->x, (int)c->cursor->y);
+
             // While zoomed, the viewport re-centers on the cursor each frame
             if (server.zoom > 1.0f)
                 schedule_frame_at_cursor(c);

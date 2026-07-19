@@ -190,14 +190,31 @@ namespace fenriz {
             wlr_seat_set_primary_selection(sl->server->seat, ev->source, ev->serial);
         }
 
+        void on_drag_icon_destroy(wl_listener* listener, void*) {
+            SignalListener* sl = wl_container_of(listener, sl, listener);
+            sl->server->drag_icon = nullptr; // scene node is freed by wlroots; just drop our handle
+            wl_list_remove(&sl->listener.link); // re-arm for the next drag
+        }
+
         void on_request_start_drag(wl_listener* listener, void* data) {
             SignalListener* sl = wl_container_of(listener, sl, listener);
             auto* ev = static_cast<wlr_seat_request_start_drag_event*>(data);
             wlr_seat* seat = sl->server->seat;
-            if (wlr_seat_validate_pointer_grab_serial(seat, ev->origin, ev->serial))
-                wlr_seat_start_pointer_drag(seat, ev->drag, ev->serial);
-            else if (ev->drag->source)
-                wlr_data_source_destroy(ev->drag->source);
+            if (!wlr_seat_validate_pointer_grab_serial(seat, ev->origin, ev->serial)) {
+                if (ev->drag->source)
+                    wlr_data_source_destroy(ev->drag->source);
+                return;
+            }
+            wlr_seat_start_pointer_drag(seat, ev->drag, ev->serial);
+            // Render the drag icon: wire it into the scene above windows and let cursor motion
+            // (process_motion) track it. wlroots frees the node when the icon is destroyed.
+            if (ev->drag->icon) {
+                Server* s = sl->server;
+                s->drag_icon = wlr_scene_drag_icon_create(s->scene_overlay, ev->drag->icon);
+                s->l_drag_icon_destroy.server = s;
+                s->l_drag_icon_destroy.listener.notify = on_drag_icon_destroy;
+                wl_signal_add(&ev->drag->icon->events.destroy, &s->l_drag_icon_destroy.listener);
+            }
         }
 
         void on_set_gamma(wl_listener* listener, void* data) {
