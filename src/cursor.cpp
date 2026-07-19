@@ -58,8 +58,8 @@ namespace fenriz::cursor {
         // surface-local coords on hit.
         // hit_out (optional) receives the raw node under the point, even when it isn't a
         // buffer surface — lets a caller derive the owning View without a second scene walk.
-        wlr_surface* scene_surface_at(Server& server, double lx, double ly, double* sx, double* sy,
-                                      wlr_scene_node** hit_out = nullptr) {
+        wlr_surface* scene_surface_at(
+            Server& server, double lx, double ly, double* sx, double* sy, wlr_scene_node** hit_out = nullptr) {
             wlr_scene_node* root = server.locked ? &server.scene_lock->node : &server.scene->tree.node;
             wlr_scene_node* node = wlr_scene_node_at(root, lx, ly, sx, sy);
             if (hit_out)
