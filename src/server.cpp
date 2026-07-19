@@ -36,6 +36,7 @@ namespace fenriz {
             wlr_xdg_popup* popup;
             wl_listener commit;
             wl_listener destroy;
+            wl_listener reposition;
         };
 
         // The box a popup must stay inside, in the root toplevel's window-geometry coordinate
@@ -76,6 +77,14 @@ namespace fenriz {
             return true;
         }
 
+        // Flip/slide the popup back on-screen against the constraint box. Shared by the
+        // initial-commit and reposition paths. unconstrain_from_box schedules the configure
+        // (carrying the reposition token on the reposition path), so callers needn't.
+        void unconstrain_popup(Server& server, wlr_xdg_popup* popup) {
+            if (wlr_box box; popup_constraint_box(server, popup, &box))
+                wlr_xdg_popup_unconstrain_from_box(popup, &box);
+        }
+
         void on_popup_commit(wl_listener* listener, void* data) {
             Popup* p = wl_container_of(listener, p, commit);
             (void)data;
@@ -86,9 +95,16 @@ namespace fenriz {
             // toplevel path does the same in view_handle_commit). Unconstraining schedules a
             // configure itself, but not on the path where we can't place the popup so ask for
             // one unconditionally. It's idempotent; wlroots dedups via configure_idle.
-            if (wlr_box box; popup_constraint_box(*p->server, p->popup, &box))
-                wlr_xdg_popup_unconstrain_from_box(p->popup, &box);
+            unconstrain_popup(*p->server, p->popup);
             wlr_xdg_surface_schedule_configure(p->popup->base);
+        }
+
+        // GTK/Firefox clients reuse one popover surface and reposition it each time it's
+        // shown; wlroots applies the new positioner but leaves unconstraining to us.
+        void on_popup_reposition(wl_listener* listener, void* data) {
+            Popup* p = wl_container_of(listener, p, reposition);
+            (void)data;
+            unconstrain_popup(*p->server, p->popup);
         }
 
         void on_popup_destroy(wl_listener* listener, void* data) {
@@ -96,6 +112,7 @@ namespace fenriz {
             (void)data;
             wl_list_remove(&p->commit.link);
             wl_list_remove(&p->destroy.link);
+            wl_list_remove(&p->reposition.link);
             delete p;
         }
 
@@ -323,11 +340,13 @@ namespace fenriz {
     // position, and take responsibility for configuring it.
     void popup_create(Server& server, wlr_xdg_popup* popup, wlr_scene_tree* parent_tree) {
         popup->base->data = wlr_scene_xdg_surface_create(parent_tree, popup->base);
-        Popup* p = new Popup{&server, popup, {}, {}};
+        Popup* p = new Popup{&server, popup, {}, {}, {}};
         p->commit.notify = on_popup_commit;
         wl_signal_add(&popup->base->surface->events.commit, &p->commit);
         p->destroy.notify = on_popup_destroy;
         wl_signal_add(&popup->events.destroy, &p->destroy);
+        p->reposition.notify = on_popup_reposition;
+        wl_signal_add(&popup->events.reposition, &p->reposition);
     }
 
     void spawn(const std::string& cmd) {
