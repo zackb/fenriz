@@ -173,6 +173,13 @@ namespace fenriz {
     // focus/workspace changes). No-op before the view's nodes exist (pre-map).
     void place_view_nodes(View* view);
 
+    // For a floating (non-fullscreen, non-grabbed) view, adopt the client's committed
+    // window geometry into `box` and re-place the scene nodes so border/shadow/clip tighten
+    // onto the real content. No-op for tiled/fullscreen/grabbed views. Called from the commit
+    // handler and once more when a float resize grab ends (a lagging commit is otherwise only
+    // reconciled on the next focus change).
+    void view_reconcile_float_size(View* view);
+
     // (Re)apply SceneFX content effects (opacity + corner radius) to a view's surface buffers.
     // Call from the output frame handler before rendering — see the definition for why it can't
     // live in the commit path.

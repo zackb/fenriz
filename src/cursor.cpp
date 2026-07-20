@@ -392,8 +392,16 @@ namespace fenriz::cursor {
                         c->grabbed->dragging = false;
                         c->preview_partner = nullptr;
                     }
+                    // A float resize drove box straight from the cursor; the client may have
+                    // refused (min/step size) and committed a different size that the commit
+                    // handler skipped while grabbed. Reconcile now so box snaps to the real
+                    // size on button-up instead of waiting for the next focus-change commit.
+                    View* ended = c->grabbed;
+                    const bool was_resize_float = c->grab == Grab::ResizeFloat;
                     c->grab = Grab::None;
                     c->grabbed = nullptr;
+                    if (was_resize_float && ended)
+                        view_reconcile_float_size(ended);
                     process_motion(c, event->time_msec); // restore the passthrough cursor image
                     return;                              // swallow the release that ended the drag
                 }

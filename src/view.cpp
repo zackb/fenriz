@@ -209,32 +209,10 @@ namespace fenriz {
             // (X11 has no initial-commit handshake — its configure is driven separately.)
             if (view->kind == View::Kind::Xdg && view->toplevel->base->initial_commit)
                 wlr_xdg_toplevel_set_size(view->toplevel, 0, 0);
-            // A floating window sizes itself (we un-tile it, so GTK/Gecko restore their own
-            // natural size + CSD margins and never honor a configure). Track the committed
-            // size so the border/shadow/clip tighten onto the real content instead of leaving
-            // a band of the desktop behind the float showing through. Tiled/fullscreen boxes
-            // stay compositor-authoritative; skip while this view is under an interactive grab
-            // so a lagging commit can't fight the cursor mid-resize. xdg reports a window
-            // geometry (CSD margin excluded); X11 has none, so use the raw surface size.
-            const bool xdg = view->kind == View::Kind::Xdg;
-            const wlr_box geo =
-                xdg ? view->toplevel->base->geometry
-                    : wlr_box{0, 0, view->xwl->surface->current.width, view->xwl->surface->current.height};
-            if (view->floating && !view->fullscreen && geo.width > 0 && geo.height > 0 &&
-                cursor::grabbed_view() != view) {
-                const int bw = view->server->config.border_width;
-                view->box.width = geo.width + 2 * bw;
-                view->box.height = geo.height + 2 * bw;
-                // A window-rule center can only run once the float has its real size (now).
-                if (view->want_center) {
-                    center_view(*view->server, view);
-                    view->want_center = false;
-                }
-            }
-            // A client can change its window geometry after mapping (CSD apps adjust their
-            // shadow margin); re-sync the scene nodes so the inset stays correct. No-op
-            // until the nodes exist (created on map).
-            place_view_nodes(view);
+            // Adopt the client's committed float size (if any) and re-sync scene nodes. A
+            // client can also change its window geometry after mapping (CSD apps adjust their
+            // shadow margin); the re-place keeps the inset correct.
+            view_reconcile_float_size(view);
         }
 
         // Push title+app_id to the ext-foreign-toplevel handle. Unlike the wlr protocol's
@@ -659,6 +637,33 @@ namespace fenriz {
     void apply_view_effects(View* view) {
         if (view->surface_tree)
             wlr_scene_node_for_each_buffer(&view->surface_tree->node, apply_fx, view);
+    }
+
+    void view_reconcile_float_size(View* view) {
+        // A floating window sizes itself (we un-tile it, so GTK/Gecko restore their own
+        // natural size + CSD margins and never honor a configure). Track the committed
+        // size so the border/shadow/clip tighten onto the real content instead of leaving
+        // a band of the desktop behind the float showing through. Tiled/fullscreen boxes
+        // stay compositor-authoritative; skip while this view is under an interactive grab
+        // so a lagging commit can't fight the cursor mid-resize. xdg reports a window
+        // geometry (CSD margin excluded); X11 has none, so use the raw surface size.
+        const bool xdg = view->kind == View::Kind::Xdg;
+        const wlr_box geo =
+            xdg ? view->toplevel->base->geometry
+                : wlr_box{0, 0, view->xwl->surface->current.width, view->xwl->surface->current.height};
+        if (view->floating && !view->fullscreen && geo.width > 0 && geo.height > 0 &&
+            cursor::grabbed_view() != view) {
+            const int bw = view->server->config.border_width;
+            view->box.width = geo.width + 2 * bw;
+            view->box.height = geo.height + 2 * bw;
+            // A window-rule center can only run once the float has its real size (now).
+            if (view->want_center) {
+                center_view(*view->server, view);
+                view->want_center = false;
+            }
+        }
+        // Re-sync the scene nodes so the inset stays correct. No-op until the nodes exist.
+        place_view_nodes(view);
     }
 
     void place_view_nodes(View* view) {
