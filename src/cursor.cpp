@@ -47,9 +47,10 @@ namespace fenriz::cursor {
 
             Grab grab = Grab::None;
             View* grabbed = nullptr;
-            View* preview_partner = nullptr; // tiled view swapped into grabbed's home slot (live drag rearrange)
-            View::Box grab_home{};           // grabbed's tile rect at drag start; cursor back inside = revert
-            uint32_t resize_edges = 0;       // WLR_EDGE_* corner chosen at resize-grab start
+            View* preview_partner = nullptr;     // tiled view swapped into grabbed's home slot (live drag rearrange)
+            View::Box grab_home{};               // grabbed's tile rect at drag start; cursor back inside = revert
+            double grab_fx = 0.5, grab_fy = 0.5; // where in the tile the cursor grabbed (0..1), to pin on resize
+            uint32_t resize_edges = 0;           // WLR_EDGE_* corner chosen at resize-grab start
         };
 
         // The singleton, so forget_view() can reach the grab state (init() sets it).
@@ -112,22 +113,20 @@ namespace fenriz::cursor {
             case Grab::None:
                 return false;
             case Grab::Swap: {
-                // Float the window up under the cursor: track the pointer via the render offset.
-                v->anim_ox += dx;
-                v->anim_oy += dy;
                 // Live preview: as the cursor crosses into a new tile, apply the swap it would
                 // make on drop, so the displaced tile slides/resizes into v's home slot now.
                 View* t = view_box_at(server, c->cursor->x, c->cursor->y);
                 const View::Box& h = c->grab_home;
                 const bool over_home = c->cursor->x >= h.x && c->cursor->x < h.x + h.width && c->cursor->y >= h.y &&
                                        c->cursor->y < h.y + h.height;
+                bool retarget = true;
                 if (over_home)
                     t = nullptr; // back over the original slot → revert to the original layout
                 else if (t == v)
                     t = c->preview_partner; // over v's own (previewed) slot → keep it
                 else if (!t || t->floating)
-                    return true; // gap / off-tiles / float: hold current preview
-                if (t != c->preview_partner) {
+                    retarget = false; // gap / off-tiles / float: hold current preview
+                if (retarget && t != c->preview_partner) {
                     // Undo the previous preview (slides it home), then apply the new one (t may
                     // be null when reverting home — undo alone restores the original layout).
                     if (c->preview_partner)
@@ -136,6 +135,11 @@ namespace fenriz::cursor {
                         tiling::swap(server, v, t);
                     c->preview_partner = t;
                 }
+                // Pin the grab point to the cursor against the current box (the swap
+                // may have just resized) so a window that shrank to fit a smaller slot still
+                // sits under the cursor
+                v->anim_ox = c->cursor->x - v->box.x - c->grab_fx * v->box.width;
+                v->anim_oy = c->cursor->y - v->box.y - c->grab_fy * v->box.height;
                 return true;
             }
             case Grab::MoveFloat:
@@ -409,8 +413,11 @@ namespace fenriz::cursor {
                         c->grab = v->floating ? (resize ? Grab::ResizeFloat : Grab::MoveFloat)
                                               : (resize ? Grab::ResizeTile : Grab::Swap);
                         v->dragging = (c->grab == Grab::Swap); // float above tiles, hold offset
-                        if (c->grab == Grab::Swap)
+                        if (c->grab == Grab::Swap) {
                             c->grab_home = v->box; // dragging back over here reverts the preview
+                            c->grab_fx = v->box.width > 0 ? (c->cursor->x - v->box.x) / v->box.width : 0.5;
+                            c->grab_fy = v->box.height > 0 ? (c->cursor->y - v->box.y) / v->box.height : 0.5;
+                        }
                         // Resize the corner nearest the grab point
                         const char* rc = "grabbing";
                         if (resize) {
