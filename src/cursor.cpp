@@ -48,6 +48,7 @@ namespace fenriz::cursor {
             Grab grab = Grab::None;
             View* grabbed = nullptr;
             View* preview_partner = nullptr; // tiled view swapped into grabbed's home slot (live drag rearrange)
+            View::Box grab_home{};           // grabbed's tile rect at drag start; cursor back inside = revert
             uint32_t resize_edges = 0;       // WLR_EDGE_* corner chosen at resize-grab start
         };
 
@@ -117,10 +118,18 @@ namespace fenriz::cursor {
                 // Live preview: as the cursor crosses into a new tile, apply the swap it would
                 // make on drop, so the displaced tile slides/resizes into v's home slot now.
                 View* t = view_box_at(server, c->cursor->x, c->cursor->y);
-                if (!t || t == v || t->floating)
-                    t = nullptr; // only tiled tiles are swap targets (mirror the drop guard)
+                const View::Box& h = c->grab_home;
+                const bool over_home = c->cursor->x >= h.x && c->cursor->x < h.x + h.width && c->cursor->y >= h.y &&
+                                       c->cursor->y < h.y + h.height;
+                if (over_home)
+                    t = nullptr; // back over the original slot → revert to the original layout
+                else if (t == v)
+                    t = c->preview_partner; // over v's own (previewed) slot → keep it
+                else if (!t || t->floating)
+                    return true; // gap / off-tiles / float: hold current preview
                 if (t != c->preview_partner) {
-                    // Undo the previous preview, then apply the new one.
+                    // Undo the previous preview (slides it home), then apply the new one (t may
+                    // be null when reverting home — undo alone restores the original layout).
                     if (c->preview_partner)
                         tiling::swap(server, v, c->preview_partner);
                     if (t)
@@ -400,6 +409,8 @@ namespace fenriz::cursor {
                         c->grab = v->floating ? (resize ? Grab::ResizeFloat : Grab::MoveFloat)
                                               : (resize ? Grab::ResizeTile : Grab::Swap);
                         v->dragging = (c->grab == Grab::Swap); // float above tiles, hold offset
+                        if (c->grab == Grab::Swap)
+                            c->grab_home = v->box; // dragging back over here reverts the preview
                         // Resize the corner nearest the grab point
                         const char* rc = "grabbing";
                         if (resize) {
