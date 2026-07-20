@@ -120,6 +120,11 @@ bind  = , XF86AudioMute,         exec, wpctl set-mute @DEFAULT_AUDIO_SINK@ toggl
 binde = , XF86MonBrightnessUp,   exec, brightnessctl set 5%+
 binde = , XF86MonBrightnessDown, exec, brightnessctl set 5%-
 
+# Screenshots
+# bind = ,      Print, exec, grim -g "$(slurp)" - | satty -f - -o ~/Pictures/screenshot-%Y%m%d-%H%M%S.png --early-exit save
+# bind = SUPER, Print, exec, grim -g "$(slurp)" - | satty -f - --copy-command wl-copy --actions-on-enter save-to-clipboard --early-exit copy
+
+
 # ---------------------------------------------------------------------------
 # window rules: windowrule = <fields>   — fields are name=value, comma-separated,
 # in any order. Match a window when it opens and apply actions to it.
@@ -136,3 +141,6 @@ binde = , XF86MonBrightnessDown, exec, brightnessctl set 5%-
 # quantifier ({2,4}) will not work. There is no maximize rule — fenriz already ignores
 # client maximize requests.
 windowrule = name=pavucontrol, class=^(org\.pulseaudio\.pavucontrol)$, float=true, center=true
+windowrule = name=satty,       class=^com\.gabm\.satty$,               float=true, center=true
+windowrule = name=filechooser, class=^xdg-desktop-portal-gtk$,         float=true, center=true
+
