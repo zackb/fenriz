@@ -2,11 +2,11 @@
 
 # settings: key = value
 border_width     = 2
-border_active    = 0x33ccffff   # RGBA hex
-border_inactive  = 0x444444ff
+border_active    = 0x16b8f3cc   # RGBA hex; translucent alpha softens the edge
+border_inactive  = 0x44444488   # dim so unfocused borders nearly vanish
 shadow           = on            # soft glow behind the focused window
-shadow_color     = 0x33ccff66    # RGBA hex; low alpha = subtle halo
-shadow_blur      = 18            # glow spread in px
+shadow_color     = 0x00000055    # RGBA hex; alpha = glow intensity, hue tracks border_active
+shadow_blur      = 28            # glow spread in px; wider = softer
 gaps             = 8
 rounding         = 10           # corner radius in px
 animation        = 150          # window slide-into-place, ms; 0 = instant (off)

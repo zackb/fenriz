@@ -57,11 +57,11 @@ namespace fenriz {
 
     struct Config {
         int border_width = 2;
-        uint32_t border_active = 0x16b8f3ff;   // RGBA
-        uint32_t border_inactive = 0x444444ff; // RGBA
+        uint32_t border_active = 0x16b8f3cc;   // RGBA — translucent so the edge isn't a hard stroke
+        uint32_t border_inactive = 0x44444488; // RGBA — dim; unfocused borders nearly vanish
         bool shadow = true;                    // soft glow behind the focused window
-        uint32_t shadow_color = 0x33ccff66;    // RGBA — soft aqua halo, matches border_active hue
-        int shadow_blur = 18;                  // blur sigma (px)
+        uint32_t shadow_color = 0x00000055;    // RGBA — alpha = glow intensity; hue tracks border_active
+        int shadow_blur = 28;                  // blur sigma (px) — wider halo = softer falloff
         int gaps = 8;
         int rounding = 10;
         int animation_ms = 150; // slide-into-place duration; 0 = instant (no animation)

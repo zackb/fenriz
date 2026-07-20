@@ -753,6 +753,13 @@ namespace fenriz {
         const bool glow = server.config.shadow && !view->fullscreen && view == server.focused_view;
         wlr_scene_node_set_enabled(&view->shadow->node, glow);
         if (glow) {
+            // Bloom tracks the accent: hue from border_active, intensity from
+            // shadow_color's alpha byte. This is what feathers the hard edge into
+            // the wallpaper, so it always matches the border with nothing to sync.
+            float scol[4];
+            u32_color(server.config.border_active, scol);
+            scol[3] = (server.config.shadow_color & 0xff) / 255.0f;
+            wlr_scene_shadow_set_color(view->shadow, scol);
             wlr_scene_shadow_set_size(view->shadow, view->box.width, view->box.height);
             wlr_scene_shadow_set_corner_radius(view->shadow, server.config.rounding);
         }
