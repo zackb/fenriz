@@ -106,6 +106,8 @@ namespace fenriz {
     wlr_surface* view_surface(View* view);
     const char* view_app_id(View* view); // xdg app_id, or X11 WM_CLASS
     const char* view_title(View* view);
+    // Client's minimum content size (geometry units, CSD excluded); 0 = no minimum.
+    void view_min_size(const View* view, int& w, int& h);
     void view_set_activated(View* view, bool activated);
     void view_set_fullscreen(View* view, bool on);
     void view_close(View* view); // ask the client to close (kill-active keybind)

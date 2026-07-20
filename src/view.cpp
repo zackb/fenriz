@@ -351,6 +351,22 @@ namespace fenriz {
         return view->kind == View::Kind::Xdg ? view->toplevel->title : view->xwl->title;
     }
 
+    void view_min_size(const View* view, int& w, int& h) {
+        // Client's minimum content size (window-geometry units, CSD excluded); 0 = no minimum.
+        // X11 hints are optional (size_hints may be null before the client sets WM_NORMAL_HINTS).
+        if (view->kind == View::Kind::Xdg) {
+            w = view->toplevel->current.min_width;
+            h = view->toplevel->current.min_height;
+        } else if (view->xwl->size_hints) {
+            w = view->xwl->size_hints->min_width;
+            h = view->xwl->size_hints->min_height;
+        } else {
+            w = h = 0;
+        }
+        w = std::max(0, w);
+        h = std::max(0, h);
+    }
+
     void view_set_activated(View* view, bool activated) {
         if (view->kind == View::Kind::Xdg)
             wlr_xdg_toplevel_set_activated(view->toplevel, activated);

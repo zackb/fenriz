@@ -151,17 +151,23 @@ namespace fenriz::cursor {
                 const uint32_t e = c->resize_edges;
                 const int right = v->box.x + v->box.width;
                 const int bottom = v->box.y + v->box.height;
+                // Stop at the client's minimum size
+                int min_w = 0, min_h = 0;
+                view_min_size(v, min_w, min_h);
+                const int bw = v->server->config.border_width;
+                min_w = std::max(1, min_w + 2 * bw);
+                min_h = std::max(1, min_h + 2 * bw);
                 if (e & WLR_EDGE_LEFT) {
-                    v->box.width = std::max(1, v->box.width - (int)dx);
+                    v->box.width = std::max(min_w, v->box.width - (int)dx);
                     v->box.x = right - v->box.width;
                 } else {
-                    v->box.width = std::max(1, v->box.width + (int)dx);
+                    v->box.width = std::max(min_w, v->box.width + (int)dx);
                 }
                 if (e & WLR_EDGE_TOP) {
-                    v->box.height = std::max(1, v->box.height - (int)dy);
+                    v->box.height = std::max(min_h, v->box.height - (int)dy);
                     v->box.y = bottom - v->box.height;
                 } else {
-                    v->box.height = std::max(1, v->box.height + (int)dy);
+                    v->box.height = std::max(min_h, v->box.height + (int)dy);
                 }
                 view_configure(v); // size the client to the new inner box (shell-agnostic)
                 return true;
