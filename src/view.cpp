@@ -615,6 +615,14 @@ namespace fenriz {
             for (View* v : server.views) {
                 if (v == cur || !view_visible(server, v))
                     continue;
+                // Stay on your own axis: a vertical move only considers windows that overlap
+                // the current one horizontally (its own column), a horizontal move only those
+                // that overlap vertically.
+                const bool overlap =
+                    dx ? v->box.y < cur->box.y + cur->box.height && cur->box.y < v->box.y + v->box.height
+                       : v->box.x < cur->box.x + cur->box.width && cur->box.x < v->box.x + v->box.width;
+                if (!overlap)
+                    continue;
                 const long ddx = cx(v) - cx(cur), ddy = cy(v) - cy(cur);
                 const long proj = ddx * dx + ddy * dy; // must move in the requested direction
                 if (proj <= 0)
@@ -685,11 +693,9 @@ namespace fenriz {
         // so a lagging commit can't fight the cursor mid-resize. xdg reports a window
         // geometry (CSD margin excluded); X11 has none, so use the raw surface size.
         const bool xdg = view->kind == View::Kind::Xdg;
-        const wlr_box geo =
-            xdg ? view->toplevel->base->geometry
-                : wlr_box{0, 0, view->xwl->surface->current.width, view->xwl->surface->current.height};
-        if (view->floating && !view->fullscreen && geo.width > 0 && geo.height > 0 &&
-            cursor::grabbed_view() != view) {
+        const wlr_box geo = xdg ? view->toplevel->base->geometry
+                                : wlr_box{0, 0, view->xwl->surface->current.width, view->xwl->surface->current.height};
+        if (view->floating && !view->fullscreen && geo.width > 0 && geo.height > 0 && cursor::grabbed_view() != view) {
             const int bw = view->server->config.border_width;
             view->box.width = geo.width + 2 * bw;
             view->box.height = geo.height + 2 * bw;
