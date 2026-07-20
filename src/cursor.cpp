@@ -47,7 +47,8 @@ namespace fenriz::cursor {
 
             Grab grab = Grab::None;
             View* grabbed = nullptr;
-            uint32_t resize_edges = 0; // WLR_EDGE_* corner chosen at resize-grab start
+            View* preview_partner = nullptr; // tiled view swapped into grabbed's home slot (live drag rearrange)
+            uint32_t resize_edges = 0;       // WLR_EDGE_* corner chosen at resize-grab start
         };
 
         // The singleton, so forget_view() can reach the grab state (init() sets it).
@@ -109,12 +110,25 @@ namespace fenriz::cursor {
             switch (c->grab) {
             case Grab::None:
                 return false;
-            case Grab::Swap:
-                // Float the window up under the cursor: track the pointer via the render
-                // offset (box stays in the tree so the swap-on-drop target is unchanged).
+            case Grab::Swap: {
+                // Float the window up under the cursor: track the pointer via the render offset.
                 v->anim_ox += dx;
                 v->anim_oy += dy;
+                // Live preview: as the cursor crosses into a new tile, apply the swap it would
+                // make on drop, so the displaced tile slides/resizes into v's home slot now.
+                View* t = view_box_at(server, c->cursor->x, c->cursor->y);
+                if (!t || t == v || t->floating)
+                    t = nullptr; // only tiled tiles are swap targets (mirror the drop guard)
+                if (t != c->preview_partner) {
+                    // Undo the previous preview, then apply the new one.
+                    if (c->preview_partner)
+                        tiling::swap(server, v, c->preview_partner);
+                    if (t)
+                        tiling::swap(server, v, t);
+                    c->preview_partner = t;
+                }
                 return true;
+            }
             case Grab::MoveFloat:
                 v->box.x += (int)dx;
                 v->box.y += (int)dy;
@@ -359,12 +373,11 @@ namespace fenriz::cursor {
                 // window is dropped on.
                 if (c->grab != Grab::None) {
                     if (c->grab == Grab::Swap) {
-                        // Stop holding the offset so it decays: the window slides from where
-                        // it was dropped into its destination tile (or back home if no swap).
+                        // The live preview already committed the swap into the tree, so just stop
+                        // holding the offset: the window slides from the cursor into its (already
+                        // set) destination slot, or decays back home if no tile was previewed.
                         c->grabbed->dragging = false;
-                        View* target = view_box_at(server, c->cursor->x, c->cursor->y);
-                        if (target && target != c->grabbed && !target->floating)
-                            tiling::swap(server, c->grabbed, target); // arrange folds old-new into the offset
+                        c->preview_partner = nullptr;
                     }
                     c->grab = Grab::None;
                     c->grabbed = nullptr;
@@ -524,6 +537,8 @@ namespace fenriz::cursor {
             g_cursor->grab = Grab::None;
             g_cursor->grabbed = nullptr;
         }
+        if (g_cursor && g_cursor->preview_partner == view)
+            g_cursor->preview_partner = nullptr; // never swap against a freed view
     }
 
     View* grabbed_view() { return g_cursor ? g_cursor->grabbed : nullptr; }
