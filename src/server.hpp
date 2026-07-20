@@ -99,6 +99,8 @@ namespace fenriz {
         std::list<LayerSurface*> layer_surfaces; // all layers; z-order resolved at render
         std::list<output::Output*> outputs;      // live outputs, in the order they appeared
         View* focused_view = nullptr;
+        View* nav_return = nullptr; // last view a directional focus jumped away from
+        int nav_dx = 0, nav_dy = 0; // its jump direction; the opposite move returns to it
 
         // Lid state, from the libinput switch device (keyboard.cpp). Drives
         // output::apply_lid_policy; fenriz only acts on it when docked (suspend is logind's).

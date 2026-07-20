@@ -191,6 +191,8 @@ namespace fenriz {
             }
             if (server.focused_view == view)
                 server.focused_view = nullptr;
+            if (server.nav_return == view) // don't leave a dangling round-trip target
+                server.nav_return = nullptr;
             for (Workspace& ws : server.workspaces)
                 if (ws.last_focused == view) // don't leave a dangling pointer to freed memory
                     ws.last_focused = nullptr;
@@ -433,6 +435,10 @@ namespace fenriz {
             return;
         }
 
+        // Any focus change that isn't a directional jump invalidates the round-trip target
+        // (focus_direction re-sets it right after this call). Stops a stale reverse-jump.
+        server.nav_return = nullptr;
+
         View* prev = server.focused_view;
         if (prev) {
             view_set_activated(prev, false);
@@ -595,23 +601,38 @@ namespace fenriz {
         auto cx = [](View* v) { return v->box.x + v->box.width / 2; };
         auto cy = [](View* v) { return v->box.y + v->box.height / 2; };
         View* best = nullptr;
-        long best_score = 0;
-        for (View* v : server.views) {
-            if (v == cur || !view_visible(server, v))
-                continue;
-            const long ddx = cx(v) - cx(cur), ddy = cy(v) - cy(cur);
-            const long proj = ddx * dx + ddy * dy; // must move in the requested direction
-            if (proj <= 0)
-                continue;
-            const long perp = dx ? std::labs(ddy) : std::labs(ddx);
-            const long score = proj + 2 * perp; // prefer aligned, then closest
-            if (!best || score < best_score) {
-                best = v;
-                best_score = score;
+        // Exact reverse of the last directional jump? Return to where we came from (if it's
+        // still visible and still in the requested direction) rather than the geometric pick,
+        // so an asymmetric split round-trips instead of landing on a different tile.
+        if (server.nav_return && dx == -server.nav_dx && dy == -server.nav_dy &&
+            view_visible(server, server.nav_return)) {
+            const long ddx = cx(server.nav_return) - cx(cur), ddy = cy(server.nav_return) - cy(cur);
+            if (ddx * dx + ddy * dy > 0)
+                best = server.nav_return;
+        }
+        if (!best) {
+            long best_score = 0;
+            for (View* v : server.views) {
+                if (v == cur || !view_visible(server, v))
+                    continue;
+                const long ddx = cx(v) - cx(cur), ddy = cy(v) - cy(cur);
+                const long proj = ddx * dx + ddy * dy; // must move in the requested direction
+                if (proj <= 0)
+                    continue;
+                const long perp = dx ? std::labs(ddy) : std::labs(ddx);
+                const long score = proj + 2 * perp; // prefer aligned, then closest
+                if (!best || score < best_score) {
+                    best = v;
+                    best_score = score;
+                }
             }
         }
-        if (best)
-            focus_view(server, best);
+        if (best) {
+            focus_view(server, best); // clears nav_return
+            server.nav_return = cur;  // remember where we left from, for the reverse move
+            server.nav_dx = dx;
+            server.nav_dy = dy;
+        }
     }
 
     bool view_visible(const Server& server, const View* view) {
