@@ -209,8 +209,12 @@ namespace fenriz {
             // The initial commit must be answered with a configure. Size 0,0 lets the
             // client choose its own dimensions; milestone 3 tiling will impose sizes.
             // (X11 has no initial-commit handshake — its configure is driven separately.)
-            if (view->kind == View::Kind::Xdg && view->toplevel->base->initial_commit)
+            if (view->kind == View::Kind::Xdg && view->toplevel->base->initial_commit) {
                 wlr_xdg_toplevel_set_size(view->toplevel, 0, 0);
+                // Advertise tiled in the initial configure, before the client has drawn
+                // anything. (Chromium bug)
+                set_tiled(view, true);
+            }
             // Adopt the client's committed float size (if any) and re-sync scene nodes. A
             // client can also change its window geometry after mapping (CSD apps adjust their
             // shadow margin); the re-place keeps the inset correct.
@@ -743,7 +747,8 @@ namespace fenriz {
         } else {
             // xdg reports a window geometry whose origin is the CSD content corner (shadow
             // margin excluded); anchor the clip there. X11 has no geometry — its buffer is the
-            // window, so anchor at 0,0.
+            // window, so anchor at 0,0. A client that declares a geometry it isn't actually drawing to slices its own
+            // content here
             const wlr_box geo = view->kind == View::Kind::Xdg ? view->toplevel->base->geometry : wlr_box{0, 0, 0, 0};
             wlr_box clip = {
                 geo.x, geo.y, std::max(1, view->box.width - 2 * bw), std::max(1, view->box.height - 2 * bw)};
