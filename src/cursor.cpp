@@ -386,11 +386,9 @@ namespace fenriz::cursor {
                 // window is dropped on.
                 if (c->grab != Grab::None) {
                     if (c->grab == Grab::Swap) {
-                        // The live preview already committed the swap into the tree, so just stop
-                        // holding the offset: the window slides from the cursor into its (already
-                        // set) destination slot, or decays back home if no tile was previewed.
                         c->grabbed->dragging = false;
                         c->preview_partner = nullptr;
+                        tiling::arrange(server);
                     }
                     // A float resize drove box straight from the cursor; the client may have
                     // refused (min/step size) and committed a different size that the commit

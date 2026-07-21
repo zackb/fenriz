@@ -86,6 +86,8 @@ namespace fenriz::tiling {
                 // floats too, which aren't leaves).
                 if (view->fullscreen)
                     continue;
+                if (view->dragging)
+                    continue;
                 // view->box is the full tile (outer border edge); the client is sized to the
                 // inner area so the border frames it and content stays off the rounded edge.
                 // Feed the position delta into the render offset so the window slides from its
