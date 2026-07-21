@@ -5,6 +5,7 @@
 struct wlr_layer_surface_v1;
 struct wlr_surface;
 struct wlr_scene_layer_surface_v1;
+struct wlr_scene_node;
 
 namespace fenriz {
 
@@ -32,6 +33,9 @@ namespace fenriz {
         // Recompute per-output usable area from layer exclusive zones, position/configure
         // every layer surface, then re-tile windows into what's left.
         void arrange(Server& server);
+
+        // The mapped, keyboard-interactive layer surface owning this scene node, or null.
+        LayerSurface* interactive_from_node(Server& server, wlr_scene_node* node);
 
     } // namespace layer
 

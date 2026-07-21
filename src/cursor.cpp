@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <linux/input-event-codes.h>
 
+#include "layer.hpp"
 #include "server.hpp"
 #include "tiling.hpp"
 #include "view.hpp"
@@ -82,15 +83,8 @@ namespace fenriz::cursor {
             return nullptr;
         }
 
-        // Topmost View whose surface is under the point (for click-to-focus). Unlike
-        // view_box_at this only hits actual surface pixels, not borders/gaps.
-        View* view_at_point(Server& server, double lx, double ly) {
-            double sx, sy;
-            wlr_scene_node* node = wlr_scene_node_at(&server.scene->tree.node, lx, ly, &sx, &sy);
-            return node ? view_from_node(node) : nullptr;
-        }
-
-        // Topmost visible view whose tile box contains the point. Unlike view_at_point this
+        // Topmost visible view whose tile box contains the point. Unlike the surface hit test
+        // in cursor_button this
         // hits borders/gaps too, so a drag started on a window's frame still grabs it.
         View* view_box_at(Server& server, double lx, double ly) {
             for (auto it = server.views.rbegin(); it != server.views.rend(); ++it) {
@@ -445,8 +439,15 @@ namespace fenriz::cursor {
                         return; // consume the press; don't forward to the client
                     }
                 }
-                // Click-to-focus: focus the window under the cursor.
-                if (View* view = view_at_point(server, c->cursor->x, c->cursor->y))
+                // Click-to-focus. A keyboard-interactive layer surface (launcher) is only
+                // handed the keyboard when it maps, so without this branch a click in its
+                // box can never take input back from the last focused toplevel.
+                double sx, sy;
+                wlr_scene_node* node =
+                    wlr_scene_node_at(&server.scene->tree.node, c->cursor->x, c->cursor->y, &sx, &sy);
+                if (LayerSurface* ls = layer::interactive_from_node(server, node))
+                    focus_surface(server, ls->handle->surface);
+                else if (View* view = node ? view_from_node(node) : nullptr)
                     focus_view(server, view);
             }
             wlr_seat_pointer_notify_button(server.seat, event->time_msec, event->button, event->state);

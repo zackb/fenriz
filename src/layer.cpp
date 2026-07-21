@@ -167,6 +167,21 @@ namespace fenriz::layer {
         tiling::arrange(server);
     }
 
+    LayerSurface* interactive_from_node(Server& server, wlr_scene_node* node) {
+        if (!node)
+            return nullptr;
+        for (LayerSurface* ls : server.layer_surfaces) {
+            if (!ls->mapped ||
+                ls->handle->current.keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE)
+                continue;
+            // Popups are parented into ls->scene->tree (on_new_popup), so the ancestor walk catches them too.
+            for (wlr_scene_node* n = node; n; n = n->parent ? &n->parent->node : nullptr)
+                if (n == &ls->scene->tree->node)
+                    return ls;
+        }
+        return nullptr;
+    }
+
     void init(Server& server) {
         server.layer_shell = wlr_layer_shell_v1_create(server.display, 4);
         server.l_new_layer_surface.server = &server;
