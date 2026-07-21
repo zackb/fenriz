@@ -42,6 +42,16 @@ namespace fenriz {
             const int r = v->fullscreen ? 0 : std::max(0, s.config.rounding - bw);
             wlr_scene_buffer_set_corner_radius(buf, r);
             wlr_scene_buffer_set_opacity(buf, v->fullscreen ? 1.0f : s.config.opacity);
+
+            if (v->fullscreen || (v->anim_ow == 0 && v->anim_oh == 0))
+                return;
+
+            wlr_scene_surface* ss = wlr_scene_surface_try_from_buffer(buf);
+            if (!ss || ss->surface != view_surface(v))
+                return;
+
+            const View::Box box = view_render_box(v);
+            wlr_scene_buffer_set_dest_size(buf, std::max(1, box.width - 2 * bw), std::max(1, box.height - 2 * bw));
         }
 
         // Tell a toplevel it's tiled on all edges (or none). Advertising the tiled state is
@@ -395,9 +405,8 @@ namespace fenriz {
 
     void view_configure(View* view) {
         const int bw = view->fullscreen ? 0 : view->server->config.border_width;
-        const View::Box box = view_render_box(view);
-        const int cw = std::max(1, box.width - 2 * bw);
-        const int ch = std::max(1, box.height - 2 * bw);
+        const int cw = std::max(1, view->box.width - 2 * bw);
+        const int ch = std::max(1, view->box.height - 2 * bw);
         if (view->kind == View::Kind::Xdg) {
             wlr_xdg_toplevel_set_size(view->toplevel, cw, ch);
         } else {
@@ -789,8 +798,15 @@ namespace fenriz {
             // margin excluded); anchor the clip there. X11 has no geometry — its buffer is the
             // window, so anchor at 0,0. A client that declares a geometry it isn't actually drawing to slices its own
             // content here
-            const wlr_box geo = view->kind == View::Kind::Xdg ? view->toplevel->base->geometry : wlr_box{0, 0, 0, 0};
-            wlr_box clip = {geo.x, geo.y, std::max(1, box.width - 2 * bw), std::max(1, box.height - 2 * bw)};
+            const wlr_box geo =
+                view->kind == View::Kind::Xdg
+                    ? view->toplevel->base->geometry
+                    : wlr_box{0, 0, view->xwl->surface->current.width, view->xwl->surface->current.height};
+
+            const bool resizing = view->anim_ow != 0 || view->anim_oh != 0;
+            const int cw = resizing && geo.width > 0 ? geo.width : std::max(1, box.width - 2 * bw);
+            const int ch = resizing && geo.height > 0 ? geo.height : std::max(1, box.height - 2 * bw);
+            wlr_box clip = {geo.x, geo.y, cw, ch};
             wlr_scene_subsurface_tree_set_clip(&view->surface_tree->node, &clip);
         }
 

@@ -49,7 +49,6 @@ namespace fenriz::output {
                     continue;
                 }
                 if (view->anim_ox != 0 || view->anim_oy != 0 || view->anim_ow != 0 || view->anim_oh != 0) {
-                    const bool resizing = view->anim_ow != 0 || view->anim_oh != 0;
                     view->anim_ox *= factor;
                     view->anim_oy *= factor;
                     view->anim_ow *= factor;
@@ -59,9 +58,8 @@ namespace fenriz::output {
                         view->anim_ox = view->anim_oy = view->anim_ow = view->anim_oh = 0;
                     else
                         animating = true;
+
                     place_view_nodes(view);
-                    if (resizing)
-                        view_configure(view);
                 }
             }
             return animating;
