@@ -42,16 +42,6 @@ namespace fenriz {
             const int r = v->fullscreen ? 0 : std::max(0, s.config.rounding - bw);
             wlr_scene_buffer_set_corner_radius(buf, r);
             wlr_scene_buffer_set_opacity(buf, v->fullscreen ? 1.0f : s.config.opacity);
-
-            if (v->fullscreen || (v->anim_ow == 0 && v->anim_oh == 0))
-                return;
-
-            wlr_scene_surface* ss = wlr_scene_surface_try_from_buffer(buf);
-            if (!ss || ss->surface != view_surface(v))
-                return;
-
-            const View::Box box = view_render_box(v);
-            wlr_scene_buffer_set_dest_size(buf, std::max(1, box.width - 2 * bw), std::max(1, box.height - 2 * bw));
         }
 
         // Tell a toplevel it's tiled on all edges (or none). Advertising the tiled state is
@@ -571,8 +561,6 @@ namespace fenriz {
                 if (server.config.animation_ms > 0 && old.width > 0) {
                     v->anim_ox += old.x - v->box.x;
                     v->anim_oy += old.y - v->box.y;
-                    v->anim_ow += old.width - v->box.width;
-                    v->anim_oh += old.height - v->box.height;
                 }
                 view_configure(v);
             }
@@ -754,13 +742,6 @@ namespace fenriz {
         place_view_nodes(view);
     }
 
-    View::Box view_render_box(const View* view) {
-        return {view->box.x + (int)std::lround(view->anim_ox),
-                view->box.y + (int)std::lround(view->anim_oy),
-                std::max(1, view->box.width + (int)std::lround(view->anim_ow)),
-                std::max(1, view->box.height + (int)std::lround(view->anim_oh))};
-    }
-
     void place_view_nodes(View* view) {
         if (!view->scene_tree)
             return; // not mapped yet
@@ -770,10 +751,13 @@ namespace fenriz {
         if (!vis)
             return;
 
-        // Everything below draws at the animated geometry (box once it has settled).
-        const View::Box box = view_render_box(view);
-
-        // Container sits at the tile origin plus the (decaying) slide-animation offset.
+        // Container sits at the tile origin plus the (decaying) slide-animation offset. Only
+        // the position animates: size is applied straight from the box (a size animation means
+        // configuring or stretching the client, both of which cost more than they're worth).
+        const View::Box box = {view->box.x + (int)std::lround(view->anim_ox),
+                               view->box.y + (int)std::lround(view->anim_oy),
+                               view->box.width,
+                               view->box.height};
         wlr_scene_node_set_position(&view->scene_tree->node, box.x, box.y);
 
         // Inset the client by the border. wlr_scene_xdg_surface_create already makes the
@@ -803,10 +787,7 @@ namespace fenriz {
                     ? view->toplevel->base->geometry
                     : wlr_box{0, 0, view->xwl->surface->current.width, view->xwl->surface->current.height};
 
-            const bool resizing = view->anim_ow != 0 || view->anim_oh != 0;
-            const int cw = resizing && geo.width > 0 ? geo.width : std::max(1, box.width - 2 * bw);
-            const int ch = resizing && geo.height > 0 ? geo.height : std::max(1, box.height - 2 * bw);
-            wlr_box clip = {geo.x, geo.y, cw, ch};
+            wlr_box clip = {geo.x, geo.y, std::max(1, box.width - 2 * bw), std::max(1, box.height - 2 * bw)};
             wlr_scene_subsurface_tree_set_clip(&view->surface_tree->node, &clip);
         }
 

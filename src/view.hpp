@@ -58,7 +58,6 @@ namespace fenriz {
         // slide-into-place animation (see output.cpp). `dragging` holds the offset
         // (no decay) while the window tracks the cursor, and draws it above the tiles.
         double anim_ox = 0, anim_oy = 0;
-        double anim_ow = 0, anim_oh = 0;
         bool dragging = false;
 
         // wlr-foreign-toplevel handle (taskbar/window-list protocol); live while mapped.
@@ -177,10 +176,6 @@ namespace fenriz {
     // everywhere that mutates box/anim (tiling::arrange, cursor grabs, the animation tick,
     // focus/workspace changes). No-op before the view's nodes exist (pre-map).
     void place_view_nodes(View* view);
-
-    // The geometry a view is drawn (and configured) at right now: its box plus the decaying
-    // slide/grow animation offsets. Equals box once the animation has settled.
-    View::Box view_render_box(const View* view);
 
     // For a floating (non-fullscreen, non-grabbed) view, adopt the client's committed
     // window geometry into `box` and re-place the scene nodes so border/shadow/clip tighten
