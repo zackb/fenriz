@@ -48,14 +48,20 @@ namespace fenriz::output {
                     place_view_nodes(view); // keep the held window under the cursor each frame
                     continue;
                 }
-                if (view->anim_ox != 0 || view->anim_oy != 0) {
+                if (view->anim_ox != 0 || view->anim_oy != 0 || view->anim_ow != 0 || view->anim_oh != 0) {
+                    const bool resizing = view->anim_ow != 0 || view->anim_oh != 0;
                     view->anim_ox *= factor;
                     view->anim_oy *= factor;
-                    if (std::abs(view->anim_ox) < 1 && std::abs(view->anim_oy) < 1)
-                        view->anim_ox = view->anim_oy = 0;
+                    view->anim_ow *= factor;
+                    view->anim_oh *= factor;
+                    if (std::abs(view->anim_ox) < 1 && std::abs(view->anim_oy) < 1 && std::abs(view->anim_ow) < 1 &&
+                        std::abs(view->anim_oh) < 1)
+                        view->anim_ox = view->anim_oy = view->anim_ow = view->anim_oh = 0;
                     else
                         animating = true;
                     place_view_nodes(view);
+                    if (resizing)
+                        view_configure(view);
                 }
             }
             return animating;

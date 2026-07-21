@@ -401,7 +401,7 @@ namespace fenriz::cursor {
                     c->grab = Grab::None;
                     c->grabbed = nullptr;
                     if (was_resize_float && ended)
-                        view_reconcile_float_size(ended);
+                        view_adopt_float_size(ended);
                     process_motion(c, event->time_msec); // restore the passthrough cursor image
                     return;                              // swallow the release that ended the drag
                 }

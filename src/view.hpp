@@ -43,6 +43,7 @@ namespace fenriz {
         wlr_xwayland_surface* xwl = nullptr;  // set when kind == Xwl
         Box box;
         Box saved_box; // geometry to restore on un-fullscreen
+        Box float_box; // last floating geometry, restored on re-float; width 0 = never floated
         int workspace = 0;
         bool mapped = false;
         bool focused = false;
@@ -50,12 +51,14 @@ namespace fenriz {
         bool floating = false;    // escaped the BSP tree; free move/resize, drawn above tiles
         bool pinned = false;      // floating window shown on every workspace of its output
         bool want_center = false; // window-rule center: applied once the float has real size
-        bool urgent = false;      // asked to be activated while unfocused; cleared on focus
+        bool float_self_sized = true;
+        bool urgent = false; // asked to be activated while unfocused; cleared on focus
 
         // Render offset from box, in logical coords; decays to 0 each frame for the
         // slide-into-place animation (see output.cpp). `dragging` holds the offset
         // (no decay) while the window tracks the cursor, and draws it above the tiles.
         double anim_ox = 0, anim_oy = 0;
+        double anim_ow = 0, anim_oh = 0;
         bool dragging = false;
 
         // wlr-foreign-toplevel handle (taskbar/window-list protocol); live while mapped.
@@ -175,12 +178,16 @@ namespace fenriz {
     // focus/workspace changes). No-op before the view's nodes exist (pre-map).
     void place_view_nodes(View* view);
 
+    // The geometry a view is drawn (and configured) at right now: its box plus the decaying
+    // slide/grow animation offsets. Equals box once the animation has settled.
+    View::Box view_render_box(const View* view);
+
     // For a floating (non-fullscreen, non-grabbed) view, adopt the client's committed
     // window geometry into `box` and re-place the scene nodes so border/shadow/clip tighten
-    // onto the real content. No-op for tiled/fullscreen/grabbed views. Called from the commit
-    // handler and once more when a float resize grab ends (a lagging commit is otherwise only
-    // reconciled on the next focus change).
-    void view_reconcile_float_size(View* view);
+    // onto the real content. No-op for tiled/fullscreen/grabbed views. Only for views the
+    // client sizes itself (see View::float_self_sized) and once more when a float resize grab
+    // ends (the client may have refused our size on a step/cell boundary).
+    void view_adopt_float_size(View* view);
 
     // (Re)apply SceneFX content effects (opacity + corner radius) to a view's surface buffers.
     // Call from the output frame handler before rendering — see the definition for why it can't

@@ -96,6 +96,8 @@ namespace fenriz::tiling {
                 if (animate && server.config.animation_ms > 0 && old.width > 0) {
                     view->anim_ox += old.x - view->box.x;
                     view->anim_oy += old.y - view->box.y;
+                    view->anim_ow += old.width - view->box.width;
+                    view->anim_oh += old.height - view->box.height;
                 }
                 view_configure(view); // size the client to the inner tile area (shell-agnostic)
             }

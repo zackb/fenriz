@@ -206,19 +206,18 @@ namespace fenriz {
         void view_handle_commit(wl_listener* listener, void* data) {
             View* view = wl_container_of(listener, view, commit);
             (void)data;
-            // The initial commit must be answered with a configure. Size 0,0 lets the
-            // client choose its own dimensions; milestone 3 tiling will impose sizes.
-            // (X11 has no initial-commit handshake — its configure is driven separately.)
+            // The initial commit must be answered with a configure.
             if (view->kind == View::Kind::Xdg && view->toplevel->base->initial_commit) {
                 wlr_xdg_toplevel_set_size(view->toplevel, 0, 0);
                 // Advertise tiled in the initial configure, before the client has drawn
                 // anything. (Chromium bug)
                 set_tiled(view, true);
             }
-            // Adopt the client's committed float size (if any) and re-sync scene nodes. A
-            // client can also change its window geometry after mapping (CSD apps adjust their
-            // shadow margin); the re-place keeps the inset correct.
-            view_reconcile_float_size(view);
+
+            if (view->float_self_sized || view->kind == View::Kind::Xwl)
+                view_adopt_float_size(view);
+            else
+                place_view_nodes(view);
         }
 
         // Push title+app_id to the ext-foreign-toplevel handle. Unlike the wlr protocol's
@@ -396,8 +395,9 @@ namespace fenriz {
 
     void view_configure(View* view) {
         const int bw = view->fullscreen ? 0 : view->server->config.border_width;
-        const int cw = std::max(1, view->box.width - 2 * bw);
-        const int ch = std::max(1, view->box.height - 2 * bw);
+        const View::Box box = view_render_box(view);
+        const int cw = std::max(1, box.width - 2 * bw);
+        const int ch = std::max(1, box.height - 2 * bw);
         if (view->kind == View::Kind::Xdg) {
             wlr_xdg_toplevel_set_size(view->toplevel, cw, ch);
         } else {
@@ -515,6 +515,18 @@ namespace fenriz {
             set_fullscreen(server, server.focused_view, !server.focused_view->fullscreen);
     }
 
+    // The area a free window may use on its output: the usable area (minus bars), falling
+    // back to the full output box exactly as tiling::arrange does. Empty if homeless.
+    static wlr_box view_area(Server& server, View* view) {
+        output::Output* out = view_output(server, view);
+        if (!out)
+            return {0, 0, 0, 0};
+        wlr_box a = {out->usable_area.x, out->usable_area.y, out->usable_area.width, out->usable_area.height};
+        if (a.width <= 0 || a.height <= 0)
+            wlr_output_layout_get_box(server.output_layout, out->handle, &a);
+        return a;
+    }
+
     void toggle_floating(Server& server) {
         View* v = server.focused_view;
         if (!v)
@@ -522,12 +534,41 @@ namespace fenriz {
         v->floating = !v->floating;
         set_tiled(v, !v->floating); // floating -> normal (own size + shadow); tiled -> honor ours
         if (v->floating) {
-            // Leave the tree (its slot is reclaimed by the sibling) and keep the current tile
-            // box as the initial floating geometry. Move to the list tail so it draws above the
-            // other floats (v is already focused, so focus_view would no-op — splice directly).
+            // Leave the tree (its slot is reclaimed by the sibling). Move to the list tail so it
+            // draws above the other floats (v is already focused, so focus_view would no-op —
+            // splice directly).
             tiling::remove(server, v);
             raise_to_tail(server, v);
+            const View::Box old = v->box;
+            const wlr_box a = view_area(server, v);
+            if (a.width > 0) {
+                if (v->float_box.width > 0)
+                    v->box = v->float_box;
+                else
+                    v->box = {0, 0, a.width * 7 / 10, a.height * 7 / 10};
+                // Never below the client's minimum, never bigger than the screen.
+                int min_w = 0, min_h = 0;
+                view_min_size(v, min_w, min_h);
+                const int bw = server.config.border_width;
+                v->box.width = std::clamp(v->box.width, min_w + 2 * bw, std::max(min_w + 2 * bw, a.width));
+                v->box.height = std::clamp(v->box.height, min_h + 2 * bw, std::max(min_h + 2 * bw, a.height));
+                if (v->float_box.width > 0) {
+                    v->box.x = std::clamp(v->box.x, a.x, std::max(a.x, a.x + a.width - v->box.width));
+                    v->box.y = std::clamp(v->box.y, a.y, std::max(a.y, a.y + a.height - v->box.height));
+                } else {
+                    center_view(server, v);
+                }
+                v->float_self_sized = false;
+                if (server.config.animation_ms > 0 && old.width > 0) {
+                    v->anim_ox += old.x - v->box.x;
+                    v->anim_oy += old.y - v->box.y;
+                    v->anim_ow += old.width - v->box.width;
+                    v->anim_oh += old.height - v->box.height;
+                }
+                view_configure(v);
+            }
         } else {
+            v->float_box = v->box;              // re-floating returns here
             v->pinned = false;                  // a tiled window can't be pinned
             tiling::insert(server, v, nullptr); // re-tile at the spiral tail
         }
@@ -581,20 +622,11 @@ namespace fenriz {
     }
 
     void center_view(Server& server, View* view) {
-        output::Output* out = view_output(server, view);
-        if (!out)
+        const wlr_box a = view_area(server, view);
+        if (a.width <= 0)
             return;
-        // Prefer the usable area (minus bars); fall back to the full output box, exactly
-        // as tiling::arrange does.
-        int ax = out->usable_area.x, ay = out->usable_area.y;
-        int aw = out->usable_area.width, ah = out->usable_area.height;
-        if (aw <= 0 || ah <= 0) {
-            wlr_box full;
-            wlr_output_layout_get_box(server.output_layout, out->handle, &full);
-            ax = full.x, ay = full.y, aw = full.width, ah = full.height;
-        }
-        view->box.x = ax + (aw - view->box.width) / 2;
-        view->box.y = ay + (ah - view->box.height) / 2;
+        view->box.x = a.x + (a.width - view->box.width) / 2;
+        view->box.y = a.y + (a.height - view->box.height) / 2;
         place_view_nodes(view);
     }
 
@@ -688,7 +720,7 @@ namespace fenriz {
             wlr_scene_node_for_each_buffer(&view->surface_tree->node, apply_fx, view);
     }
 
-    void view_reconcile_float_size(View* view) {
+    void view_adopt_float_size(View* view) {
         // A floating window sizes itself (we un-tile it, so GTK/Gecko restore their own
         // natural size + CSD margins and never honor a configure). Track the committed
         // size so the border/shadow/clip tighten onto the real content instead of leaving
@@ -713,6 +745,13 @@ namespace fenriz {
         place_view_nodes(view);
     }
 
+    View::Box view_render_box(const View* view) {
+        return {view->box.x + (int)std::lround(view->anim_ox),
+                view->box.y + (int)std::lround(view->anim_oy),
+                std::max(1, view->box.width + (int)std::lround(view->anim_ow)),
+                std::max(1, view->box.height + (int)std::lround(view->anim_oh))};
+    }
+
     void place_view_nodes(View* view) {
         if (!view->scene_tree)
             return; // not mapped yet
@@ -722,10 +761,11 @@ namespace fenriz {
         if (!vis)
             return;
 
+        // Everything below draws at the animated geometry (box once it has settled).
+        const View::Box box = view_render_box(view);
+
         // Container sits at the tile origin plus the (decaying) slide-animation offset.
-        const int ox = (int)std::lround(view->anim_ox);
-        const int oy = (int)std::lround(view->anim_oy);
-        wlr_scene_node_set_position(&view->scene_tree->node, view->box.x + ox, view->box.y + oy);
+        wlr_scene_node_set_position(&view->scene_tree->node, box.x, box.y);
 
         // Inset the client by the border. wlr_scene_xdg_surface_create already makes the
         // subtree origin the window-geometry top-left (CSD shadow margin handled internally),
@@ -750,8 +790,7 @@ namespace fenriz {
             // window, so anchor at 0,0. A client that declares a geometry it isn't actually drawing to slices its own
             // content here
             const wlr_box geo = view->kind == View::Kind::Xdg ? view->toplevel->base->geometry : wlr_box{0, 0, 0, 0};
-            wlr_box clip = {
-                geo.x, geo.y, std::max(1, view->box.width - 2 * bw), std::max(1, view->box.height - 2 * bw)};
+            wlr_box clip = {geo.x, geo.y, std::max(1, box.width - 2 * bw), std::max(1, box.height - 2 * bw)};
             wlr_scene_subsurface_tree_set_clip(&view->surface_tree->node, &clip);
         }
 
@@ -762,7 +801,7 @@ namespace fenriz {
         const bool show_border = bw > 0;
         wlr_scene_node_set_enabled(&view->border->node, show_border);
         if (show_border) {
-            wlr_scene_rect_set_size(view->border, view->box.width, view->box.height);
+            wlr_scene_rect_set_size(view->border, box.width, box.height);
             // Round the border frame to match the content so it nests instead of poking
             // square corners past the client's rounding.
             wlr_scene_rect_set_corner_radius(view->border, server.config.rounding);
@@ -771,7 +810,7 @@ namespace fenriz {
             // window. Inner radius matches the surface's own rounding (rounding - bw) so the
             // frame is a uniform bw-wide rounded band.
             struct clipped_region hole = {
-                .area = {bw, bw, view->box.width - 2 * bw, view->box.height - 2 * bw},
+                .area = {bw, bw, box.width - 2 * bw, box.height - 2 * bw},
                 .corners = corner_radii_all(std::max(0, server.config.rounding - bw)),
             };
             wlr_scene_rect_set_clipped_region(view->border, hole);
@@ -792,7 +831,7 @@ namespace fenriz {
             u32_color(server.config.border_active, scol);
             scol[3] = (server.config.shadow_color & 0xff) / 255.0f;
             wlr_scene_shadow_set_color(view->shadow, scol);
-            wlr_scene_shadow_set_size(view->shadow, view->box.width, view->box.height);
+            wlr_scene_shadow_set_size(view->shadow, box.width, box.height);
             wlr_scene_shadow_set_corner_radius(view->shadow, server.config.rounding);
         }
     }
