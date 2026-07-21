@@ -88,6 +88,10 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/fenriz.desktop
 install(FILES fenriz-portals.conf
         DESTINATION ${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal)
 
+# A starting config for packaged installs; users copy it to ~/.config/fenriz/fenriz.conf.
+install(FILES fenriz.conf.example
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/fenriz)
+
 # Self-checks (built, not installed). Pure logic, deliberately decoupled from the
 # wlroots compositor stack so they build and run without a display.
 #
@@ -119,3 +123,17 @@ add_test(NAME config  COMMAND fenriz_config_test)
 add_test(NAME tiling  COMMAND fenriz_tiling_test)
 add_test(NAME keybind COMMAND fenriz_keybind_test)
 add_test(NAME output  COMMAND fenriz_output_test)
+
+set(CPACK_SET_DESTDIR ON)
+set(CPACK_PACKAGE_RELOCATABLE FALSE)
+set(CPACK_PACKAGE_NAME "fenriz")
+set(CPACK_PACKAGE_VENDOR "zackb")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "A minimal tiling Wayland compositor")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_CONTACT "zack@bartel.com")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+# drop the -Linux suffix so the name matches the release tag
+set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}")
+set(CPACK_GENERATOR "TGZ")
+include(CPack)

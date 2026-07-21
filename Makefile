@@ -16,6 +16,9 @@ run: debug
 install: release
 	cmake --install build/release
 
+package: release
+	cd build/release && cpack
+
 test: debug
 	ctest --test-dir build/debug --output-on-failure
 
