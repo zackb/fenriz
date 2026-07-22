@@ -24,6 +24,16 @@ does nothing you didn't ask for.
 
 I use this as my daily driver. It is stable and usable, but still under active development. Expect bugs, missing features, and rough edges.
 
+## Installation
+#### Arch Linux
+
+```
+yay -S fenriz
+```
+
+#### Other distros
+Build from source (see [Build](#build)).
+
 ## User guide
 
 Full setup, config, and screen-sharing walkthrough: [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
@@ -53,7 +63,7 @@ make run        # build debug and launch
 
 ```
 make install      # install to /usr/local/bin/fenriz
-fenriz            # launch the compositor (from a TTY or inside an existing Wayland session)
+fenriz            # launch the compositor (from a greeter, TTY, or inside an existing Wayland session)
 ```
 
 ## Multi-monitor and clamshell
