@@ -58,10 +58,8 @@ namespace fenriz {
             wlr_switch* handle = wlr_switch_from_input_device(device);
             Switch* sw = new Switch{};
             sw->server = &server;
-            sw->toggle.notify = switch_handle_toggle;
-            wl_signal_add(&handle->events.toggle, &sw->toggle);
-            sw->destroy.notify = switch_handle_destroy;
-            wl_signal_add(&device->events.destroy, &sw->destroy);
+            add_listener(sw->toggle, handle->events.toggle, switch_handle_toggle);
+            add_listener(sw->destroy, device->events.destroy, switch_handle_destroy);
         }
 
         void cycle_focus(Server& server, int dir) {
@@ -208,12 +206,9 @@ namespace fenriz {
             Keyboard* keyboard = new Keyboard{};
             keyboard->server = &server;
             keyboard->kb = kb;
-            keyboard->key.notify = keyboard_handle_key;
-            wl_signal_add(&kb->events.key, &keyboard->key);
-            keyboard->modifiers.notify = keyboard_handle_modifiers;
-            wl_signal_add(&kb->events.modifiers, &keyboard->modifiers);
-            keyboard->destroy.notify = keyboard_handle_destroy;
-            wl_signal_add(&device->events.destroy, &keyboard->destroy);
+            add_listener(keyboard->key, kb->events.key, keyboard_handle_key);
+            add_listener(keyboard->modifiers, kb->events.modifiers, keyboard_handle_modifiers);
+            add_listener(keyboard->destroy, device->events.destroy, keyboard_handle_destroy);
 
             // Handing a keymap-less keyboard to the seat makes it broadcast an invalid keymap fd that clients can't
             // mmap
@@ -261,20 +256,20 @@ namespace fenriz {
     void init_keyboard(Server& server) {
         // virtual-keyboard: wtype/ydotool/wayvnc and on-screen keyboards synthesize keys.
         server.virtual_keyboard_manager = wlr_virtual_keyboard_manager_v1_create(server.display);
-        server.l_new_virtual_keyboard.server = &server;
-        server.l_new_virtual_keyboard.listener.notify = on_new_virtual_keyboard;
-        wl_signal_add(&server.virtual_keyboard_manager->events.new_virtual_keyboard,
-                      &server.l_new_virtual_keyboard.listener);
+        add_listener(server,
+                     server.l_new_virtual_keyboard,
+                     server.virtual_keyboard_manager->events.new_virtual_keyboard,
+                     on_new_virtual_keyboard);
 
         // keyboard-shortcuts-inhibit: let a focused VM / remote-desktop client swallow binds.
         server.shortcuts_inhibit_manager = wlr_keyboard_shortcuts_inhibit_v1_create(server.display);
-        server.l_new_inhibitor.server = &server;
-        server.l_new_inhibitor.listener.notify = on_new_inhibitor;
-        wl_signal_add(&server.shortcuts_inhibit_manager->events.new_inhibitor, &server.l_new_inhibitor.listener);
+        add_listener(
+            server, server.l_new_inhibitor, server.shortcuts_inhibit_manager->events.new_inhibitor, on_new_inhibitor);
 
-        server.l_keyboard_focus_change.server = &server;
-        server.l_keyboard_focus_change.listener.notify = on_keyboard_focus_change;
-        wl_signal_add(&server.seat->keyboard_state.events.focus_change, &server.l_keyboard_focus_change.listener);
+        add_listener(server,
+                     server.l_keyboard_focus_change,
+                     server.seat->keyboard_state.events.focus_change,
+                     on_keyboard_focus_change);
     }
 
     void handle_new_input(Server& server, wlr_input_device* device) {

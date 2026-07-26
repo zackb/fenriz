@@ -39,28 +39,40 @@ namespace fenriz {
             wl_listener reposition;
         };
 
+        // Walk up through nested submenus to the xdg surface a popup chain hangs off.
+        // Null ONLY when the chain escapes to a non-xdg surface — a layer-shell bar's menu,
+        // which neither caller handles. Callers check the role themselves: "rooted at a bar"
+        // and "rooted at something that isn't a toplevel" are different cases to them.
+        wlr_xdg_surface* popup_root(wlr_xdg_surface* from) {
+            wlr_xdg_surface* root = from;
+            while (root->role == WLR_XDG_SURFACE_ROLE_POPUP) {
+                wlr_xdg_surface* up =
+                    root->popup->parent ? wlr_xdg_surface_try_from_wlr_surface(root->popup->parent) : nullptr;
+                if (!up)
+                    return nullptr;
+                root = up;
+            }
+            return root;
+        }
+
+        // The mapped View owning `root`, or null. `mapped_only` additionally requires a live
+        // scene tree — an unmapped toplevel leaves stale scene pointers behind in base->data.
+        View* view_for_toplevel(Server& server, wlr_xdg_surface* root, bool mapped_only = false) {
+            for (View* v : server.views)
+                if (v->toplevel == root->toplevel && (!mapped_only || v->scene_tree))
+                    return v;
+            return nullptr;
+        }
+
         // The box a popup must stay inside, in the root toplevel's window-geometry coordinate
         // space (what wlr_xdg_popup_unconstrain_from_box wants). False when the popup isn't
         // owned by a mapped View (layer-shell root), or a window that's unmapped/homeless
         bool popup_constraint_box(Server& server, wlr_xdg_popup* popup, wlr_box* out) {
-            // Walk up through nested submenus to the root xdg surface.
-            wlr_xdg_surface* root = popup->base;
-            while (root->role == WLR_XDG_SURFACE_ROLE_POPUP) {
-                wlr_xdg_surface* parent =
-                    root->popup->parent ? wlr_xdg_surface_try_from_wlr_surface(root->popup->parent) : nullptr;
-                if (!parent)
-                    return false; // layer-shell root: not a coordinate space we can work out
-                root = parent;
-            }
-            if (root->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL)
-                return false;
+            wlr_xdg_surface* root = popup_root(popup->base);
+            if (!root || root->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL)
+                return false; // layer-shell root: not a coordinate space we can work out
 
-            View* view = nullptr;
-            for (View* v : server.views)
-                if (v->toplevel == root->toplevel) {
-                    view = v;
-                    break;
-                }
+            View* view = view_for_toplevel(server, root);
             output::Output* o = view ? view_output(server, view) : nullptr;
             if (!o)
                 return false;
@@ -134,21 +146,11 @@ namespace fenriz {
                 return;
             // parent->data holds a raw scene tree wlroots never invalidates. If the owning
             // toplevel has unmapped, view_handle_unmap freed its whole scene subtree
-            wlr_xdg_surface* root = parent;
-            while (root->role == WLR_XDG_SURFACE_ROLE_POPUP) {
-                wlr_xdg_surface* up =
-                    root->popup->parent ? wlr_xdg_surface_try_from_wlr_surface(root->popup->parent) : nullptr;
-                if (!up)
-                    return; // non-xdg (layer-shell) root: not placed here
-                root = up;
-            }
+            wlr_xdg_surface* root = popup_root(parent);
+            if (!root)
+                return; // non-xdg (layer-shell) root: not placed here
             if (root->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
-                View* owner = nullptr;
-                for (View* v : sl->server->views)
-                    if (v->toplevel == root->toplevel && v->scene_tree) {
-                        owner = v;
-                        break;
-                    }
+                View* owner = view_for_toplevel(*sl->server, root, /*mapped_only=*/true);
                 if (!owner)
                     return; // toplevel unmapped: parent->data is freed
                 // Popups live inside the owner's scene subtree, so they can't rise above a
@@ -237,8 +239,7 @@ namespace fenriz {
                 Server* s = sl->server;
                 s->drag_icon = wlr_scene_drag_icon_create(s->scene_overlay, ev->drag->icon);
                 s->l_drag_icon_destroy.server = s;
-                s->l_drag_icon_destroy.listener.notify = on_drag_icon_destroy;
-                wl_signal_add(&ev->drag->icon->events.destroy, &s->l_drag_icon_destroy.listener);
+                add_listener(s->l_drag_icon_destroy.listener, ev->drag->icon->events.destroy, on_drag_icon_destroy);
             }
         }
 
@@ -333,8 +334,7 @@ namespace fenriz {
             auto* inhibitor = static_cast<wlr_idle_inhibitor_v1*>(data);
             auto* ii = new IdleInhibitor{};
             ii->server = sl->server;
-            ii->destroy.notify = on_inhibitor_destroy;
-            wl_signal_add(&inhibitor->events.destroy, &ii->destroy);
+            add_listener(ii->destroy, inhibitor->events.destroy, on_inhibitor_destroy);
             sl->server->active_inhibitors++;
             wlr_idle_notifier_v1_set_inhibited(sl->server->idle_notifier, true);
         }
@@ -346,12 +346,9 @@ namespace fenriz {
     void popup_create(Server& server, wlr_xdg_popup* popup, wlr_scene_tree* parent_tree) {
         popup->base->data = wlr_scene_xdg_surface_create(parent_tree, popup->base);
         Popup* p = new Popup{&server, popup, {}, {}, {}};
-        p->commit.notify = on_popup_commit;
-        wl_signal_add(&popup->base->surface->events.commit, &p->commit);
-        p->destroy.notify = on_popup_destroy;
-        wl_signal_add(&popup->events.destroy, &p->destroy);
-        p->reposition.notify = on_popup_reposition;
-        wl_signal_add(&popup->events.reposition, &p->reposition);
+        add_listener(p->commit, popup->base->surface->events.commit, on_popup_commit);
+        add_listener(p->destroy, popup->events.destroy, on_popup_destroy);
+        add_listener(p->reposition, popup->events.reposition, on_popup_reposition);
     }
 
     void spawn(const std::string& cmd) {
@@ -477,30 +474,25 @@ namespace fenriz {
 
         xdg_shell = wlr_xdg_shell_create(display, 3);
         l_new_toplevel.server = this;
-        l_new_toplevel.listener.notify = on_new_toplevel;
-        wl_signal_add(&xdg_shell->events.new_toplevel, &l_new_toplevel.listener);
+        add_listener(l_new_toplevel.listener, xdg_shell->events.new_toplevel, on_new_toplevel);
         l_new_popup.server = this;
-        l_new_popup.listener.notify = on_new_popup;
-        wl_signal_add(&xdg_shell->events.new_popup, &l_new_popup.listener);
+        add_listener(l_new_popup.listener, xdg_shell->events.new_popup, on_new_popup);
 
         seat = wlr_seat_create(display, "seat0");
         wlr_seat_set_capabilities(seat, WL_SEAT_CAPABILITY_KEYBOARD | WL_SEAT_CAPABILITY_POINTER);
         l_new_input.server = this;
-        l_new_input.listener.notify = on_new_input;
-        wl_signal_add(&backend->events.new_input, &l_new_input.listener);
+        add_listener(l_new_input.listener, backend->events.new_input, on_new_input);
 
         // Clipboard / selection: data_device_manager (above) needs these seat handlers to
         // actually move selections between clients, plus the primary (middle-click) manager
         // and data-control (wl-clipboard / clipboard managers).
         l_set_selection.server = this;
-        l_set_selection.listener.notify = on_set_selection;
-        wl_signal_add(&seat->events.request_set_selection, &l_set_selection.listener);
+        add_listener(l_set_selection.listener, seat->events.request_set_selection, on_set_selection);
         l_set_primary_selection.server = this;
-        l_set_primary_selection.listener.notify = on_set_primary_selection;
-        wl_signal_add(&seat->events.request_set_primary_selection, &l_set_primary_selection.listener);
+        add_listener(
+            l_set_primary_selection.listener, seat->events.request_set_primary_selection, on_set_primary_selection);
         l_start_drag.server = this;
-        l_start_drag.listener.notify = on_request_start_drag;
-        wl_signal_add(&seat->events.request_start_drag, &l_start_drag.listener);
+        add_listener(l_start_drag.listener, seat->events.request_start_drag, on_request_start_drag);
         wlr_primary_selection_v1_device_manager_create(display);
         wlr_data_control_manager_v1_create(display);
         wlr_ext_data_control_manager_v1_create(display, 1);
@@ -525,25 +517,22 @@ namespace fenriz {
         wlr_ext_output_image_capture_source_manager_v1_create(display, 1); // one source per output
         ext_toplevel_capture = wlr_ext_foreign_toplevel_image_capture_source_manager_v1_create(display, 1);
         l_new_ext_capture_request.server = this;
-        l_new_ext_capture_request.listener.notify = on_new_ext_capture_request;
-        wl_signal_add(&ext_toplevel_capture->events.new_request, &l_new_ext_capture_request.listener);
+        add_listener(
+            l_new_ext_capture_request.listener, ext_toplevel_capture->events.new_request, on_new_ext_capture_request);
 
         gamma_control_manager = wlr_gamma_control_manager_v1_create(display);
         l_set_gamma.server = this;
-        l_set_gamma.listener.notify = on_set_gamma;
-        wl_signal_add(&gamma_control_manager->events.set_gamma, &l_set_gamma.listener);
+        add_listener(l_set_gamma.listener, gamma_control_manager->events.set_gamma, on_set_gamma);
 
         // DPMS control for shells/idle daemons (also reachable via the IPC `dpms` command).
         output_power_manager = wlr_output_power_manager_v1_create(display);
         l_output_power.server = this;
-        l_output_power.listener.notify = on_output_power;
-        wl_signal_add(&output_power_manager->events.set_mode, &l_output_power.listener);
+        add_listener(l_output_power.listener, output_power_manager->events.set_mode, on_output_power);
 
         // Windows asking to be raised; marks them urgent for the bar rather than stealing focus.
         xdg_activation = wlr_xdg_activation_v1_create(display);
         l_activation_request.server = this;
-        l_activation_request.listener.notify = on_activation_request;
-        wl_signal_add(&xdg_activation->events.request_activate, &l_activation_request.listener);
+        add_listener(l_activation_request.listener, xdg_activation->events.request_activate, on_activation_request);
 
         cursor::init(*this);
         init_keyboard(*this); // virtual-keyboard + shortcuts-inhibit; needs the seat above
@@ -556,8 +545,7 @@ namespace fenriz {
         // after layer::init so idle_notifier is non-null for the manager's whole life.
         idle_inhibit_manager = wlr_idle_inhibit_v1_create(display);
         l_new_idle_inhibitor.server = this;
-        l_new_idle_inhibitor.listener.notify = on_new_idle_inhibitor;
-        wl_signal_add(&idle_inhibit_manager->events.new_inhibitor, &l_new_idle_inhibitor.listener);
+        add_listener(l_new_idle_inhibitor.listener, idle_inhibit_manager->events.new_inhibitor, on_new_idle_inhibitor);
 
         const char* socket = wl_display_add_socket_auto(display);
         if (!socket) {

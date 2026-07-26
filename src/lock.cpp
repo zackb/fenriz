@@ -105,10 +105,8 @@ namespace fenriz::lock {
 
             LockSurface* ls = new LockSurface{};
             ls->handle = surf;
-            ls->map.notify = on_surface_map;
-            wl_signal_add(&surf->surface->events.map, &ls->map);
-            ls->destroy.notify = on_surface_destroy;
-            wl_signal_add(&surf->events.destroy, &ls->destroy);
+            add_listener(ls->map, surf->surface->events.map, on_surface_map);
+            add_listener(ls->destroy, surf->events.destroy, on_surface_destroy);
             g->surfaces.push_back(ls);
         }
 
@@ -157,6 +155,11 @@ namespace fenriz::lock {
             // the whole layout (null = every output's bounding box), so a second monitor is
             // covered too — and so is any screen whose lock surface hasn't arrived yet.
             {
+                // A lock client that died without unlocking (on_lock_destroy) deliberately
+                // leaves the screen blanked, so its backdrop is still here. Free it before
+                // taking a new one.
+                if (g->bg)
+                    wlr_scene_node_destroy(&g->bg->node);
                 wlr_box box;
                 wlr_output_layout_get_box(server.output_layout, nullptr, &box);
                 const float black[4] = {0, 0, 0, 1};
@@ -165,12 +168,9 @@ namespace fenriz::lock {
             }
             show_lock_scene(server, true);
 
-            g->new_surface.notify = on_new_surface;
-            wl_signal_add(&lock->events.new_surface, &g->new_surface);
-            g->unlock.notify = on_unlock;
-            wl_signal_add(&lock->events.unlock, &g->unlock);
-            g->destroy.notify = on_lock_destroy;
-            wl_signal_add(&lock->events.destroy, &g->destroy);
+            add_listener(g->new_surface, lock->events.new_surface, on_new_surface);
+            add_listener(g->unlock, lock->events.unlock, on_unlock);
+            add_listener(g->destroy, lock->events.destroy, on_lock_destroy);
 
             // The next frame already blanks all normal content (see output.cpp), so it's
             // safe to confirm the lock to the client immediately.
@@ -184,8 +184,7 @@ namespace fenriz::lock {
         g = new LockState{};
         g->server = &server;
         g->manager = wlr_session_lock_manager_v1_create(server.display);
-        g->new_lock.notify = on_new_lock;
-        wl_signal_add(&g->manager->events.new_lock, &g->new_lock);
+        add_listener(g->new_lock, g->manager->events.new_lock, on_new_lock);
     }
 
     void force_unlock(Server& server) {

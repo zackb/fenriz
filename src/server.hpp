@@ -85,6 +85,24 @@ namespace fenriz {
         Server* server;
     };
 
+    // Wire a wl_listener to a signal. These two statements are always written together and
+    // always in this order; naming the pair removes ~80 copies of the boilerplate without
+    // hiding anything. Teardown stays explicit (wl_list_remove in each destroy handler) —
+    // there the enumeration IS the documentation of what was wired.
+    //
+    // Named add_listener rather than the obvious `listen`, which collides with listen(2).
+    inline void add_listener(wl_listener& l, wl_signal& sig, wl_notify_func_t fn) {
+        l.notify = fn;
+        wl_signal_add(&sig, &l);
+    }
+
+    // Same, for the Server-owned listeners that also need the back-pointer wl_container_of
+    // can't recover (the listener is embedded in SignalListener, not in Server).
+    inline void add_listener(Server& server, SignalListener& sl, wl_signal& sig, wl_notify_func_t fn) {
+        sl.server = &server;
+        add_listener(sl.listener, sig, fn);
+    }
+
     class Server {
     public:
         Server();
@@ -113,6 +131,10 @@ namespace fenriz {
         // A client (wlsunset/gammastep) changed the gamma LUT. Setting gamma doesn't damage
         // the scene, so the frame handler must commit even when the scene needs no repaint.
         bool gamma_dirty = false;
+
+        // A split ratio changed and the layout needs recomputing. Set by tiling::resize_split
+        // instead of arranging inline.
+        bool layout_dirty = false;
 
         // The workspaces (see Workspace above). Tree nodes leak at shutdown.
         Workspace workspaces[WS_COUNT];

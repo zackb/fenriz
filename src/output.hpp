@@ -19,6 +19,11 @@ namespace fenriz {
 
     namespace output {
 
+        // A rectangle in layout coordinates
+        struct Area {
+            int x, y, width, height;
+        };
+
         // Per-output state. Standard-layout, so wl_container_of recovers it cleanly from the
         // embedded wl_listeners — keep it that way (no virtuals, no private sections).
         struct Output {
@@ -32,10 +37,9 @@ namespace fenriz {
             int active_ws = -1;
 
             // Tiling region left after this output's layer-shell exclusive zones (bars) are
-            // subtracted. Layout coordinates, not output-local.
-            struct {
-                int x, y, width, height;
-            } usable_area{};
+            // subtracted. Layout coordinates, not output-local. Named (rather than the
+            // anonymous struct it used to be) so output::usable() can return one.
+            Area usable_area{};
 
             bool enabled = true;
 
@@ -64,6 +68,11 @@ namespace fenriz {
         // Whether the lid governs this output: the `lid_output` config if set, else
         // is_internal(). Use this, not is_internal, for policy decisions.
         bool lid_controls(Server& server, const Output* o);
+
+        // The area windows may occupy on `o`, in layout coordinates: the usable area left by
+        // this output's exclusive zones (bars), falling back to its full box before any layer
+        // surface has reserved space. Empty box for a null output.
+        Area usable(Server& server, const Output* o);
 
         // Pure workspace-assignment policy, deliberately free of wlroots types so it can be
         // tested without a compositor (see test_output.cpp). Decides which output each of the
@@ -99,6 +108,35 @@ namespace fenriz {
                                const std::vector<std::string>& live,
                                std::string current[WS_COUNT],
                                std::string origin[WS_COUNT]);
+
+        // The other half of the policy
+        struct OutSlot {
+            std::string name;
+            bool enabled = true;
+            int active_ws = -1; // in/out: workspace shown here, -1 = none
+        };
+        struct WsSlot {
+            std::string home;   // configured preferred output ("" = no preference)
+            std::string output; // in/out: output this workspace lives on ("" = homeless)
+            bool has_windows = false;
+        };
+
+        // In order:
+        //   1. an output that no longer holds its workspace (or is off) stops showing it
+        //   2. the focused workspace is shown on whichever output it now lives on: the
+        //      clamshell case: dock, shut the lid, and your session follows to the external
+        //      instead of being stranded one keypress away
+        //   3. no two outputs show the same workspace (first in `outs` order keeps it)
+        //   4. an output with nothing to show picks the best workspace living here (a
+        //      configured home beats one with windows beats an empty one) and, failing that,
+        //      CLAIMS a free one: writing ws[i].output.
+        //
+        // Step 4's claim is the whole reason this exists: without it a freshly plugged-in
+        // monitor renders nothing and no keybind can fix it, because assign_workspaces has
+        // already given every workspace to the first screen. That bug shipped once.
+        //
+        // `focused_ws` is the focused window's workspace, or -1 if nothing is focused.
+        void assign_active(std::vector<OutSlot>& outs, WsSlot ws[WS_COUNT], int focused_ws);
 
         // Enable/disable an output. Disabling evacuates its workspaces, closes its layer
         // surfaces and removes it from the output layout — which destroys its wl_output global,

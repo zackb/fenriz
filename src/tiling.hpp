@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <vector>
 
 namespace fenriz {
@@ -110,18 +111,39 @@ namespace fenriz {
         inline void place(Node* n, Rect area, int gap) {
             if (!n)
                 return;
+
             n->rect = area;
+
             if (n->leaf())
                 return;
+
             if (n->vertical) {
-                const int lw = (int)((area.w - gap) * n->ratio);
+                const int inner = std::max(0, area.w - gap);
+                const int lw = std::clamp((int)(inner * n->ratio), 0, inner);
                 place(n->child[0], {area.x, area.y, lw, area.h}, gap);
-                place(n->child[1], {area.x + lw + gap, area.y, area.w - gap - lw, area.h}, gap);
+                place(n->child[1], {area.x + lw + gap, area.y, inner - lw, area.h}, gap);
             } else {
-                const int th = (int)((area.h - gap) * n->ratio);
+                const int inner = std::max(0, area.h - gap);
+                const int th = std::clamp((int)(inner * n->ratio), 0, inner);
                 place(n->child[0], {area.x, area.y, area.w, th}, gap);
-                place(n->child[1], {area.x, area.y + th + gap, area.w, area.h - gap - th}, gap);
+                place(n->child[1], {area.x, area.y + th + gap, area.w, inner - th}, gap);
             }
+        }
+
+        // Nearest ancestor of `leaf` whose split orientation matches `vertical`.
+        inline Node* enclosing_split(Node* leaf, bool vertical) {
+            for (Node* n = leaf; n && n->parent; n = n->parent)
+                if (n->parent->vertical == vertical)
+                    return n->parent;
+            return nullptr;
+        }
+
+        // Drag the splits around `leaf` by a cursor delta in px.
+        inline void resize_node(Node* leaf, double dx, double dy) {
+            if (Node* h = enclosing_split(leaf, true); h && h->rect.w > 0)
+                h->ratio = std::clamp(h->ratio + dx / h->rect.w, 0.1, 0.9);
+            if (Node* v = enclosing_split(leaf, false); v && v->rect.h > 0)
+                v->ratio = std::clamp(v->ratio + dy / v->rect.h, 0.1, 0.9);
         }
 
         // Insert/remove a view in the tree for its own workspace (server.ws_roots).
@@ -132,8 +154,8 @@ namespace fenriz {
         // then re-arrange. No-op if either view isn't a leaf on the active workspace.
         void swap(Server& server, View* a, View* b);
 
-        // Adjust the split ratio of `v`'s enclosing tiles by a cursor delta (px): dx nudges
-        // the nearest side-by-side ancestor, dy the nearest stacked ancestor. Re-arranges.
+        // resize_node() for the leaf holding `v`, then flag the layout dirty so the frame
+        // handler re-arranges once per frame rather than once per motion event.
         void resize_split(Server& server, View* v, double dx, double dy);
 
         // Apply the dwindle layout to server.views on the active workspace, setting each

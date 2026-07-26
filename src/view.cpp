@@ -4,7 +4,6 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
-#include <regex>
 
 #include "cursor.hpp"
 #include "ipc.hpp"
@@ -98,8 +97,9 @@ namespace fenriz {
             // window; base->data lets popups find their parent scene tree (see on_new_popup
             // in server.cpp) — that's popup_tree, not surface_tree, so menus escape the
             // toplevel's clip and effects.
-            view->scene_tree = wlr_scene_tree_create(view->floating ? server.scene_floating : server.scene_tiles);
+            view->scene_tree = wlr_scene_tree_create(server.scene_tiles);
             view->scene_tree->node.data = view;
+            restack_view(server, view);
             // Shadow first so it's the bottom-most child (z-order = insertion order):
             // it must spread out behind the border and surface.
             float scol[4];
@@ -178,6 +178,7 @@ namespace fenriz {
                 if (view->kind == View::Kind::Xdg)
                     view->toplevel->base->data = nullptr;
             }
+            view->announced_output = nullptr;
             cursor::forget_view(view); // drop any in-flight mouse grab before the view is gone
             server.views.remove(view);
             tiling::remove(server, view); // sibling reclaims the freed tile
@@ -283,12 +284,9 @@ namespace fenriz {
         void view_handle_associate(wl_listener* listener, void* data) {
             View* view = wl_container_of(listener, view, associate);
             (void)data;
-            view->map.notify = view_handle_map;
-            wl_signal_add(&view->xwl->surface->events.map, &view->map);
-            view->unmap.notify = view_handle_unmap;
-            wl_signal_add(&view->xwl->surface->events.unmap, &view->unmap);
-            view->commit.notify = view_handle_commit;
-            wl_signal_add(&view->xwl->surface->events.commit, &view->commit);
+            add_listener(view->map, view->xwl->surface->events.map, view_handle_map);
+            add_listener(view->unmap, view->xwl->surface->events.unmap, view_handle_unmap);
+            add_listener(view->commit, view->xwl->surface->events.commit, view_handle_commit);
         }
 
         void view_handle_dissociate(wl_listener* listener, void* data) {
@@ -517,13 +515,8 @@ namespace fenriz {
     // The area a free window may use on its output: the usable area (minus bars), falling
     // back to the full output box exactly as tiling::arrange does. Empty if homeless.
     static wlr_box view_area(Server& server, View* view) {
-        output::Output* out = view_output(server, view);
-        if (!out)
-            return {0, 0, 0, 0};
-        wlr_box a = {out->usable_area.x, out->usable_area.y, out->usable_area.width, out->usable_area.height};
-        if (a.width <= 0 || a.height <= 0)
-            wlr_output_layout_get_box(server.output_layout, out->handle, &a);
-        return a;
+        const output::Area a = output::usable(server, view_output(server, view));
+        return {a.x, a.y, a.width, a.height};
     }
 
     void toggle_floating(Server& server) {
@@ -581,41 +574,23 @@ namespace fenriz {
     }
 
     bool apply_window_rules(Server& server, View* view) {
-        // Auto-float toplevels the client places itself: a parent link (dialogs,
-        // modals, Chromium's "sharing your screen" bubble) or a fixed non-resizable size.
+        // Auto-float toplevels the client places itself. X11 windows carry no xdg size
+        // hints here, so this is an xdg-only question.
         if (view->kind == View::Kind::Xdg) {
             const wlr_xdg_toplevel_state& st = view->toplevel->current;
-            const bool fixed =
-                st.max_width > 0 && st.max_width == st.min_width && st.max_height > 0 && st.max_height == st.min_height;
-            if (view->toplevel->parent || fixed) {
+            if (auto_float(st.min_width, st.max_width, st.min_height, st.max_height, view->toplevel->parent)) {
                 view->floating = true;
                 view->want_center = true; // center on output like a rule-floated window
             }
         }
-        // A pattern matches when empty (any) or its regex matches the value; a null
-        // app_id/title is treated as "" so `^$` rules can target unset identity. A bad
-        // regex matches nothing (parser-style: swallow, don't crash).
-        auto matches = [](const std::string& pat, const char* value) {
-            if (pat.empty())
-                return true;
-            try {
-                return std::regex_search(value ? value : "", std::regex(pat));
-            } catch (...) {
-                return false;
-            }
-        };
-        bool no_focus = false;
-        for (const WindowRule& r : server.config.window_rules) {
-            if (!matches(r.app_id, view_app_id(view)) || !matches(r.title, view_title(view)))
-                continue;
-            if (r.floating)
-                view->floating = true;
-            if (r.center)
-                view->want_center = true;
-            if (r.no_focus)
-                no_focus = true;
-        }
-        return no_focus;
+        // The matching itself is pure and lives in config.cpp, where it can be unit-tested
+        // without a compositor (see test_config.cpp).
+        const RuleResult r = match_rules(server.config.window_rules, view_app_id(view), view_title(view));
+        if (r.floating)
+            view->floating = true;
+        if (r.center)
+            view->want_center = true;
+        return r.no_focus;
     }
 
     void center_view(Server& server, View* view) {
@@ -689,16 +664,28 @@ namespace fenriz {
     }
 
     void view_update_output(Server& server, View* view) {
-        output::Output* o = view_output(server, view);
-        if (!o || !view->mapped)
+        if (!view->mapped)
             return;
+        output::Output* o = view_output(server, view);
         wlr_surface* surface = view_surface(view);
-        wlr_surface_send_enter(surface, o->handle);
-        // Scale is per-output now, so a window dragged/evacuated to another screen must be
-        // told the new one or it renders at the old scale (blurry or oversharp).
-        wlr_fractional_scale_v1_notify_scale(surface, output::scale_of(server, o));
-        if (view->foreign_handle)
-            wlr_foreign_toplevel_handle_v1_output_enter(view->foreign_handle, o->handle);
+
+        // Enter/leave is a paired protocol: announce a change of screen, not the current screen.
+        if (o != view->announced_output) {
+            if (output::Output* prev = view->announced_output) {
+                wlr_surface_send_leave(surface, prev->handle);
+                if (view->foreign_handle)
+                    wlr_foreign_toplevel_handle_v1_output_leave(view->foreign_handle, prev->handle);
+            }
+            view->announced_output = o;
+            if (o) {
+                wlr_surface_send_enter(surface, o->handle);
+                if (view->foreign_handle)
+                    wlr_foreign_toplevel_handle_v1_output_enter(view->foreign_handle, o->handle);
+            }
+        }
+
+        if (o)
+            wlr_fractional_scale_v1_notify_scale(surface, output::scale_of(server, o));
     }
 
     void focus_topmost_visible(Server& server) {
@@ -908,40 +895,26 @@ namespace fenriz {
     View::View(Server& server, wlr_xdg_toplevel* toplevel) : server(&server), toplevel(toplevel) {
         wlr_surface* surface = toplevel->base->surface;
 
-        map.notify = view_handle_map;
-        wl_signal_add(&surface->events.map, &map);
-        unmap.notify = view_handle_unmap;
-        wl_signal_add(&surface->events.unmap, &unmap);
-        commit.notify = view_handle_commit;
-        wl_signal_add(&surface->events.commit, &commit);
-        destroy.notify = view_handle_destroy;
-        wl_signal_add(&toplevel->events.destroy, &destroy);
-        set_title.notify = view_handle_set_title;
-        wl_signal_add(&toplevel->events.set_title, &set_title);
-        set_app_id.notify = view_handle_set_app_id;
-        wl_signal_add(&toplevel->events.set_app_id, &set_app_id);
-        request_fullscreen.notify = view_handle_request_fullscreen;
-        wl_signal_add(&toplevel->events.request_fullscreen, &request_fullscreen);
+        add_listener(map, surface->events.map, view_handle_map);
+        add_listener(unmap, surface->events.unmap, view_handle_unmap);
+        add_listener(commit, surface->events.commit, view_handle_commit);
+        add_listener(destroy, toplevel->events.destroy, view_handle_destroy);
+        add_listener(set_title, toplevel->events.set_title, view_handle_set_title);
+        add_listener(set_app_id, toplevel->events.set_app_id, view_handle_set_app_id);
+        add_listener(request_fullscreen, toplevel->events.request_fullscreen, view_handle_request_fullscreen);
     }
 
     View::View(Server& server, wlr_xwayland_surface* xwl) : server(&server), kind(Kind::Xwl), xwl(xwl) {
         // map/unmap/commit are wired on the wlr_surface at `associate` (it doesn't exist yet).
-        associate.notify = view_handle_associate;
-        wl_signal_add(&xwl->events.associate, &associate);
-        dissociate.notify = view_handle_dissociate;
-        wl_signal_add(&xwl->events.dissociate, &dissociate);
-        destroy.notify = view_xwl_handle_destroy;
-        wl_signal_add(&xwl->events.destroy, &destroy);
-        set_title.notify = view_handle_set_title;
-        wl_signal_add(&xwl->events.set_title, &set_title);
-        set_app_id.notify = view_handle_set_app_id; // X11 WM_CLASS
-        wl_signal_add(&xwl->events.set_class, &set_app_id);
-        request_fullscreen.notify = view_handle_request_fullscreen;
-        wl_signal_add(&xwl->events.request_fullscreen, &request_fullscreen);
-        request_configure.notify = view_handle_request_configure;
-        wl_signal_add(&xwl->events.request_configure, &request_configure);
-        request_activate.notify = view_handle_request_activate;
-        wl_signal_add(&xwl->events.request_activate, &request_activate);
+        add_listener(associate, xwl->events.associate, view_handle_associate);
+        add_listener(dissociate, xwl->events.dissociate, view_handle_dissociate);
+        add_listener(destroy, xwl->events.destroy, view_xwl_handle_destroy);
+        add_listener(set_title, xwl->events.set_title, view_handle_set_title);
+        // Listener and signal are spelled differently here: X11's WM_CLASS is our app_id.
+        add_listener(set_app_id, xwl->events.set_class, view_handle_set_app_id);
+        add_listener(request_fullscreen, xwl->events.request_fullscreen, view_handle_request_fullscreen);
+        add_listener(request_configure, xwl->events.request_configure, view_handle_request_configure);
+        add_listener(request_activate, xwl->events.request_activate, view_handle_request_activate);
     }
 
 } // namespace fenriz

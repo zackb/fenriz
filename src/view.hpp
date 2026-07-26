@@ -62,6 +62,10 @@ namespace fenriz {
 
         // wlr-foreign-toplevel handle (taskbar/window-list protocol); live while mapped.
         wlr_foreign_toplevel_handle_v1* foreign_handle = nullptr;
+        // The output this view has most recently been announced on (surface enter +
+        // foreign-toplevel output_enter). Tracked so view_update_output can send the
+        // matching leave when the window migrates.
+        output::Output* announced_output = nullptr;
         // ext-foreign-toplevel-list handle: the standardized successor, list-only (it can't
         // activate or close), so it runs alongside foreign_handle rather than replacing it.
         wlr_ext_foreign_toplevel_handle_v1* ext_foreign_handle = nullptr;

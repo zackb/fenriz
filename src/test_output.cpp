@@ -32,6 +32,29 @@ namespace {
     const std::vector<std::string> EXTERNAL_ONLY = {"DP-1"};
     const std::vector<std::string> PANEL_ONLY = {"eDP-1"};
 
+    // The same shape for the other half of the policy: which workspace each output shows.
+    struct Active {
+        std::vector<OutSlot> outs;
+        WsSlot ws[WS_COUNT];
+
+        void output(const std::string& name, bool enabled = true, int active_ws = -1) {
+            outs.push_back({name, enabled, active_ws});
+        }
+        // Workspace n lives on `on` and has windows.
+        void live_on(int n, const std::string& on) {
+            ws[n].output = on;
+            ws[n].has_windows = true;
+        }
+        void run(int focused_ws = -1) { assign_active(outs, ws, focused_ws); }
+
+        int shown(const std::string& name) const {
+            for (const OutSlot& o : outs)
+                if (o.name == name)
+                    return o.active_ws;
+            return -2; // no such output; distinct from -1 = "shows nothing"
+        }
+    };
+
 } // namespace
 
 int main() {
@@ -162,6 +185,109 @@ int main() {
         assert(s.current[2] == "eDP-1" && s.origin[2] == "DP-1");
         s.run(BOTH);
         assert(s.current[2] == "DP-1");
+    }
+
+    // ---- assign_active: which workspace each output SHOWS ----
+
+    // The headline, and the bug that shipped: plug in a second monitor and it must CLAIM a
+    // free workspace. Before the claim step it rendered nothing, and no keybind could fix it
+    // because assign_workspaces had already handed every workspace to the first screen.
+    {
+        Active a;
+        a.output("eDP-1", true, 0);
+        a.output("DP-1"); // just appeared, shows nothing
+        a.live_on(0, "eDP-1");
+        a.run();
+        assert(a.shown("eDP-1") == 0);
+        assert(a.shown("DP-1") >= 0); // claimed something
+        assert(a.shown("DP-1") != a.shown("eDP-1"));
+        assert(a.ws[a.shown("DP-1")].output == "DP-1"); // and the claim was recorded
+    }
+
+    // Two outputs never show the same workspace. Whichever comes first in output order keeps
+    // it; the other is pushed onto a free one rather than mirroring.
+    {
+        Active a;
+        a.output("eDP-1", true, 3);
+        a.output("DP-1", true, 3); // both think they're showing ws4
+        a.ws[3].output = "eDP-1";
+        a.run();
+        assert(a.shown("eDP-1") == 3);
+        assert(a.shown("DP-1") != 3);
+        assert(a.shown("DP-1") >= 0); // and it still got something to show
+    }
+
+    // An output stops showing a workspace that has moved off it (the evacuation case), and a
+    // disabled output shows nothing at all.
+    {
+        Active a;
+        a.output("eDP-1", false, 0); // lid shut
+        a.output("DP-1", true, 2);
+        a.live_on(0, "DP-1"); // ws1 was evacuated to the external
+        a.live_on(2, "DP-1");
+        a.run();
+        assert(a.shown("eDP-1") == -1); // off: shows nothing, claims nothing
+        assert(a.shown("DP-1") == 2);
+    }
+
+    // Your work follows you: the focused workspace is shown on whichever output it now lives
+    // on. This is the clamshell payoff — dock, shut the lid, keep working.
+    {
+        Active a;
+        a.output("eDP-1", false, -1);
+        a.output("DP-1", true, 5); // external happens to show an empty ws6
+        a.live_on(0, "DP-1");      // the focused workspace was evacuated here
+        a.run(/*focused_ws=*/0);
+        assert(a.shown("DP-1") == 0);
+    }
+
+    // Picking among workspaces already living here: a configured home beats one with
+    // windows, which beats an empty one.
+    {
+        Active a;
+        a.output("DP-1");
+        a.ws[7].output = "DP-1"; // empty, not homed        -> rank 3
+        a.live_on(6, "DP-1");    // windows, not homed      -> rank 2
+        a.ws[4].output = "DP-1";
+        a.ws[4].home = "DP-1"; // homed, empty            -> rank 1
+        a.run();
+        assert(a.shown("DP-1") == 4);
+    }
+
+    // A claim prefers a workspace configured for this output, and never steals one
+    // configured for a different screen.
+    {
+        Active a;
+        a.output("DP-1");
+        a.ws[0].home = "eDP-1"; // spoken for by a screen that isn't here
+        a.ws[3].home = "DP-1";  // ours
+        a.run();
+        assert(a.shown("DP-1") == 3);
+        assert(a.ws[0].output.empty()); // left free for eDP-1 to claim later
+    }
+
+    // Idempotence: re-running on a settled layout must not shuffle screens.
+    {
+        Active a;
+        a.output("eDP-1");
+        a.output("DP-1");
+        a.live_on(0, "eDP-1");
+        a.run();
+        const int e = a.shown("eDP-1"), d = a.shown("DP-1");
+        for (int i = 0; i < 5; i++)
+            a.run();
+        assert(a.shown("eDP-1") == e && a.shown("DP-1") == d);
+    }
+
+    // Every workspace spoken for elsewhere: -1 rather than stealing or crashing.
+    {
+        Active a;
+        a.output("eDP-1", true, 0);
+        a.output("DP-1");
+        for (int i = 0; i < WS_COUNT; i++)
+            a.live_on(i, "eDP-1");
+        a.run();
+        assert(a.shown("DP-1") == -1);
     }
 
     // The internal-panel rule the lid policy keys off.

@@ -7,6 +7,8 @@
 
 namespace fenriz::layer {
 
+    bool reconfigure(Server& server);
+
     namespace {
 
         // The scene tree a layer surface belongs in, by its layer. Reapplied each commit so
@@ -71,8 +73,13 @@ namespace fenriz::layer {
             // has committed == 0; arranging there would send a fresh configure, forcing the
             // client to relayout+repaint and commit again, a full-refresh feedback loop that
             // pins the GPU at idle.
+            // ...and even then, only relayout the windows if the reserved space actually
+            // changed. A bar re-commits its size whenever a module's width changes (clock,
+            // workspace widget), roughly once a second, and that leaves usable_area
+            // identical, so the whole-compositor tiling::arrange is pure waste.
             if (ls->handle->initial_commit || ls->handle->current.committed != 0)
-                arrange(*ls->server);
+                if (reconfigure(*ls->server))
+                    tiling::arrange(*ls->server);
         }
 
         void on_new_popup(wl_listener* listener, void* data) {
@@ -118,26 +125,25 @@ namespace fenriz::layer {
             ls->server = &server;
             ls->handle = layer;
             ls->scene = wlr_scene_layer_surface_v1_create(tree_for_layer(server, layer->current.layer), layer);
-            ls->map.notify = on_map;
-            wl_signal_add(&layer->surface->events.map, &ls->map);
-            ls->unmap.notify = on_unmap;
-            wl_signal_add(&layer->surface->events.unmap, &ls->unmap);
-            ls->commit.notify = on_commit;
-            wl_signal_add(&layer->surface->events.commit, &ls->commit);
-            ls->new_popup.notify = on_new_popup;
-            wl_signal_add(&layer->events.new_popup, &ls->new_popup);
-            ls->destroy.notify = on_destroy;
-            wl_signal_add(&layer->events.destroy, &ls->destroy);
+            add_listener(ls->map, layer->surface->events.map, on_map);
+            add_listener(ls->unmap, layer->surface->events.unmap, on_unmap);
+            add_listener(ls->commit, layer->surface->events.commit, on_commit);
+            add_listener(ls->new_popup, layer->events.new_popup, on_new_popup);
+            add_listener(ls->destroy, layer->events.destroy, on_destroy);
 
             server.layer_surfaces.push_back(ls);
         }
 
     } // namespace
 
-    void arrange(Server& server) {
+    // Configure every layer surface and recompute each output's usable_area. Returns true if
+    // any output's usable area actually moved or resized.
+    bool reconfigure(Server& server) {
+        bool usable_changed = false;
         // Each output reserves its own space: a bar on one screen must not shrink the tiling
         // area of another. Every output gets its own usable_area, in layout coordinates.
         for (output::Output* out : server.outputs) {
+            const auto before = out->usable_area;
             wlr_box full = {0, 0, 0, 0};
             if (server.output_layout)
                 wlr_output_layout_get_box(server.output_layout, out->handle, &full);
@@ -163,7 +169,14 @@ namespace fenriz::layer {
                     }
 
             out->usable_area = {usable.x, usable.y, usable.width, usable.height};
+            usable_changed |= before.x != usable.x || before.y != usable.y || before.width != usable.width ||
+                              before.height != usable.height;
         }
+        return usable_changed;
+    }
+
+    void arrange(Server& server) {
+        reconfigure(server);
         tiling::arrange(server);
     }
 
@@ -184,9 +197,7 @@ namespace fenriz::layer {
 
     void init(Server& server) {
         server.layer_shell = wlr_layer_shell_v1_create(server.display, 4);
-        server.l_new_layer_surface.server = &server;
-        server.l_new_layer_surface.listener.notify = on_new_surface;
-        wl_signal_add(&server.layer_shell->events.new_surface, &server.l_new_layer_surface.listener);
+        add_listener(server, server.l_new_layer_surface, server.layer_shell->events.new_surface, on_new_surface);
 
         server.idle_notifier = wlr_idle_notifier_v1_create(server.display);
     }

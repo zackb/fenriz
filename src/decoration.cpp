@@ -54,12 +54,9 @@ namespace fenriz::decoration {
 
             Decoration* d = new Decoration{};
             d->handle = dec;
-            d->request_mode.notify = on_request_mode;
-            wl_signal_add(&dec->events.request_mode, &d->request_mode);
-            d->surface_commit.notify = on_surface_commit;
-            wl_signal_add(&dec->toplevel->base->surface->events.commit, &d->surface_commit);
-            d->destroy.notify = on_destroy;
-            wl_signal_add(&dec->events.destroy, &d->destroy);
+            add_listener(d->request_mode, dec->events.request_mode, on_request_mode);
+            add_listener(d->surface_commit, dec->toplevel->base->surface->events.commit, on_surface_commit);
+            add_listener(d->destroy, dec->events.destroy, on_destroy);
 
             force_server_side(dec); // in case the surface is already initialized
         }
@@ -68,10 +65,10 @@ namespace fenriz::decoration {
 
     void init(Server& server) {
         server.xdg_decoration_manager = wlr_xdg_decoration_manager_v1_create(server.display);
-        server.l_new_decoration.server = &server;
-        server.l_new_decoration.listener.notify = on_new_decoration;
-        wl_signal_add(&server.xdg_decoration_manager->events.new_toplevel_decoration,
-                      &server.l_new_decoration.listener);
+        add_listener(server,
+                     server.l_new_decoration,
+                     server.xdg_decoration_manager->events.new_toplevel_decoration,
+                     on_new_decoration);
 
         // Legacy KDE protocol: GTK/libadwaita apps (ghostty) ignore xdg-decoration and read
         // this to decide whether to draw their own titlebar. Default to server-side so they

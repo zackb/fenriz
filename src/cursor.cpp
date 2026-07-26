@@ -564,12 +564,17 @@ namespace fenriz::cursor {
 
     void forget_view(View* view) {
         view->dragging = false; // never leave a stuck drag flag on an unmapping view
+        // Order matters: the preview undo below needs `grabbed` still set, and a view can't
+        // be both the grabbed window and its own preview partner.
+        if (g_cursor && g_cursor->preview_partner == view) {
+            if (g_cursor->grabbed && g_cursor->grabbed != view)
+                tiling::swap(*view->server, g_cursor->grabbed, view);
+            g_cursor->preview_partner = nullptr; // never swap against a freed view
+        }
         if (g_cursor && g_cursor->grabbed == view) {
             g_cursor->grab = Grab::None;
             g_cursor->grabbed = nullptr;
         }
-        if (g_cursor && g_cursor->preview_partner == view)
-            g_cursor->preview_partner = nullptr; // never swap against a freed view
     }
 
     View* grabbed_view() { return g_cursor ? g_cursor->grabbed : nullptr; }
@@ -616,53 +621,36 @@ namespace fenriz::cursor {
         if (server.config.scale > 0)
             wlr_xcursor_manager_load(c->mgr, server.config.scale);
 
-        c->motion.notify = cursor_motion;
-        wl_signal_add(&c->cursor->events.motion, &c->motion);
-        c->motion_absolute.notify = cursor_motion_absolute;
-        wl_signal_add(&c->cursor->events.motion_absolute, &c->motion_absolute);
-        c->button.notify = cursor_button;
-        wl_signal_add(&c->cursor->events.button, &c->button);
-        c->axis.notify = cursor_axis;
-        wl_signal_add(&c->cursor->events.axis, &c->axis);
-        c->frame.notify = cursor_frame;
-        wl_signal_add(&c->cursor->events.frame, &c->frame);
+        add_listener(c->motion, c->cursor->events.motion, cursor_motion);
+        add_listener(c->motion_absolute, c->cursor->events.motion_absolute, cursor_motion_absolute);
+        add_listener(c->button, c->cursor->events.button, cursor_button);
+        add_listener(c->axis, c->cursor->events.axis, cursor_axis);
+        add_listener(c->frame, c->cursor->events.frame, cursor_frame);
 
-        c->request_set_cursor.notify = request_set_cursor;
-        wl_signal_add(&server.seat->events.request_set_cursor, &c->request_set_cursor);
+        add_listener(c->request_set_cursor, server.seat->events.request_set_cursor, request_set_cursor);
 
         wlr_cursor_shape_manager_v1* shape_mgr = wlr_cursor_shape_manager_v1_create(server.display, 1);
-        c->request_set_shape.notify = request_set_shape;
-        wl_signal_add(&shape_mgr->events.request_set_shape, &c->request_set_shape);
+        add_listener(c->request_set_shape, shape_mgr->events.request_set_shape, request_set_shape);
 
         // pointer-gestures: touchpad swipe/pinch/hold straight through to the client.
         c->gestures = wlr_pointer_gestures_v1_create(server.display);
-        c->swipe_begin.notify = gesture_swipe_begin;
-        wl_signal_add(&c->cursor->events.swipe_begin, &c->swipe_begin);
-        c->swipe_update.notify = gesture_swipe_update;
-        wl_signal_add(&c->cursor->events.swipe_update, &c->swipe_update);
-        c->swipe_end.notify = gesture_swipe_end;
-        wl_signal_add(&c->cursor->events.swipe_end, &c->swipe_end);
-        c->pinch_begin.notify = gesture_pinch_begin;
-        wl_signal_add(&c->cursor->events.pinch_begin, &c->pinch_begin);
-        c->pinch_update.notify = gesture_pinch_update;
-        wl_signal_add(&c->cursor->events.pinch_update, &c->pinch_update);
-        c->pinch_end.notify = gesture_pinch_end;
-        wl_signal_add(&c->cursor->events.pinch_end, &c->pinch_end);
-        c->hold_begin.notify = gesture_hold_begin;
-        wl_signal_add(&c->cursor->events.hold_begin, &c->hold_begin);
-        c->hold_end.notify = gesture_hold_end;
-        wl_signal_add(&c->cursor->events.hold_end, &c->hold_end);
+        add_listener(c->swipe_begin, c->cursor->events.swipe_begin, gesture_swipe_begin);
+        add_listener(c->swipe_update, c->cursor->events.swipe_update, gesture_swipe_update);
+        add_listener(c->swipe_end, c->cursor->events.swipe_end, gesture_swipe_end);
+        add_listener(c->pinch_begin, c->cursor->events.pinch_begin, gesture_pinch_begin);
+        add_listener(c->pinch_update, c->cursor->events.pinch_update, gesture_pinch_update);
+        add_listener(c->pinch_end, c->cursor->events.pinch_end, gesture_pinch_end);
+        add_listener(c->hold_begin, c->cursor->events.hold_begin, gesture_hold_begin);
+        add_listener(c->hold_end, c->cursor->events.hold_end, gesture_hold_end);
 
         // virtual-pointer: wlr-randr's sibling for input
         c->virtual_pointers = wlr_virtual_pointer_manager_v1_create(server.display);
-        c->new_virtual_pointer.notify = on_new_virtual_pointer;
-        wl_signal_add(&c->virtual_pointers->events.new_virtual_pointer, &c->new_virtual_pointer);
+        add_listener(c->new_virtual_pointer, c->virtual_pointers->events.new_virtual_pointer, on_new_virtual_pointer);
 
         // pointer-constraints + relative-pointer: mouse lock for games.
         c->relative_pointers = wlr_relative_pointer_manager_v1_create(server.display);
         c->constraints = wlr_pointer_constraints_v1_create(server.display);
-        c->new_constraint.notify = on_new_constraint;
-        wl_signal_add(&c->constraints->events.new_constraint, &c->new_constraint);
+        add_listener(c->new_constraint, c->constraints->events.new_constraint, on_new_constraint);
         c->constraint_destroy.notify = on_constraint_destroy;
         // Cursor is value-initialized, so this link is {null,null}, not a valid empty list. Init it
         // so set_constraint's unconditional wl_list_remove is safe before the first constraint.

@@ -107,4 +107,20 @@ namespace fenriz {
 
     Action action_from_string(const std::string& s);
 
+    // What the window rules asked for, for one window. Every matching rule stacks, so this
+    // is the union over all of them rather than the first match.
+    struct RuleResult {
+        bool floating = false;
+        bool center = false;
+        bool no_focus = false;
+    };
+
+    // Run `rules` in order against a window's identity. A pattern matches when it is empty
+    // (meaning "any") or its regex matches the value; a null app_id/title is treated as ""
+    // so a `^$` rule can target unset identity. An invalid regex matches nothing.
+    RuleResult match_rules(const std::vector<WindowRule>& rules, const char* app_id, const char* title);
+
+    // Should this toplevel float regardless of any rule
+    bool auto_float(int min_w, int max_w, int min_h, int max_h, bool has_parent);
+
 } // namespace fenriz

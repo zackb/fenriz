@@ -31,27 +31,14 @@ namespace fenriz::tiling {
         arrange(server);
     }
 
-    // Nearest ancestor of `leaf` whose split orientation matches `vertical`.
-    static Node* enclosing_split(Node* leaf, bool vertical) {
-        for (Node* n = leaf; n && n->parent; n = n->parent)
-            if (n->parent->vertical == vertical)
-                return n->parent;
-        return nullptr;
-    }
-
     void resize_split(Server& server, View* v, double dx, double dy) {
         Node* leaf = find_leaf(server.workspaces[v->workspace].root, v);
         if (!leaf)
             return;
-        // The divider follows the cursor: +dx moves the vertical split right, +dy moves the
-        // stacked split down, no matter which side `leaf` is on. (ratio is the fraction to
-        // child[0], i.e. the left/top tile, so raising it grows that tile toward the cursor.)
-        if (Node* h = enclosing_split(leaf, true); h && h->rect.w > 0)
-            h->ratio = std::clamp(h->ratio + dx / h->rect.w, 0.1, 0.9);
-        if (Node* w = enclosing_split(leaf, false); w && w->rect.h > 0)
-            w->ratio = std::clamp(w->ratio + dy / w->rect.h, 0.1, 0.9);
+        resize_node(leaf, dx, dy); // the ratio math itself is pure
 
-        arrange(server, false);
+        // Don't arrange here. This runs once per cursor motion event
+        server.layout_dirty = true;
     }
 
     void arrange(Server& server, bool animate) {
@@ -65,17 +52,13 @@ namespace fenriz::tiling {
             if (!root)
                 continue; // empty workspace; the visibility sync below still runs
 
-            // Prefer the usable area left by this output's exclusive zones (bars); fall back to
-            // its full box before any layer surface has reserved space.
-            wlr_box full;
-            wlr_output_layout_get_box(server.output_layout, out->handle, &full);
-            const auto& u = out->usable_area;
-            int ax = u.x, ay = u.y, aw = u.width, ah = u.height;
-            if (aw <= 0 || ah <= 0) {
-                ax = full.x, ay = full.y, aw = full.width, ah = full.height;
-            }
+            // The area windows may occupy here: usable space minus bars, or the full box
+            // before any bar has reserved space.
+            const output::Area a = output::usable(server, out);
+            const int ax = a.x, ay = a.y, aw = a.width, ah = a.height;
 
-            const int gap = server.config.gaps;
+            // Clamp the gap to something this area can actually absorb
+            const int gap = std::clamp(server.config.gaps, 0, std::min(aw, ah) / 4);
             place(root, {ax + gap, ay + gap, aw - 2 * gap, ah - 2 * gap}, gap);
 
             std::vector<Node*> leaves;

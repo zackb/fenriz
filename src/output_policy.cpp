@@ -52,4 +52,60 @@ namespace fenriz::output {
         }
     }
 
+    void assign_active(std::vector<OutSlot>& outs, WsSlot ws[WS_COUNT], int focused_ws) {
+        // 1. Drop the shown workspace of any output that no longer holds it (or is off).
+        for (OutSlot& o : outs)
+            if (!o.enabled || (o.active_ws >= 0 && ws[o.active_ws].output != o.name))
+                o.active_ws = -1;
+
+        // 2. Your work follows you. If the focused window's workspace was just evacuated,
+        // show it on the screen it landed on. Leaving the external on whatever empty
+        // workspace it happened to display would strand the session for no reason.
+        if (focused_ws >= 0 && focused_ws < WS_COUNT && !ws[focused_ws].output.empty())
+            for (OutSlot& o : outs)
+                if (o.name == ws[focused_ws].output)
+                    o.active_ws = focused_ws;
+
+        // 3. Two outputs must never show the same workspace. Earlier in `outs` wins, which
+        // is the order the outputs appeared, stable across an unrelated hotplug.
+        for (size_t i = 0; i < outs.size(); i++)
+            for (size_t j = 0; j < outs.size(); j++)
+                if (i != j && outs[i].active_ws >= 0 && outs[i].active_ws == outs[j].active_ws)
+                    outs[j].active_ws = -1;
+
+        // 4. Every enabled output shows exactly one workspace.
+        for (OutSlot& o : outs) {
+            if (!o.enabled || o.active_ws >= 0)
+                continue;
+
+            // Best workspace already living here: a configured home beats one with windows
+            // beats an empty one (rank 0..3, lowest wins).
+            int best = -1, best_rank = 99;
+            for (int i = 0; i < WS_COUNT; i++) {
+                if (ws[i].output != o.name)
+                    continue;
+                const bool homed = ws[i].home == o.name;
+                const int rank = homed ? (ws[i].has_windows ? 0 : 1) : (ws[i].has_windows ? 2 : 3);
+                if (rank < best_rank) {
+                    best_rank = rank;
+                    best = i;
+                }
+            }
+            if (best < 0) {
+                // Nothing lives here yet: claim the lowest-numbered unassigned workspace,
+                // preferring one configured for this output. Never steal one that is spoken
+                // for, a workspace configured for ANOTHER output stays free for it.
+                for (int i = 0; i < WS_COUNT && best < 0; i++)
+                    if (ws[i].output.empty() && ws[i].home == o.name)
+                        best = i;
+                for (int i = 0; i < WS_COUNT && best < 0; i++)
+                    if (ws[i].output.empty() && ws[i].home.empty())
+                        best = i;
+                if (best >= 0)
+                    ws[best].output = o.name;
+            }
+            o.active_ws = best; // -1 only if all WS_COUNT are spoken for elsewhere
+        }
+    }
+
 } // namespace fenriz::output

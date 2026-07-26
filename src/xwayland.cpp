@@ -82,10 +82,8 @@ namespace fenriz::xwayland {
         void unmanaged_associate(wl_listener* listener, void* data) {
             Unmanaged* u = wl_container_of(listener, u, associate);
             (void)data;
-            u->map.notify = unmanaged_map;
-            wl_signal_add(&u->xwl->surface->events.map, &u->map);
-            u->unmap.notify = unmanaged_unmap;
-            wl_signal_add(&u->xwl->surface->events.unmap, &u->unmap);
+            add_listener(u->map, u->xwl->surface->events.map, unmanaged_map);
+            add_listener(u->unmap, u->xwl->surface->events.unmap, unmanaged_unmap);
         }
 
         void unmanaged_dissociate(wl_listener* listener, void* data) {
@@ -110,18 +108,12 @@ namespace fenriz::xwayland {
 
         void new_unmanaged(Server& server, wlr_xwayland_surface* xs) {
             Unmanaged* u = new Unmanaged{&server, xs, nullptr, {}, {}, {}, {}, {}, {}, {}, {}};
-            u->associate.notify = unmanaged_associate;
-            wl_signal_add(&xs->events.associate, &u->associate);
-            u->dissociate.notify = unmanaged_dissociate;
-            wl_signal_add(&xs->events.dissociate, &u->dissociate);
-            u->set_geometry.notify = unmanaged_set_geometry;
-            wl_signal_add(&xs->events.set_geometry, &u->set_geometry);
-            u->request_configure.notify = unmanaged_request_configure;
-            wl_signal_add(&xs->events.request_configure, &u->request_configure);
-            u->request_activate.notify = unmanaged_request_activate;
-            wl_signal_add(&xs->events.request_activate, &u->request_activate);
-            u->destroy.notify = unmanaged_destroy;
-            wl_signal_add(&xs->events.destroy, &u->destroy);
+            add_listener(u->associate, xs->events.associate, unmanaged_associate);
+            add_listener(u->dissociate, xs->events.dissociate, unmanaged_dissociate);
+            add_listener(u->set_geometry, xs->events.set_geometry, unmanaged_set_geometry);
+            add_listener(u->request_configure, xs->events.request_configure, unmanaged_request_configure);
+            add_listener(u->request_activate, xs->events.request_activate, unmanaged_request_activate);
+            add_listener(u->destroy, xs->events.destroy, unmanaged_destroy);
         }
 
         void on_new_surface(wl_listener* listener, void* data) {
@@ -146,9 +138,7 @@ namespace fenriz::xwayland {
         setenv("DISPLAY", server.xwayland->display_name, true);
         wlr_log(WLR_INFO, "XWayland on DISPLAY=%s", server.xwayland->display_name);
 
-        server.l_new_xwayland_surface.server = &server;
-        server.l_new_xwayland_surface.listener.notify = on_new_surface;
-        wl_signal_add(&server.xwayland->events.new_surface, &server.l_new_xwayland_surface.listener);
+        add_listener(server, server.l_new_xwayland_surface, server.xwayland->events.new_surface, on_new_surface);
     }
 
 } // namespace fenriz::xwayland

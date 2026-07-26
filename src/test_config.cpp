@@ -128,6 +128,38 @@ int main() {
     assert(ws.ws_home[1].empty()); // never set
     assert(ws.ws_home[2].empty()); // `workspace = 3` with no output is ignored
 
+    // A shell command is taken verbatim: it keeps its commas (only the first three
+    // separate mods/key/action) and its `#` (which is a hex color or a URL fragment far
+    // more often than a comment). Truncating either silently ran the wrong command.
+    Config sh = Config::parse("bind = SUPER, Return, exec, sh -c 'a,b'\n"
+                              "bind = SUPER, P, exec, grim -o \"$M\" - | satty -f -\n"
+                              "exec-once = swaybg -c #1a1a1a\n"
+                              "bind = SUPER, C, exec, hyprpicker -f hex # trailing text is part of the command\n");
+    assert(sh.binds.size() == 3);
+    assert(sh.binds[0].arg == "sh -c 'a,b'");
+    assert(sh.binds[1].arg == "grim -o \"$M\" - | satty -f -");
+    assert(sh.exec_once.size() == 1 && sh.exec_once[0] == "swaybg -c #1a1a1a");
+    assert(sh.binds[2].arg == "hyprpicker -f hex # trailing text is part of the command");
+
+    // ...but a non-command value still honors an inline comment (asserted for `rounding`
+    // above) and a whole-line comment is still dropped even though it contains an `=`.
+    Config cm = Config::parse("# gaps = 999\n"
+                              "  # border_width = 999\n"
+                              "gaps = 4 # four\n");
+    assert(cm.gaps == 4);
+    assert(cm.border_width == Config{}.border_width);
+
+    // Integer settings clamp like the floats do. A negative gap grows tiles past the
+    // screen edge; a negative border/rounding/blur reaches the scene rect setters as a
+    // negative size. Values are geometry, and geometry has no meaning below zero.
+    Config neg = Config::parse("gaps = -5\nborder_width = -3\nrounding = -1\n"
+                               "shadow_blur = -10\nanimation = -20\n");
+    assert(neg.gaps >= 0);
+    assert(neg.border_width >= 0);
+    assert(neg.rounding >= 0);
+    assert(neg.shadow_blur >= 0);
+    assert(neg.animation_ms >= 0);
+
     // Window rules: name=value fields, any order; `name` is a label and ignored; a rule
     // with neither class nor title is dropped.
     Config wr = Config::parse("windowrule = class=^(org\\.pulseaudio\\.pavucontrol)$, float=true, center=true\n"
@@ -139,6 +171,56 @@ int main() {
     assert(!wr.window_rules[0].no_focus);
     assert(wr.window_rules[1].title == "^$" && wr.window_rules[1].no_focus);
     assert(!wr.window_rules[1].floating);
+
+    // --- rule matching (what view.cpp does with the parsed rules at map time) ---
+
+    // Every matching rule stacks, and an empty pattern means "any".
+    {
+        const std::vector<WindowRule> rules = {
+            {"^foot$", "", true, false, false},   // class only
+            {"", "^scratch$", false, true, false} // title only, matches any class
+        };
+        const RuleResult foot = match_rules(rules, "foot", "scratch");
+        assert(foot.floating && foot.center && !foot.no_focus); // both rules applied
+        assert(match_rules(rules, "foot", "vim").floating);
+        assert(!match_rules(rules, "foot", "vim").center);
+        assert(match_rules(rules, "alacritty", "scratch").center);
+        assert(!match_rules(rules, "alacritty", "vim").floating);
+    }
+
+    // A null app_id/title reads as "" so `^$` can deliberately target unset identity —
+    // XWayland windows routinely map before they set WM_CLASS.
+    {
+        const std::vector<WindowRule> anon = {{"^$", "", true, false, false}};
+        assert(match_rules(anon, nullptr, nullptr).floating);
+        assert(match_rules(anon, "", "x").floating);
+        assert(!match_rules(anon, "foot", nullptr).floating);
+
+        // An empty ruleset never matches anything, and a rule with two empty patterns
+        // matches everything.
+        assert(!match_rules({}, "foot", "x").floating);
+        const std::vector<WindowRule> all = {{"", "", false, false, true}};
+        assert(match_rules(all, nullptr, nullptr).no_focus);
+    }
+
+    // An invalid regex matches nothing rather than throwing out of the map handler — the
+    // same swallow-don't-crash policy the rest of the parser uses. A typo'd rule must not
+    // take the compositor down when a window opens.
+    {
+        const std::vector<WindowRule> bad = {{"[", "", true, false, false}, {"^ok$", "", false, false, true}};
+        const RuleResult r = match_rules(bad, "ok", "");
+        assert(!r.floating); // the broken rule matched nothing...
+        assert(r.no_focus);  // ...and did not stop the valid one after it
+    }
+
+    // Auto-float: a client-placed child (dialog/modal) or a window that declared a fixed
+    // size, which a tile would have to violate.
+    assert(auto_float(0, 0, 0, 0, true));           // has a parent -> dialog
+    assert(auto_float(300, 300, 200, 200, false));  // min == max -> fixed size
+    assert(!auto_float(300, 900, 200, 600, false)); // resizable -> tile it
+    assert(!auto_float(0, 0, 0, 0, false));         // no hints at all -> tile it
+    // A fixed width alone isn't enough; both axes must be pinned.
+    assert(!auto_float(300, 300, 200, 600, false));
 
     std::printf("config parser: all assertions passed\n");
     return 0;

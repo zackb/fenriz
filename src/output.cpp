@@ -11,6 +11,7 @@
 #include "ipc.hpp"
 #include "layer.hpp"
 #include "server.hpp"
+#include "tiling.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
 
@@ -140,6 +141,11 @@ namespace fenriz::output {
             timespec now;
             clock_gettime(CLOCK_MONOTONIC, &now);
 
+            if (server.layout_dirty) {
+                server.layout_dirty = false;
+                tiling::arrange(server, false);
+            }
+
             // Ease the global zoom level toward its target only on the output holding the cursor
             const bool has_cursor =
                 wlr_output_layout_output_at(server.output_layout, server.cursor->x, server.cursor->y) == output->handle;
@@ -171,7 +177,7 @@ namespace fenriz::output {
                 // resetting opacity to 1.0 — so effects set at commit time never reach the
                 // render. Applying here, per visible view, is the reliable point.
                 for (View* view : server.views)
-                    if (view_visible(server, view))
+                    if (view_visible(server, view) && view_output(server, view) == output)
                         apply_view_effects(view);
 
                 if (zoomed) {
@@ -242,6 +248,11 @@ namespace fenriz::output {
             for (Workspace& ws : server.workspaces)
                 if (ws.output == output)
                     ws.output = nullptr;
+
+            for (View* v : server.views)
+                if (v->announced_output == output)
+                    v->announced_output = nullptr;
+
             delete output;
 
             // Covers undocking with the lid shut: the external left, so the panel comes back.
@@ -255,12 +266,9 @@ namespace fenriz::output {
             output->server = &server;
             output->handle = out;
 
-            output->frame.notify = output_handle_frame;
-            wl_signal_add(&out->events.frame, &output->frame);
-            output->request_state.notify = output_handle_request_state;
-            wl_signal_add(&out->events.request_state, &output->request_state);
-            output->destroy.notify = output_handle_destroy;
-            wl_signal_add(&out->events.destroy, &output->destroy);
+            add_listener(output->frame, out->events.frame, output_handle_frame);
+            add_listener(output->request_state, out->events.request_state, output_handle_request_state);
+            add_listener(output->destroy, out->events.destroy, output_handle_destroy);
 
             server.outputs.push_back(output);
 
@@ -503,18 +511,12 @@ namespace fenriz::output {
     }
 
     void register_handlers(Server& server) {
-        server.l_new_output.server = &server;
-        server.l_new_output.listener.notify = on_new_output;
-        wl_signal_add(&server.backend->events.new_output, &server.l_new_output.listener);
+        add_listener(server, server.l_new_output, server.backend->events.new_output, on_new_output);
 
         // wlr-output-management: kanshi / wlr-randr / nwg-displays drive mode, scale and position at runtime
         server.output_manager = wlr_output_manager_v1_create(server.display);
-        server.l_output_apply.server = &server;
-        server.l_output_apply.listener.notify = on_output_apply;
-        wl_signal_add(&server.output_manager->events.apply, &server.l_output_apply.listener);
-        server.l_output_test.server = &server;
-        server.l_output_test.listener.notify = on_output_test;
-        wl_signal_add(&server.output_manager->events.test, &server.l_output_test.listener);
+        add_listener(server, server.l_output_apply, server.output_manager->events.apply, on_output_apply);
+        add_listener(server, server.l_output_test, server.output_manager->events.test, on_output_test);
     }
 
     std::string name_of(const Output* o) { return o && o->handle && o->handle->name ? o->handle->name : ""; }
@@ -589,64 +591,30 @@ namespace fenriz::output {
             server.workspaces[i].origin = origin[i];
         }
 
-        // Drop the shown workspace of any output that no longer holds it (or is off).
+        // Which workspace each output SHOWS — the other half of the policy, and the half
+        // that has regressed before. Same marshal-in / marshal-out shape as above.
+        std::vector<OutSlot> slots;
         for (Output* o : server.outputs)
-            if (!o->enabled || (o->active_ws >= 0 && server.workspaces[o->active_ws].output != o))
-                o->active_ws = -1;
+            slots.push_back({name_of(o), o->enabled, o->active_ws});
 
-        // Your work follows you. If the focused window's workspace just got evacuated, show it
-        // on the screen it landed on — this is the main clamshell case: you're working on the
-        // laptop, docked, and shut the lid. Leaving the external on whatever empty workspace it
-        // happened to display would strand your session one keypress away for no reason.
-        if (View* f = server.focused_view; f && f->mapped) {
-            Workspace& ws = server.workspaces[f->workspace];
-            if (ws.output && ws.output->active_ws != f->workspace)
-                ws.output->active_ws = f->workspace;
+        WsSlot wss[WS_COUNT];
+        for (int i = 0; i < WS_COUNT; i++) {
+            const Workspace& ws = server.workspaces[i];
+            wss[i] = {ws.home, name_of(ws.output), ws.root != nullptr};
         }
 
-        // Two workspaces must never be shown on the same output.
-        for (Output* o : server.outputs)
-            for (Output* p : server.outputs)
-                if (o != p && o->active_ws >= 0 && o->active_ws == p->active_ws)
-                    p->active_ws = -1;
+        View* f = server.focused_view;
+        assign_active(slots, wss, f && f->mapped ? f->workspace : -1);
 
-        // Every enabled output shows exactly one workspace. One that has none picks the best
-        // workspace living here — preferring a configured home, then one with windows — and
-        // failing that CLAIMS a free one. The claim is what gives a freshly plugged-in monitor
-        // something to display: without it a second screen renders nothing and no keybind can
-        // fix it, because every workspace already belongs to the first screen.
-        for (Output* o : server.outputs) {
-            if (!o->enabled || o->active_ws >= 0)
-                continue;
-            const std::string oname = name_of(o);
-
-            int best = -1, best_rank = 99;
-            for (int i = 0; i < WS_COUNT; i++) {
-                const Workspace& ws = server.workspaces[i];
-                if (ws.output != o)
-                    continue;
-                const bool homed = ws.home == oname;
-                const bool windows = ws.root != nullptr;
-                const int rank = homed ? (windows ? 0 : 1) : (windows ? 2 : 3);
-                if (rank < best_rank) {
-                    best_rank = rank;
-                    best = i;
-                }
-            }
-            if (best < 0) {
-                // Nothing lives here yet: claim the lowest-numbered unassigned workspace,
-                // preferring one configured for this output.
-                for (int i = 0; i < WS_COUNT && best < 0; i++)
-                    if (!server.workspaces[i].output && server.workspaces[i].home == oname)
-                        best = i;
-                for (int i = 0; i < WS_COUNT && best < 0; i++)
-                    if (!server.workspaces[i].output && server.workspaces[i].home.empty())
-                        best = i;
-                if (best >= 0)
-                    server.workspaces[best].output = o;
-            }
-            o->active_ws = best; // -1 only if all 10 are spoken for elsewhere
+        {
+            size_t n = 0;
+            for (Output* o : server.outputs)
+                o->active_ws = slots[n++].active_ws;
         }
+        // assign_active's claim step can hand a free workspace to an output, so ws.output
+        // is an output of the policy too, not just an input.
+        for (int i = 0; i < WS_COUNT; i++)
+            server.workspaces[i].output = wss[i].output.empty() ? nullptr : by_name(server, wss[i].output);
 
         for (Output* o : server.outputs)
             sync_backdrop(o);
@@ -711,6 +679,20 @@ namespace fenriz::output {
         }
         if (was != on) // re-applying config on an already-enabled output isn't news
             wlr_log(WLR_INFO, "fenriz: output %s %s", name_of(o).c_str(), on ? "enabled" : "disabled");
+    }
+
+    Area usable(Server& server, const Output* o) {
+        if (!o)
+            return {0, 0, 0, 0};
+
+        if (o->usable_area.width > 0 && o->usable_area.height > 0)
+            return o->usable_area;
+
+        wlr_box full = {0, 0, 0, 0};
+        if (server.output_layout)
+            wlr_output_layout_get_box(server.output_layout, o->handle, &full);
+
+        return {full.x, full.y, full.width, full.height};
     }
 
     bool lid_controls(Server& server, const Output* o) {

@@ -145,8 +145,8 @@ namespace fenriz::ipc {
             auto& c = g->clients;
             for (auto it = c.begin(); it != c.end(); ++it) {
                 if (it->fd == fd) {
+                    // wl_event_source_remove closes the fd it owns
                     wl_event_source_remove(it->src);
-                    close(fd);
                     c.erase(it);
                     return;
                 }

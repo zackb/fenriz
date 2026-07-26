@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <climits>
 #include <cstdlib>
 #include <fstream>
+#include <regex>
 #include <sstream>
 
 namespace fenriz {
@@ -32,6 +34,21 @@ namespace fenriz {
             return out;
         }
 
+        // split(), but into at most `max` fields: the last one keeps any remaining delimiters verbatim.
+        std::vector<std::string> split_n(const std::string& s, char delim, size_t max) {
+            std::vector<std::string> out;
+            size_t start = 0;
+            while (out.size() + 1 < max) {
+                size_t d = s.find(delim, start);
+                if (d == std::string::npos)
+                    break;
+                out.push_back(trim(s.substr(start, d - start)));
+                start = d + 1;
+            }
+            out.push_back(trim(s.substr(start)));
+            return out;
+        }
+
         uint32_t parse_color(const std::string& s, uint32_t fallback) {
             try {
                 return static_cast<uint32_t>(std::stoul(s, nullptr, 16));
@@ -40,9 +57,19 @@ namespace fenriz {
             }
         }
 
-        int parse_int(const std::string& s, int fallback) {
+        // Every setting below that reaches the renderer is geometry, and geometry has no
+        // meaning outside its range. Clamp at the parser so no downstream code has to wonder.
+        int parse_int(const std::string& s, int fallback, int lo = INT_MIN, int hi = INT_MAX) {
             try {
-                return std::stoi(s);
+                return std::clamp(std::stoi(s), lo, hi);
+            } catch (...) {
+                return fallback;
+            }
+        }
+
+        float parse_float(const std::string& s, float fallback, float lo, float hi) {
+            try {
+                return std::clamp(std::stof(s), lo, hi);
             } catch (...) {
                 return fallback;
             }
@@ -74,6 +101,32 @@ namespace fenriz {
         }
 
     } // namespace
+
+    RuleResult match_rules(const std::vector<WindowRule>& rules, const char* app_id, const char* title) {
+        auto matches = [](const std::string& pat, const char* value) {
+            if (pat.empty())
+                return true;
+            try {
+                return std::regex_search(value ? value : "", std::regex(pat));
+            } catch (...) {
+                return false;
+            }
+        };
+        RuleResult out;
+        for (const WindowRule& r : rules) {
+            if (!matches(r.app_id, app_id) || !matches(r.title, title))
+                continue;
+            out.floating |= r.floating;
+            out.center |= r.center;
+            out.no_focus |= r.no_focus;
+        }
+        return out;
+    }
+
+    bool auto_float(int min_w, int max_w, int min_h, int max_h, bool has_parent) {
+        const bool fixed = max_w > 0 && max_w == min_w && max_h > 0 && max_h == min_h;
+        return has_parent || fixed;
+    }
 
     Action action_from_string(const std::string& s) {
         if (s == "exec")
@@ -114,19 +167,25 @@ namespace fenriz {
         std::stringstream ss(text);
         std::string line;
         while (std::getline(ss, line)) {
-            line = trim(strip_comment(line));
-            if (line.empty())
+            line = trim(line);
+            if (line.empty() || line[0] == '#') // whole-line comment (may contain an `=`)
                 continue;
             size_t eq = line.find('=');
             if (eq == std::string::npos)
                 continue;
             std::string key = trim(line.substr(0, eq));
-            std::string val = trim(line.substr(eq + 1));
+            const std::string raw = trim(line.substr(eq + 1));
+            const std::string val = trim(strip_comment(raw));
 
             if (key == "bind" || key == "binde") {
-                std::vector<std::string> parts = split(val, ',');
+                // Only the first three commas separate fields; the rest belongs to the arg.
+                std::vector<std::string> parts = split_n(raw, ',', 4);
                 if (parts.size() < 2)
                     continue;
+
+                for (size_t i = 0; i < parts.size() && i < 3; i++)
+                    parts[i] = trim(strip_comment(parts[i]));
+
                 Bind b;
                 b.repeat = (key == "binde"); // `binde` re-fires while held (volume/brightness)
                 for (const std::string& tok : split(parts[0], ' '))
@@ -141,8 +200,8 @@ namespace fenriz {
             }
 
             if (key == "exec-once") {
-                if (!val.empty())
-                    cfg.exec_once.push_back(val);
+                if (!raw.empty())
+                    cfg.exec_once.push_back(raw); // a shell command, verbatim
                 continue;
             }
 
@@ -157,12 +216,8 @@ namespace fenriz {
                     o.mode = parts[1];
                 if (parts.size() > 2 && !parts[2].empty())
                     o.position = parts[2];
-                if (parts.size() > 3 && !parts[3].empty()) {
-                    try {
-                        o.scale = std::clamp(std::stof(parts[3]), 0.25f, 10.0f);
-                    } catch (...) {
-                    }
-                }
+                if (parts.size() > 3 && !parts[3].empty())
+                    o.scale = parse_float(parts[3], o.scale, 0.25f, 10.0f);
                 cfg.outputs.push_back(o);
                 continue;
             }
@@ -220,7 +275,7 @@ namespace fenriz {
             }
 
             if (key == "border_width")
-                cfg.border_width = parse_int(val, cfg.border_width);
+                cfg.border_width = parse_int(val, cfg.border_width, 0, 100);
             else if (key == "border_active")
                 cfg.border_active = parse_color(val, cfg.border_active);
             else if (key == "border_inactive")
@@ -230,24 +285,19 @@ namespace fenriz {
             else if (key == "shadow_color")
                 cfg.shadow_color = parse_color(val, cfg.shadow_color);
             else if (key == "shadow_blur")
-                cfg.shadow_blur = parse_int(val, cfg.shadow_blur);
+                cfg.shadow_blur = parse_int(val, cfg.shadow_blur, 0, 200);
             else if (key == "gaps")
-                cfg.gaps = parse_int(val, cfg.gaps);
+                // The ceiling is generous on purpose: tiling::arrange clamps the gap again
+                cfg.gaps = parse_int(val, cfg.gaps, 0, 500);
             else if (key == "rounding")
-                cfg.rounding = parse_int(val, cfg.rounding);
+                cfg.rounding = parse_int(val, cfg.rounding, 0, 200);
             else if (key == "animation")
-                cfg.animation_ms = parse_int(val, cfg.animation_ms);
-            else if (key == "opacity") {
-                try {
-                    cfg.opacity = std::clamp(std::stof(val), 0.0f, 1.0f);
-                } catch (...) {
-                }
-            } else if (key == "scale") {
-                try {
-                    cfg.scale = std::clamp(std::stof(val), 0.25f, 10.0f);
-                } catch (...) {
-                }
-            } else if (key == "natural_scroll")
+                cfg.animation_ms = parse_int(val, cfg.animation_ms, 0, 5000);
+            else if (key == "opacity")
+                cfg.opacity = parse_float(val, cfg.opacity, 0.0f, 1.0f);
+            else if (key == "scale")
+                cfg.scale = parse_float(val, cfg.scale, 0.25f, 10.0f);
+            else if (key == "natural_scroll")
                 cfg.natural_scroll = parse_bool(val, cfg.natural_scroll);
             else if (key == "tap_to_click")
                 cfg.tap_to_click = parse_bool(val, cfg.tap_to_click);
@@ -255,30 +305,20 @@ namespace fenriz {
                 cfg.clickfinger = parse_bool(val, cfg.clickfinger);
             else if (key == "focus_follows_pointer")
                 cfg.focus_follows_pointer = parse_bool(val, cfg.focus_follows_pointer);
-            else if (key == "sensitivity") {
-                try {
-                    cfg.sensitivity = std::clamp(std::stof(val), -1.0f, 1.0f);
-                } catch (...) {
-                }
-            } else if (key == "lid_output")
+            else if (key == "sensitivity")
+                cfg.sensitivity = parse_float(val, cfg.sensitivity, -1.0f, 1.0f);
+            else if (key == "lid_output")
                 cfg.lid_output = val;
             else if (key == "repeat_delay")
-                cfg.repeat_delay = parse_int(val, cfg.repeat_delay);
+                cfg.repeat_delay = parse_int(val, cfg.repeat_delay, 0, 10000);
             else if (key == "repeat_rate")
-                cfg.repeat_rate = std::max(1, parse_int(val, cfg.repeat_rate)); // avoid /0 in timer
+                cfg.repeat_rate = parse_int(val, cfg.repeat_rate, 1, 1000); // lower bound avoids /0 in timer
             else if (key == "zoom_mod")
                 cfg.zoom_mod = mod_from_token(val); // "ctrl"/"alt"/"super"/"shift"; unknown = 0 = off
-            else if (key == "zoom_max") {
-                try {
-                    cfg.zoom_max = std::clamp(std::stof(val), 1.0f, 10.0f);
-                } catch (...) {
-                }
-            } else if (key == "zoom_step") {
-                try {
-                    cfg.zoom_step = std::clamp(std::stof(val), 0.01f, 1.0f);
-                } catch (...) {
-                }
-            }
+            else if (key == "zoom_max")
+                cfg.zoom_max = parse_float(val, cfg.zoom_max, 1.0f, 10.0f);
+            else if (key == "zoom_step")
+                cfg.zoom_step = parse_float(val, cfg.zoom_step, 0.01f, 1.0f);
         }
         return cfg;
     }
