@@ -1,5 +1,6 @@
 #include "log.hpp"
 
+#include "wlr.hpp"
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -7,7 +8,6 @@
 #include <ctime>
 #include <filesystem>
 #include <wayland-server-core.h>
-#include <wlr/util/log.h>
 
 namespace fenriz::log {
 

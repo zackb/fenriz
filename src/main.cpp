@@ -1,7 +1,7 @@
 #include "server.hpp"
 
 #include "log.hpp"
-#include <wlr/util/log.h>
+#include "wlr.hpp"
 
 int main(int argc, char** argv) {
     (void)argc;
