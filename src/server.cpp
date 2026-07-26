@@ -389,6 +389,9 @@ namespace fenriz {
     bool Server::start() {
 
         display = wl_display_create();
+        // libwayland caps each client's outgoing connection buffer at 4 KiB by default, and
+        // kills the client outright when an event doesn't fit
+        wl_display_set_default_max_buffer_size(display, 1024 * 1024);
         wl_event_loop* loop = wl_display_get_event_loop(display);
 
         backend = wlr_backend_autocreate(loop, nullptr);

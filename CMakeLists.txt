@@ -42,6 +42,7 @@ add_custom_command(
 
 add_executable(fenriz
     src/main.cpp
+    src/log.cpp
     src/server.cpp
     src/output.cpp
     src/output_policy.cpp

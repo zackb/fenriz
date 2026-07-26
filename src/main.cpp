@@ -1,12 +1,13 @@
 #include "server.hpp"
 
-#include "wlr.hpp"
+#include "log.hpp"
+#include <wlr/util/log.h>
 
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
-    wlr_log_init(WLR_INFO, nullptr);
+    fenriz::log::init();
 
     fenriz::Server server;
     if (!server.start()) {

@@ -66,6 +66,12 @@ make install      # install to /usr/local/bin/fenriz
 fenriz            # launch the compositor (from a greeter, TTY, or inside an existing Wayland session)
 ```
 
+Logs go to stderr and to `$XDG_STATE_HOME/fenriz/fenriz.log` (default
+`~/.local/state/fenriz/fenriz.log`), so a session started by a greeter still leaves something
+readable behind. The previous run is kept as `fenriz.log.1`. Override the path with
+`FENRIZ_LOG=<path>`, raise the level with `FENRIZ_DEBUG=1`. For the journal instead, launch it
+as `systemd-cat -t fenriz fenriz`.
+
 ## Multi-monitor and clamshell
 
 ***[None](https://github.com/Kore29/hyprland-clamshell) [of](https://adamhollister.com/hyprland-clamshell-mode) [this](https://github.com/chris4540/hyprland-clamshell) [needs](https://www.reddit.com/r/hyprland/comments/1bzc05s/monitor_not_detected_on_docking_station/) [configuring](https://github.com/zackb/dots/blob/main/.config/hypr/clamshell.lua)***. Each of the 10 workspaces lives on one output. When a
@@ -109,6 +115,7 @@ as newline-delimited JSON and accepts one-line commands — for status bars and 
 ```
 src/
   main.cpp        entry + event loop
+  log.*           wlroots + libwayland logging to stderr and $XDG_STATE_HOME/fenriz/fenriz.log
   server.*        backend, renderer, allocator, xdg-shell, seat, protocols; owns the window list
   output.*        outputs: frame handler, hotplug, enable/disable, clamshell policy
   output_policy.cpp   pure workspace-assignment rules (evacuate/restore); no wlroots, unit-tested
