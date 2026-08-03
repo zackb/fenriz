@@ -130,6 +130,27 @@ namespace fenriz {
             }
         }
 
+        // Shrink `tile` onto the content the client actually committed (border on each side) and center the shortfall
+        inline Rect fit_content(Rect tile, int content_w, int content_h, int bw) {
+            Rect r = tile;
+            if (content_w > 0)
+                r.w = std::clamp(content_w + 2 * bw, 0, tile.w);
+            if (content_h > 0)
+                r.h = std::clamp(content_h + 2 * bw, 0, tile.h);
+            r.x += (tile.w - r.w) / 2;
+            r.y += (tile.h - r.h) / 2;
+            return r;
+        }
+
+        // A size the client will actually accept
+        inline int clamp_size(int want, int min, int max) {
+            if (max > 0)
+                want = std::min(want, max);
+            if (min > 0)
+                want = std::max(want, min);
+            return std::max(1, want);
+        }
+
         // Nearest ancestor of `leaf` whose split orientation matches `vertical`.
         inline Node* enclosing_split(Node* leaf, bool vertical) {
             for (Node* n = leaf; n && n->parent; n = n->parent)

@@ -218,6 +218,50 @@ int main() {
         assert(root->ratio == v0); // and leaves the side-by-side split alone
     }
 
+    // fit_content: a client that won't fill its tile gets drawn centered in it, with the
+    // frame hugging the content. This is what keeps the border and the glow off empty space.
+    {
+        const Rect tile{0, 0, 1000, 800};
+
+        // 400x300 of content + a 2px border on each side = a 404x304 frame, centered.
+        const Rect f = fit_content(tile, 400, 300, 2);
+        assert(f.w == 404 && f.h == 304);
+        // Equal margin on both sides is the whole point — an off-by-one here reads as the
+        // window being nudged up-left.
+        assert(f.x - tile.x == (tile.x + tile.w) - (f.x + f.w));
+        assert(f.y - tile.y == (tile.y + tile.h) - (f.y + f.h));
+
+        // A client that fills its tile is untouched: no drift on the common path.
+        const Rect full = fit_content(tile, 1000 - 2 * 2, 800 - 2 * 2, 2);
+        assert(full.x == tile.x && full.y == tile.y && full.w == tile.w && full.h == tile.h);
+
+        // A client bigger than its tile (min size beats the layout) is capped, not grown —
+        // the frame must never spill onto a neighbor.
+        const Rect big = fit_content(tile, 5000, 5000, 2);
+        assert(big.w == tile.w && big.h == tile.h && big.x == tile.x && big.y == tile.y);
+
+        // Nothing committed yet: keep the tile rather than collapsing to a 2*bw stub.
+        const Rect none = fit_content(tile, 0, 0, 2);
+        assert(none.w == tile.w && none.h == tile.h);
+
+        // Borderless config, and a tile offset in layout coords (the multi-output case).
+        const Rect off = fit_content({1920, 100, 600, 400}, 200, 100, 0);
+        assert(off.w == 200 && off.h == 100);
+        assert(off.x == 1920 + 200 && off.y == 100 + 150);
+    }
+
+    // clamp_size: never ask a client for a size it has told us it will refuse.
+    {
+        assert(clamp_size(1000, 0, 400) == 400); // max clamps down
+        assert(clamp_size(100, 300, 0) == 300);  // min pushes up
+        assert(clamp_size(500, 0, 0) == 500);    // no hints declared: unchanged
+        // A client declaring min > max is contradicting itself; the floor is the safer of
+        // the two — undersizing is what makes clients refuse and leave the tile ragged.
+        assert(clamp_size(500, 800, 400) == 800);
+        assert(clamp_size(0, 0, 0) == 1);  // never configure a zero-size window
+        assert(clamp_size(-5, 0, 0) == 1); // place() can hand us a collapsed tile
+    }
+
     std::printf("tiling layout: all assertions passed\n");
     return 0;
 }

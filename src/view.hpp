@@ -42,6 +42,7 @@ namespace fenriz {
         wlr_xdg_toplevel* toplevel = nullptr; // set when kind == Xdg
         wlr_xwayland_surface* xwl = nullptr;  // set when kind == Xwl
         Box box;
+        Box frame;
         Box saved_box; // geometry to restore on un-fullscreen
         Box float_box; // last floating geometry, restored on re-float; width 0 = never floated
         int workspace = 0;
@@ -53,6 +54,9 @@ namespace fenriz {
         bool want_center = false; // window-rule center: applied once the float has real size
         bool float_self_sized = true;
         bool urgent = false; // asked to be activated while unfocused; cleared on focus
+
+        int req_w = 0, req_h = 0;
+        bool acked = false;
 
         // Render offset from box, in logical coords; decays to 0 each frame for the
         // slide-into-place animation (see output.cpp). `dragging` holds the offset
@@ -114,6 +118,8 @@ namespace fenriz {
     const char* view_title(View* view);
     // Client's minimum content size (geometry units, CSD excluded); 0 = no minimum.
     void view_min_size(const View* view, int& w, int& h);
+    // Client's maximum content size, 0 = no maximum
+    void view_max_size(const View* view, int& w, int& h);
     void view_set_activated(View* view, bool activated);
     void view_set_fullscreen(View* view, bool on);
     void view_close(View* view); // ask the client to close (kill-active keybind)

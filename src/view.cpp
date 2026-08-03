@@ -215,6 +215,9 @@ namespace fenriz {
                 set_tiled(view, true);
             }
 
+            // the client has responded to our last size request, so its committed geometry can be trusted
+            view->acked = true;
+
             if (view->float_self_sized || view->kind == View::Kind::Xwl)
                 view_adopt_float_size(view);
             else
@@ -356,13 +359,28 @@ namespace fenriz {
 
     void view_min_size(const View* view, int& w, int& h) {
         // Client's minimum content size (window-geometry units, CSD excluded); 0 = no minimum.
-        // X11 hints are optional (size_hints may be null before the client sets WM_NORMAL_HINTS).
+        // X11 hints are optional (size_hints may be null before the client sets WM_NORMAL_HINTS,
+        // and the min/max fields are only meaningful when their flag bit is set).
         if (view->kind == View::Kind::Xdg) {
             w = view->toplevel->current.min_width;
             h = view->toplevel->current.min_height;
-        } else if (view->xwl->size_hints) {
+        } else if (view->xwl->size_hints && (view->xwl->size_hints->flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE)) {
             w = view->xwl->size_hints->min_width;
             h = view->xwl->size_hints->min_height;
+        } else {
+            w = h = 0;
+        }
+        w = std::max(0, w);
+        h = std::max(0, h);
+    }
+
+    void view_max_size(const View* view, int& w, int& h) {
+        if (view->kind == View::Kind::Xdg) {
+            w = view->toplevel->current.max_width;
+            h = view->toplevel->current.max_height;
+        } else if (view->xwl->size_hints && (view->xwl->size_hints->flags & XCB_ICCCM_SIZE_HINT_P_MAX_SIZE)) {
+            w = view->xwl->size_hints->max_width;
+            h = view->xwl->size_hints->max_height;
         } else {
             w = h = 0;
         }
@@ -393,8 +411,21 @@ namespace fenriz {
 
     void view_configure(View* view) {
         const int bw = view->fullscreen ? 0 : view->server->config.border_width;
-        const int cw = std::max(1, view->box.width - 2 * bw);
-        const int ch = std::max(1, view->box.height - 2 * bw);
+        int cw = std::max(1, view->box.width - 2 * bw);
+        int ch = std::max(1, view->box.height - 2 * bw);
+        if (!view->fullscreen) {
+            int min_w, min_h, max_w, max_h;
+            view_min_size(view, min_w, min_h);
+            view_max_size(view, max_w, max_h);
+            cw = tiling::clamp_size(cw, min_w, max_w);
+            ch = tiling::clamp_size(ch, min_h, max_h);
+        }
+        // a genuinely new request
+        if (cw != view->req_w || ch != view->req_h) {
+            view->req_w = cw;
+            view->req_h = ch;
+            view->acked = false;
+        }
         if (view->kind == View::Kind::Xdg) {
             wlr_xdg_toplevel_set_size(view->toplevel, cw, ch);
         } else {
@@ -574,14 +605,38 @@ namespace fenriz {
     }
 
     bool apply_window_rules(Server& server, View* view) {
-        // Auto-float toplevels the client places itself. X11 windows carry no xdg size
-        // hints here, so this is an xdg-only question.
+        // Auto-float toplevels the client places itself: transients/dialogs, and anything
+        // pinned to one size (it would only refuse its tile anyway).
+        bool self_placed = false;
         if (view->kind == View::Kind::Xdg) {
             const wlr_xdg_toplevel_state& st = view->toplevel->current;
-            if (auto_float(st.min_width, st.max_width, st.min_height, st.max_height, view->toplevel->parent)) {
-                view->floating = true;
-                view->want_center = true; // center on output like a rule-floated window
+            self_placed = auto_float(st.min_width, st.max_width, st.min_height, st.max_height, view->toplevel->parent);
+        } else {
+            // X11 says the same thing through WM_TRANSIENT_FOR, _NET_WM_STATE_MODAL and the _NET_WM_WINDOW_TYPE atoms
+            static constexpr wlr_xwayland_net_wm_window_type kFloatTypes[] = {
+                WLR_XWAYLAND_NET_WM_WINDOW_TYPE_DIALOG,
+                WLR_XWAYLAND_NET_WM_WINDOW_TYPE_UTILITY,
+                WLR_XWAYLAND_NET_WM_WINDOW_TYPE_SPLASH,
+                WLR_XWAYLAND_NET_WM_WINDOW_TYPE_TOOLBAR,
+                WLR_XWAYLAND_NET_WM_WINDOW_TYPE_MENU,
+                WLR_XWAYLAND_NET_WM_WINDOW_TYPE_DROPDOWN_MENU,
+                WLR_XWAYLAND_NET_WM_WINDOW_TYPE_POPUP_MENU,
+                WLR_XWAYLAND_NET_WM_WINDOW_TYPE_TOOLTIP,
+                WLR_XWAYLAND_NET_WM_WINDOW_TYPE_NOTIFICATION,
+            };
+            self_placed = view->xwl->modal || view->xwl->parent;
+            for (wlr_xwayland_net_wm_window_type t : kFloatTypes)
+                self_placed = self_placed || wlr_xwayland_surface_has_window_type(view->xwl, t);
+            if (!self_placed) {
+                int min_w, min_h, max_w, max_h;
+                view_min_size(view, min_w, min_h);
+                view_max_size(view, max_w, max_h);
+                self_placed = auto_float(min_w, max_w, min_h, max_h, false);
             }
+        }
+        if (self_placed) {
+            view->floating = true;
+            view->want_center = true; // center on output like a rule-floated window
         }
         // The matching itself is pure and lives in config.cpp, where it can be unit-tested
         // without a compositor (see test_config.cpp).
@@ -729,28 +784,51 @@ namespace fenriz {
         place_view_nodes(view);
     }
 
+    // has the client answered the last size we asked it for
+    static bool view_settled(const View* view) {
+        if (view->kind == View::Kind::Xdg)
+            return view->toplevel->base->current.configure_serial == view->toplevel->base->scheduled_serial;
+        return view->acked;
+    }
+
     void place_view_nodes(View* view) {
         if (!view->scene_tree)
             return; // not mapped yet
         Server& server = *view->server;
+        view->frame = view->box; // never leave it zeroed; the real value is computed below
         const bool vis = view_visible(server, view);
         wlr_scene_node_set_enabled(&view->scene_tree->node, vis);
         if (!vis)
             return;
 
-        // Container sits at the tile origin plus the (decaying) slide-animation offset. Only
-        // the position animates: size is applied straight from the box (a size animation means
-        // configuring or stretching the client, both of which cost more than they're worth).
-        const View::Box box = {view->box.x + (int)std::lround(view->anim_ox),
-                               view->box.y + (int)std::lround(view->anim_oy),
-                               view->box.width,
-                               view->box.height};
+        const int bw = view->fullscreen ? 0 : server.config.border_width;
+
+        // The tile, plus the (decaying) slide-animation offset. Only the position animates:
+        // size is applied straight from the box (a size animation means configuring or
+        // stretching the client, both of which cost more than they're worth).
+        const View::Box tile = {view->box.x + (int)std::lround(view->anim_ox),
+                                view->box.y + (int)std::lround(view->anim_oy),
+                                view->box.width,
+                                view->box.height};
+
+        // xdg reports a window geometry whose origin is the CSD content corner (shadow margin
+        // excluded). X11 has no geometry — its buffer is the window, so it starts at 0,0.
+        const wlr_box geo = view->kind == View::Kind::Xdg
+                                ? view->toplevel->base->geometry
+                                : wlr_box{0, 0, view->xwl->surface->current.width, view->xwl->surface->current.height};
+
+        View::Box box = tile;
+        if (!view->fullscreen && view_settled(view) && cursor::grabbed_view() != view) {
+            const tiling::Rect f =
+                tiling::fit_content({tile.x, tile.y, tile.width, tile.height}, geo.width, geo.height, bw);
+            box = {f.x, f.y, f.w, f.h};
+        }
+        view->frame = box; // popup unconstraining reads this back (see server.cpp)
         wlr_scene_node_set_position(&view->scene_tree->node, box.x, box.y);
 
         // Inset the client by the border. wlr_scene_xdg_surface_create already makes the
         // subtree origin the window-geometry top-left (CSD shadow margin handled internally),
         // so we position it at the inner corner directly — no geometry offset here.
-        const int bw = view->fullscreen ? 0 : server.config.border_width;
         wlr_scene_node_set_position(&view->surface_tree->node, bw, bw);
         // Popups position themselves against the window-geometry origin, which is exactly where surface_tree sits
         if (view->popup_tree)
@@ -758,29 +836,22 @@ namespace fenriz {
 
         // Crop the client to its window geometry so CSD shadow margins (Firefox/GTK/
         // Chromium ship a buffer bigger than the geometry) don't draw over the border
-        // band, otherwise the border survives only as corner slivers. Anchor at the
-        // geometry origin and cap to the inner border area so the frame always shows on
-        // all sides even if the client hasn't honored our size yet. Fullscreen wants the
-        // whole buffer (and no clip, to keep direct scanout eligible).
+        // band, otherwise the border survives only as corner slivers. Anchored at the
+        // geometry origin and sized to the frame's inner area — which, since the frame
+        // already hugs the geometry, never runs past what the client drew. A client that
+        // declares a geometry it isn't actually drawing to slices its own content here.
+        // Fullscreen wants the whole buffer (and no clip, to keep direct scanout eligible).
         if (view->fullscreen) {
             wlr_scene_subsurface_tree_set_clip(&view->surface_tree->node, nullptr);
         } else {
-            // xdg reports a window geometry whose origin is the CSD content corner (shadow
-            // margin excluded); anchor the clip there. X11 has no geometry — its buffer is the
-            // window, so anchor at 0,0. A client that declares a geometry it isn't actually drawing to slices its own
-            // content here
-            const wlr_box geo =
-                view->kind == View::Kind::Xdg
-                    ? view->toplevel->base->geometry
-                    : wlr_box{0, 0, view->xwl->surface->current.width, view->xwl->surface->current.height};
-
             wlr_box clip = {geo.x, geo.y, std::max(1, box.width - 2 * bw), std::max(1, box.height - 2 * bw)};
             wlr_scene_subsurface_tree_set_clip(&view->surface_tree->node, &clip);
         }
 
-        // Note: content opacity + corner radius are applied per-frame in the output frame
-        // handler (apply_view_effects), not here — scenefx re-syncs the surface buffer after
-        // our commit handler runs, clobbering opacity set at commit time back to 1.0.
+        const struct clipped_region hole = {
+            .area = {bw, bw, box.width - 2 * bw, box.height - 2 * bw},
+            .corners = corner_radii_all(std::max(0, server.config.rounding - bw)),
+        };
 
         const bool show_border = bw > 0;
         wlr_scene_node_set_enabled(&view->border->node, show_border);
@@ -789,22 +860,15 @@ namespace fenriz {
             // Round the border frame to match the content so it nests instead of poking
             // square corners past the client's rounding.
             wlr_scene_rect_set_corner_radius(view->border, server.config.rounding);
-            // Punch out the interior (where the surface sits) so the rect is only the frame:
-            // a filled rect behind a translucent surface would bleed its color through the
-            // window. Inner radius matches the surface's own rounding (rounding - bw) so the
-            // frame is a uniform bw-wide rounded band.
-            struct clipped_region hole = {
-                .area = {bw, bw, box.width - 2 * bw, box.height - 2 * bw},
-                .corners = corner_radii_all(std::max(0, server.config.rounding - bw)),
-            };
             wlr_scene_rect_set_clipped_region(view->border, hole);
             float col[4];
             u32_color(view == server.focused_view ? server.config.border_active : server.config.border_inactive, col);
             wlr_scene_rect_set_color(view->border, col);
         }
 
-        // Soft glow: only the focused, non-fullscreen window. Sized to the box; the blur
-        // spills outside as a halo while the opaque window occludes the solid center.
+        // Soft glow: only the focused, non-fullscreen window. Sized to the frame; the blur
+        // spills outside as a halo, and the interior is punched out so the solid center never
+        // renders at all.
         const bool glow = server.config.shadow && !view->fullscreen && view == server.focused_view;
         wlr_scene_node_set_enabled(&view->shadow->node, glow);
         if (glow) {
@@ -817,6 +881,7 @@ namespace fenriz {
             wlr_scene_shadow_set_color(view->shadow, scol);
             wlr_scene_shadow_set_size(view->shadow, box.width, box.height);
             wlr_scene_shadow_set_corner_radius(view->shadow, server.config.rounding);
+            wlr_scene_shadow_set_clipped_region(view->shadow, hole);
         }
     }
 

@@ -86,8 +86,10 @@ namespace fenriz {
             // (GTK/Firefox/Zen) ship a large shadow-margin geometry offset; omitting it left the
             // box shifted up-left by the margin, so bottom-anchored menus spilled off-screen.
             const int bw = view->fullscreen ? 0 : server.config.border_width;
-            *out = {o->usable_area.x - (view->box.x + bw) + root->geometry.x,
-                    o->usable_area.y - (view->box.y + bw) + root->geometry.y,
+            // `frame`, not `box`: a client that refuses its tile size is drawn centered in it,
+            // and popups anchor to where the window actually is.
+            *out = {o->usable_area.x - (view->frame.x + bw) + root->geometry.x,
+                    o->usable_area.y - (view->frame.y + bw) + root->geometry.y,
                     o->usable_area.width,
                     o->usable_area.height};
             return true;
