@@ -18,6 +18,9 @@ namespace fenriz {
         // for when the lock client crashes or hangs
         void force_unlock(Server& server);
 
+        // Re-route the keyboard to the lock UI.
+        void refocus(Server& server);
+
     } // namespace lock
 
 } // namespace fenriz

@@ -82,8 +82,14 @@ namespace fenriz::lock {
             delete ls;
             // An output went away while locked (lid closed at the lock screen): its surface is
             // gone, so hand the keyboard to a surviving one or the password field goes dead.
-            if (had_focus && !g->surfaces.empty())
-                focus_surface(*g->server, g->surfaces.front()->handle->surface);
+            if (had_focus) {
+                if (!g->surfaces.empty())
+                    focus_surface(*g->server, g->surfaces.front()->handle->surface);
+                else
+                    // Last surface gone. Drop focus rather than leave the seat pointing at a
+                    // surface that no longer exists, so the next one to map focuses cleanly.
+                    wlr_seat_keyboard_notify_clear_focus(g->server->seat);
+            }
             redraw();
         }
 
@@ -185,6 +191,12 @@ namespace fenriz::lock {
         g->server = &server;
         g->manager = wlr_session_lock_manager_v1_create(server.display);
         add_listener(g->new_lock, g->manager->events.new_lock, on_new_lock);
+    }
+
+    void refocus(Server& server) {
+        if (!server.locked || !g || g->surfaces.empty())
+            return;
+        focus_surface(server, g->surfaces.front()->handle->surface);
     }
 
     void force_unlock(Server& server) {

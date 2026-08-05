@@ -15,6 +15,12 @@ namespace fenriz {
     // Set up a newly-attached input device (keyboards handled here; pointers -> cursor).
     void handle_new_input(Server& server, wlr_input_device* device);
 
+    inline unsigned vt_for_keysym(xkb_keysym_t sym) {
+        if (sym < XKB_KEY_XF86Switch_VT_1 || sym > XKB_KEY_XF86Switch_VT_12)
+            return 0;
+        return sym - XKB_KEY_XF86Switch_VT_1 + 1;
+    }
+
     // Look up (mods, sym) in the config bind table and run the matching action.
     // Returns the matched bind (key consumed) or nullptr to forward to the client.
     // The pointer is into server.config.binds — valid only until the next config reload.

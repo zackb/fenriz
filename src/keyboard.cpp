@@ -5,6 +5,7 @@
 
 #include "config.hpp"
 #include "cursor.hpp"
+#include "lock.hpp"
 #include "output.hpp"
 #include "server.hpp"
 #include "view.hpp"
@@ -147,6 +148,19 @@ namespace fenriz {
             if (server.locked || (event->state == WL_KEYBOARD_KEY_STATE_RELEASED && keycode == server.repeat_keycode))
                 stop_repeat(server);
 
+            if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+                const xkb_keysym_t* syms;
+                const int n = xkb_state_key_get_syms(kb->xkb_state, keycode, &syms);
+                for (int i = 0; i < n; i++) {
+                    if (const unsigned vt = vt_for_keysym(syms[i])) {
+                        stop_repeat(server);
+                        if (server.session) // null when nested: no VT to switch to
+                            wlr_session_change_vt(server.session, vt);
+                        return;
+                    }
+                }
+            }
+
             bool handled = false;
             // While locked, compositor keybinds are disabled — every key goes to the lock
             // surface so the user can type their password (and can't switch workspace etc.).
@@ -214,6 +228,8 @@ namespace fenriz {
             // mmap
             if (!virt)
                 wlr_seat_set_keyboard(server.seat, kb);
+
+            lock::refocus(server);
         }
 
         // An inhibitor may only take effect while its own surface has keyboard focus

@@ -1,4 +1,5 @@
 #include "config.hpp"
+#include "keyboard.hpp"
 
 #include <cassert>
 #include <cstdio>
@@ -43,6 +44,16 @@ int main() {
     assert(c.binds[1].sym == base_sym(km, 26)); // 'e'
     assert(c.binds[1].sym == XKB_KEY_e);
     assert(c.binds[1].mods == (64u | 1u)); // LOGO|SHIFT
+
+    // VT switching bypasses the bind table entirely (it must work while locked), so the
+    // keysym -> VT mapping is checked directly. Both ends of the range, and no false
+    // positives on ordinary keys.
+    assert(vt_for_keysym(XKB_KEY_XF86Switch_VT_1) == 1);
+    assert(vt_for_keysym(XKB_KEY_XF86Switch_VT_12) == 12);
+    assert(vt_for_keysym(XKB_KEY_XF86Switch_VT_1 - 1) == 0);
+    assert(vt_for_keysym(XKB_KEY_XF86Switch_VT_12 + 1) == 0);
+    assert(vt_for_keysym(XKB_KEY_a) == 0);
+    assert(vt_for_keysym(XKB_KEY_F1) == 0);
 
     xkb_keymap_unref(km);
     xkb_context_unref(ctx);

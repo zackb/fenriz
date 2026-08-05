@@ -8,6 +8,7 @@
 #include "output.hpp"
 
 struct wlr_backend;
+struct wlr_session;
 struct wlr_renderer;
 struct wlr_allocator;
 struct wlr_output;
@@ -149,6 +150,7 @@ namespace fenriz {
 
         wl_display* display = nullptr;
         wlr_backend* backend = nullptr;
+        wlr_session* session = nullptr;
         wlr_compositor* compositor = nullptr; // stored: wlr_xwayland_create needs it
         wlr_xwayland* xwayland = nullptr;     // null if XWayland failed to start
         wlr_renderer* renderer = nullptr;

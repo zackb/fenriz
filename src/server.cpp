@@ -396,7 +396,7 @@ namespace fenriz {
         wl_display_set_default_max_buffer_size(display, 1024 * 1024);
         wl_event_loop* loop = wl_display_get_event_loop(display);
 
-        backend = wlr_backend_autocreate(loop, nullptr);
+        backend = wlr_backend_autocreate(loop, &session);
         if (!backend) {
             wlr_log(WLR_ERROR, "failed to create backend");
             return false;
