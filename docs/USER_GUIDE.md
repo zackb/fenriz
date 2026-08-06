@@ -163,11 +163,23 @@ Trailing fields are optional.
 | `NAME` | connector, e.g. `eDP-1`, `DP-1`, `HDMI-A-1` (`wlr-randr` lists them) |
 | `mode` | `preferred` (default), `1920x1080`, `1920x1080@144`, or `disable` |
 | `position` | `auto` (default) or explicit `1920x0` |
-| `scale` | per-output scale; omit to use the global `scale` |
+| `scale` | per-output scale, or `auto` to guess; omit to use the global `scale` |
 
-The global `scale` (default `1.0`, fractional allowed) applies to any output without its
-own. With `auto`, screens pack left-to-right in listed order, so just listing them pins the
-arrangement.
+Scale is resolved in three steps: this output's `scale`, else the global `scale`, else a
+guess from the screen itself. The guess divides the physical size into the mode and
+snaps to `1.0`, `1.5` or `2.0`. Anything 1080p or shorter stays at `1.0`.
+
+The global `scale` defaults to `auto`, so every screen guesses for itself. Set it to a number
+to force one scale everywhere, and give an individual screen `auto` to exempt it:
+
+```
+scale  = 2.0                               # every screen, unless overridden below
+output = DP-1, preferred, auto, auto       # ...except this one, which guesses
+output = HDMI-A-1, preferred, auto, 1.25   # ...and this one, pinned by hand
+```
+
+With position `auto`, screens pack left-to-right in listed order, so just listing them pins
+the arrangement.
 
 ```
 output = eDP-1, preferred, auto, 2.0

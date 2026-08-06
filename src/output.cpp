@@ -302,13 +302,15 @@ namespace fenriz::output {
             return hit;
         }
 
-        // Commit mode + scale from config (or the preferred mode / global scale fallback).
+        // commit mode + scale from this output's config, falling back to the preferred mode or guess
         void commit_mode(Server& server, Output* o) {
             const OutputCfg* cfg = config_for(server, name_of(o));
 
             wlr_output_state state;
             wlr_output_state_init(&state);
             wlr_output_state_set_enabled(&state, true);
+
+            int px_w = o->handle->width, px_h = o->handle->height;
 
             bool mode_set = false;
             if (cfg && !cfg->mode.empty() && cfg->mode != "preferred" && cfg->mode != "disable") {
@@ -326,13 +328,13 @@ namespace fenriz::output {
                         if (!best || m->refresh > best->refresh)
                             best = m;
                     }
-                    if (best) {
+                    if (best)
                         wlr_output_state_set_mode(&state, best);
-                        mode_set = true;
-                    } else {
+                    else
                         wlr_output_state_set_custom_mode(&state, w, h, hz > 0 ? (int)(hz * 1000) : 0);
-                        mode_set = true;
-                    }
+                    mode_set = true;
+                    px_w = w;
+                    px_h = h;
                 }
                 if (!mode_set)
                     wlr_log(WLR_ERROR,
@@ -341,14 +343,27 @@ namespace fenriz::output {
                             cfg->mode.c_str());
             }
             if (!mode_set)
-                if (wlr_output_mode* mode = wlr_output_preferred_mode(o->handle))
+                if (wlr_output_mode* mode = wlr_output_preferred_mode(o->handle)) {
                     wlr_output_state_set_mode(&state, mode);
+                    px_w = mode->width;
+                    px_h = mode->height;
+                }
 
-            // Per-output scale, falling back to the global config.scale (pre-multi-output
-            // configs keep working).
-            const float scale = cfg && cfg->scale > 0 ? cfg->scale : server.config.scale;
-            if (scale > 0)
-                wlr_output_state_set_scale(&state, scale);
+            float scale = cfg ? cfg->scale : 0;
+            if (scale == 0)
+                scale = server.config.scale;
+            if (scale <= 0) {
+                scale = guess_scale(o->handle->phys_width, o->handle->phys_height, px_w, px_h);
+                wlr_log(WLR_INFO,
+                        "fenriz: output %s: %dx%d at %dx%dmm, guessed scale %.2f",
+                        name_of(o).c_str(),
+                        px_w,
+                        px_h,
+                        o->handle->phys_width,
+                        o->handle->phys_height,
+                        scale);
+            }
+            wlr_output_state_set_scale(&state, scale);
 
             // Say so loudly if the driver rejects it: a silently-dropped commit leaves the
             // screen on whatever the firmware set, which looks like "my scale config is
@@ -521,12 +536,7 @@ namespace fenriz::output {
 
     std::string name_of(const Output* o) { return o && o->handle && o->handle->name ? o->handle->name : ""; }
 
-    float scale_of(Server& server, const Output* o) {
-        const OutputCfg* cfg = config_for(server, name_of(o));
-        if (cfg && cfg->scale > 0)
-            return cfg->scale;
-        return server.config.scale > 0 ? server.config.scale : 1.0f;
-    }
+    float scale_of(const Output* o) { return o && o->handle && o->handle->scale > 0 ? o->handle->scale : 1.0f; }
 
     Output* by_name(Server& server, const std::string& name) {
         for (Output* o : server.outputs)

@@ -12,8 +12,9 @@ gaps             = 8
 rounding         = 10           # corner radius in px
 animation        = 150          # window slide-into-place, ms; 0 = instant (off)
 opacity          = 0.95         # 0.0..1.0
-scale            = 1.0           # default output scale; fractional ok (e.g. 1.5). Per-output
-                                 # `output = ...` scale below overrides it.
+scale            = auto          # auto = guess each screen's scale from its DPI (1x/1.5x/2x).
+                                 # A number here forces every screen to it; the per-output
+                                 # `output = ...` scale below overrides either.
 natural_scroll   = true          # scroll/content follows fingers; false = traditional wheel
 sensitivity      = 0.55          # trackpad/mouse speed, -1.0 (slow) .. 1.0 (fast)
 tap_to_click     = true          # trackpad tap = click; 1/2/3 fingers = left/right/middle
@@ -30,7 +31,7 @@ zoom_step        = 0.1           # fraction of zoom added per scroll notch
 #   NAME      connector name, e.g. eDP-1, DP-1, HDMI-A-1 (`wlr-randr` lists them)
 #   mode      preferred (default) | 1920x1080 | 1920x1080@144 | disable
 #   position  auto (default) | 1920x0   — layout coords of the top-left corner
-#   scale     per-output scale; omit to use the global `scale` above
+#   scale     per-output scale | auto (guess from DPI); omit to use the global `scale` above
 #
 # With `auto`, screens are packed left-to-right in the order they're listed here, so
 # listing them is enough to pin the arrangement — no need for explicit coordinates.

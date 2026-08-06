@@ -83,7 +83,8 @@ on otherwise; suspend-on-lid is left to logind, which already gets it right.
 Your bar does not need reloading on monitor change: disabling a screen removes its
 `wl_output` global, so a per-screen shell rebuilds through the normal registry events.
 
-Override the defaults only if you want to:
+Scale is guessed per screen from its physical size and mode.
+Override the defaults only if the guess is wrong or you want a specific arrangement:
 
 ```
 output    = eDP-1, preferred, auto, 2.0    # per-screen mode/position/scale

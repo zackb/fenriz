@@ -52,7 +52,7 @@ namespace fenriz {
         std::string name;
         std::string mode = "preferred"; // "preferred" | "1920x1080" | "1920x1080@60" | "disable"
         std::string position = "auto";  // "auto" | "1920x0" (layout coords)
-        float scale = 0;                // 0 = fall back to Config::scale
+        float scale = 0;                // 0 = fall back to Config::scale, -1 = guess from DPI
     };
 
     struct Config {
@@ -67,7 +67,7 @@ namespace fenriz {
         int rounding = 10;
         int animation_ms = 150; // slide-into-place duration; 0 = instant (no animation)
         float opacity = 1.0f;
-        float scale = 1.0f;                // output scale; fractional (e.g. 1.5) supported, 1.0 = off
+        float scale = 0;                   // output scale for screens with no `output =` scale; 0 = guess from DPI
         bool natural_scroll = true;        // libinput scroll direction; false = traditional wheel
         float sensitivity = 0.0f;          // libinput pointer accel speed, -1.0 (slow) .. 1.0 (fast); 0 = default
         bool tap_to_click = true;          // trackpad tap = click (1/2/3 fingers = left/right/middle)

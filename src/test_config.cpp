@@ -108,7 +108,11 @@ int main() {
     // Garbage leaves the default intact (stof throws, value untouched).
     Config junk = Config::parse("opacity = abc\nscale = \n");
     assert(junk.opacity == 1.0f);
-    assert(junk.scale == 1.0f);
+    assert(junk.scale == 0.0f);
+
+    assert(Config().scale == 0.0f);
+    assert(Config::parse("scale = auto\n").scale == 0.0f);
+    assert(Config::parse("scale = 1.5\n").scale == 1.5f);
 
     // Per-output config. Trailing fields are optional and fall back to preferred/auto/global
     // scale, so a bare `output = NAME` is valid.
@@ -123,6 +127,10 @@ int main() {
     assert(out.outputs[2].mode == "disable");
     // Unspecified fields keep their defaults; scale 0 means "fall back to the global scale".
     assert(out.outputs[3].mode == "preferred" && out.outputs[3].position == "auto" && out.outputs[3].scale == 0);
+
+    Config autos = Config::parse("scale = 2.0\noutput = DP-1, preferred, auto, auto\n");
+    assert(autos.scale == 2.0f);
+    assert(autos.outputs[0].scale == -1.0f);
 
     // Workspace homes are 1-indexed in the config, 0-indexed in the array. Out-of-range is
     // ignored rather than writing past the end.
