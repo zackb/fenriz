@@ -17,13 +17,14 @@ namespace fenriz {
 
     namespace {
 
-        // Unpack a 0xRRGGBBAA border color into wlr_scene_rect's float[4] (matches the old
-        // manual renderer's color_from_u32).
+        // Unpack a 0xRRGGBBAA color into the float[4] the scene setters take.
+        // For wlr_render_color which requires R/G/B already multiplied by A
         void u32_color(uint32_t c, float out[4]) {
-            out[0] = ((c >> 24) & 0xff) / 255.0f;
-            out[1] = ((c >> 16) & 0xff) / 255.0f;
-            out[2] = ((c >> 8) & 0xff) / 255.0f;
-            out[3] = (c & 0xff) / 255.0f;
+            const float a = (c & 0xff) / 255.0f;
+            out[0] = ((c >> 24) & 0xff) / 255.0f * a;
+            out[1] = ((c >> 16) & 0xff) / 255.0f * a;
+            out[2] = ((c >> 8) & 0xff) / 255.0f * a;
+            out[3] = a;
         }
 
         // halfway between two 0xRRGGBBAA colors per channel
@@ -999,8 +1000,6 @@ namespace fenriz {
                      .corners = hole.corners});
                 float col[4];
                 u32_color(corner_rgba[i], col);
-                for (int ch = 0; ch < 3; ch++)
-                    col[ch] *= col[3];
                 wlr_scene_rect_set_color(n, col);
             }
 
