@@ -10,6 +10,8 @@ struct wlr_ext_foreign_toplevel_handle_v1;
 struct wlr_scene_tree;
 struct wlr_scene_rect;
 struct wlr_scene_shadow;
+struct wlr_scene_buffer;
+struct wlr_buffer;
 struct wlr_scene;
 struct wlr_ext_image_capture_source_v1;
 
@@ -88,6 +90,11 @@ namespace fenriz {
         wlr_scene_tree* popup_tree = nullptr;
         wlr_scene_rect* border = nullptr;
         wlr_scene_shadow* shadow = nullptr; // soft glow, bottom-most; enabled only when focused
+
+        // Gradient border, drawn instead of `border` when border_gradient is set and the view is focused.
+        wlr_scene_buffer* grad_edge[4] = {};
+        wlr_scene_rect* grad_corner[4] = {};
+        uint32_t grad_gen = 0; // texture generation currently uploaded to grad_edge; 0 = none
 
         // Per-window screen capture (ext-image-copy-capture): a private scene mirroring just
         // this window's surface, so a portal can capture it isolated from workspace visibility.

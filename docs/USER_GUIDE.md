@@ -119,6 +119,7 @@ Colors are `0xRRGGBBAA` hex.
 | `border_width` | `2` | border thickness, px |
 | `border_active` | `0x33ccffff` | focused window border |
 | `border_inactive` | `0x444444ff` | unfocused window border |
+| `border_gradient` | unset | focused border fades from `border_active` (top-left) to this (bottom-right) at 45°; unset = flat |
 | `shadow` | `on` | soft glow behind the focused window |
 | `shadow_color` | `0x33ccff66` | glow color (low alpha = subtle) |
 | `shadow_blur` | `18` | glow spread, px |
