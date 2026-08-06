@@ -280,6 +280,8 @@ namespace fenriz {
                 cfg.border_active = parse_color(val, cfg.border_active);
             else if (key == "border_inactive")
                 cfg.border_inactive = parse_color(val, cfg.border_inactive);
+            else if (key == "border_gradient")
+                cfg.border_gradient = parse_color(val, cfg.border_gradient);
             else if (key == "shadow")
                 cfg.shadow = parse_bool(val, cfg.shadow);
             else if (key == "shadow_color")

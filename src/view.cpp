@@ -17,13 +17,99 @@ namespace fenriz {
 
     namespace {
 
-        // Unpack a 0xRRGGBBAA border color into wlr_scene_rect's float[4] (matches the old
-        // manual renderer's color_from_u32).
+        // Unpack a 0xRRGGBBAA color into the float[4] the scene setters take.
+        // For wlr_render_color which requires R/G/B already multiplied by A
         void u32_color(uint32_t c, float out[4]) {
-            out[0] = ((c >> 24) & 0xff) / 255.0f;
-            out[1] = ((c >> 16) & 0xff) / 255.0f;
-            out[2] = ((c >> 8) & 0xff) / 255.0f;
-            out[3] = (c & 0xff) / 255.0f;
+            const float a = (c & 0xff) / 255.0f;
+            out[0] = ((c >> 24) & 0xff) / 255.0f * a;
+            out[1] = ((c >> 16) & 0xff) / 255.0f * a;
+            out[2] = ((c >> 8) & 0xff) / 255.0f * a;
+            out[3] = a;
+        }
+
+        // halfway between two 0xRRGGBBAA colors per channel
+        uint32_t u32_mix(uint32_t a, uint32_t b) {
+            uint32_t out = 0;
+            for (int shift = 0; shift < 32; shift += 8) {
+                const uint32_t ca = (a >> shift) & 0xff, cb = (b >> shift) & 0xff;
+                out |= ((ca + cb) / 2) << shift;
+            }
+            return out;
+        }
+
+        struct GradBuffer {
+            wlr_buffer base;
+            uint32_t px[4]; // premultiplied ARGB8888, row-major: TL, TR, BL, BR
+        };
+
+        void grad_buffer_destroy(wlr_buffer* buffer) {
+            GradBuffer* g = wl_container_of(buffer, g, base);
+            delete g;
+        }
+
+        bool grad_buffer_begin(wlr_buffer* buffer, uint32_t flags, void** data, uint32_t* format, size_t* stride) {
+            if (flags & WLR_BUFFER_DATA_PTR_ACCESS_WRITE)
+                return false; // read-only: the colors only change by rebuilding the buffer
+            GradBuffer* g = wl_container_of(buffer, g, base);
+            *data = g->px;
+            *format = DRM_FORMAT_ARGB8888;
+            *stride = 2 * sizeof(uint32_t);
+            return true;
+        }
+
+        void grad_buffer_end(wlr_buffer*) {}
+
+        const wlr_buffer_impl grad_buffer_impl = {
+            .destroy = grad_buffer_destroy,
+            .get_dmabuf = nullptr,
+            .get_shm = nullptr,
+            .begin_data_ptr_access = grad_buffer_begin,
+            .end_data_ptr_access = grad_buffer_end,
+        };
+
+        // 0xRRGGBBAA -> premultiplied ARGB8888, which is what the renderer blends.
+        uint32_t premul_argb(uint32_t rgba) {
+            const uint32_t a = rgba & 0xff;
+            const uint32_t r = (((rgba >> 24) & 0xff) * a + 127) / 255;
+            const uint32_t g = (((rgba >> 16) & 0xff) * a + 127) / 255;
+            const uint32_t b = (((rgba >> 8) & 0xff) * a + 127) / 255;
+            return (a << 24) | (r << 16) | (g << 8) | b;
+        }
+
+        wlr_buffer* gradient_texture(const Config& cfg, uint32_t* gen) {
+            static wlr_buffer* cached = nullptr;
+            static uint32_t cached_from = 0, cached_to = 0, generation = 0;
+
+            if (cached && cached_from == cfg.border_active && cached_to == cfg.border_gradient) {
+                *gen = generation;
+                return cached;
+            }
+
+            GradBuffer* g = new GradBuffer{};
+            wlr_buffer_init(&g->base, &grad_buffer_impl, 2, 2);
+            const uint32_t mid = u32_mix(cfg.border_active, cfg.border_gradient);
+            g->px[0] = premul_argb(cfg.border_active);
+            g->px[1] = premul_argb(mid);
+            g->px[2] = premul_argb(mid);
+            g->px[3] = premul_argb(cfg.border_gradient);
+
+            if (cached)
+                wlr_buffer_drop(cached); // live nodes keep their lock until they re-set
+
+            cached = &g->base;
+            cached_from = cfg.border_active;
+            cached_to = cfg.border_gradient;
+            *gen = ++generation;
+            return cached;
+        }
+
+        wlr_fbox grad_src(int x, int y, int w, int h, int fw, int fh) {
+            return {
+                .x = 0.5 + (double)x / fw,
+                .y = 0.5 + (double)y / fh,
+                .width = (double)w / fw,
+                .height = (double)h / fh,
+            };
         }
 
         // Per-buffer effects for a mapped window: round the content corners and apply the
@@ -109,6 +195,14 @@ namespace fenriz {
             float col[4];
             u32_color(server.config.border_inactive, col);
             view->border = wlr_scene_rect_create(view->scene_tree, 0, 0, col);
+
+            // gradient ring instead of border rect when enabled
+            for (wlr_scene_rect*& corner : view->grad_corner)
+                corner = wlr_scene_rect_create(view->scene_tree, 0, 0, col);
+            for (wlr_scene_buffer*& edge : view->grad_edge) {
+                edge = wlr_scene_buffer_create(view->scene_tree, nullptr);
+                wlr_scene_buffer_set_filter_mode(edge, WLR_SCALE_FILTER_BILINEAR); // the ramp itself
+            }
             if (view->kind == View::Kind::Xdg) {
                 view->surface_tree = wlr_scene_xdg_surface_create(view->scene_tree, view->toplevel->base);
                 view->popup_tree = wlr_scene_tree_create(view->scene_tree); // created last: draws above
@@ -175,6 +269,11 @@ namespace fenriz {
                 view->popup_tree = nullptr;
                 view->border = nullptr;
                 view->shadow = nullptr;
+                for (wlr_scene_rect*& corner : view->grad_corner)
+                    corner = nullptr;
+                for (wlr_scene_buffer*& edge : view->grad_edge)
+                    edge = nullptr;
+                view->grad_gen = 0;
                 if (view->kind == View::Kind::Xdg)
                     view->toplevel->base->data = nullptr;
             }
@@ -853,10 +952,15 @@ namespace fenriz {
             .corners = corner_radii_all(std::max(0, server.config.rounding - bw)),
         };
 
+        // The gradient ring replaces the flat rect rather than tinting it, so border_active and
+        // border_gradient read as the two ends of one border instead of stacking alphas.
         const bool show_border = bw > 0;
-        wlr_scene_node_set_enabled(&view->border->node, show_border);
-        if (show_border) {
-            wlr_scene_rect_set_size(view->border, box.width, box.height);
+        const bool grad = show_border && server.config.border_gradient != 0 && view == server.focused_view;
+        const int W = box.width, H = box.height;
+
+        wlr_scene_node_set_enabled(&view->border->node, show_border && !grad);
+        if (show_border && !grad) {
+            wlr_scene_rect_set_size(view->border, W, H);
             // Round the border frame to match the content so it nests instead of poking
             // square corners past the client's rounding.
             wlr_scene_rect_set_corner_radius(view->border, server.config.rounding);
@@ -866,15 +970,68 @@ namespace fenriz {
             wlr_scene_rect_set_color(view->border, col);
         }
 
-        // Soft glow: only the focused, non-fullscreen window. Sized to the frame; the blur
-        // spills outside as a halo, and the interior is punched out so the solid center never
-        // renders at all.
+        const int r = server.config.rounding;
+        const int c = std::min(std::max(r, bw), std::min(W, H) / 2);
+        const int span_w = W - 2 * c, span_h = H - 2 * c;
+
+        for (int i = 0; i < 4; i++) {
+            wlr_scene_node_set_enabled(&view->grad_corner[i]->node, grad);
+            wlr_scene_node_set_enabled(&view->grad_edge[i]->node, grad && (i % 2 == 0 ? span_w : span_h) > 0);
+        }
+
+        if (grad) {
+            // corner arcs
+            const wlr_box at[4] = {{0, 0, c, c}, {W - c, 0, c, c}, {W - c, H - c, c, c}, {0, H - c, c, c}};
+            const fx_corner_radii round[4] = {corner_radii_new(r, 0, 0, 0),
+                                              corner_radii_new(0, r, 0, 0),
+                                              corner_radii_new(0, 0, r, 0),
+                                              corner_radii_new(0, 0, 0, r)};
+            const uint32_t mid = u32_mix(server.config.border_active, server.config.border_gradient);
+            const uint32_t corner_rgba[4] = {server.config.border_active, mid, server.config.border_gradient, mid};
+
+            for (int i = 0; i < 4; i++) {
+                wlr_scene_rect* n = view->grad_corner[i];
+                wlr_scene_node_set_position(&n->node, at[i].x, at[i].y);
+                wlr_scene_rect_set_size(n, at[i].width, at[i].height);
+                wlr_scene_rect_set_corner_radii(n, round[i]);
+                wlr_scene_rect_set_clipped_region(
+                    n,
+                    {.area = {hole.area.x - at[i].x, hole.area.y - at[i].y, hole.area.width, hole.area.height},
+                     .corners = hole.corners});
+                float col[4];
+                u32_color(corner_rgba[i], col);
+                wlr_scene_rect_set_color(n, col);
+            }
+
+            uint32_t gen = 0;
+            wlr_buffer* tex = gradient_texture(server.config, &gen);
+            const wlr_box band[4] = {
+                {c, 0, span_w, bw}, {W - bw, c, bw, span_h}, {c, H - bw, span_w, bw}, {0, c, bw, span_h}};
+
+            const bool reupload = view->grad_gen != gen;
+            for (int i = 0; i < 4; i++) {
+                wlr_scene_buffer* n = view->grad_edge[i];
+                if (band[i].width <= 0 || band[i].height <= 0)
+                    continue;
+                if (reupload) {
+                    // HACK: the node caches the built texture and handing it a different buffer does
+                    // not invalidate that cache. removing the nullptr makes the bands keep drawing the
+                    // old colors after a config reload.
+                    wlr_scene_buffer_set_buffer(n, nullptr);
+                    wlr_scene_buffer_set_buffer(n, tex);
+                }
+                wlr_scene_node_set_position(&n->node, band[i].x, band[i].y);
+                wlr_scene_buffer_set_dest_size(n, band[i].width, band[i].height);
+                const wlr_fbox src = grad_src(band[i].x, band[i].y, band[i].width, band[i].height, W, H);
+                wlr_scene_buffer_set_source_box(n, &src);
+            }
+            view->grad_gen = gen;
+        }
+
+        // glow
         const bool glow = server.config.shadow && !view->fullscreen && view == server.focused_view;
         wlr_scene_node_set_enabled(&view->shadow->node, glow);
         if (glow) {
-            // Bloom tracks the accent: hue from border_active, intensity from
-            // shadow_color's alpha byte. This is what feathers the hard edge into
-            // the wallpaper, so it always matches the border with nothing to sync.
             float scol[4];
             u32_color(server.config.border_active, scol);
             scol[3] = (server.config.shadow_color & 0xff) / 255.0f;

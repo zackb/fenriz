@@ -15,9 +15,12 @@ extern "C" {
 #include <wlr/render/color.h>
 #undef static
 
+#include <drm_fourcc.h>
+
 #include <wlr/backend.h>
-#include <wlr/backend/libinput.h> // per-device libinput config (natural scroll); pulls in <libinput.h>
-#include <wlr/backend/session.h>  // wlr_session_change_vt, for the ctrl+alt+f<n>
+#include <wlr/backend/libinput.h>      // per-device libinput config (natural scroll); pulls in <libinput.h>
+#include <wlr/backend/session.h>       // wlr_session_change_vt, for the ctrl+alt+f<n>
+#include <wlr/interfaces/wlr_buffer.h> // wlr_buffer_impl, for gradient texture
 #include <wlr/render/allocator.h>
 #include <wlr/render/pass.h>
 #include <wlr/render/swapchain.h> // offscreen buffers for the zoom magnifier
