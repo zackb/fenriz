@@ -1014,6 +1014,9 @@ namespace fenriz {
                 if (band[i].width <= 0 || band[i].height <= 0)
                     continue;
                 if (reupload) {
+                    // HACK: the node caches the built texture and handing it a different buffer does
+                    // not invalidate that cache. removing the nullptr makes the bands keep drawing the
+                    // old colors after a config reload.
                     wlr_scene_buffer_set_buffer(n, nullptr);
                     wlr_scene_buffer_set_buffer(n, tex);
                 }
