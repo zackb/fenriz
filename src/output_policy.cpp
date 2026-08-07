@@ -1,16 +1,38 @@
-// The pure half of output management: which output each workspace belongs on, and what counts
-// as a lid-controlled panel. No wlroots, no compositor state, output.cpp maps the result back
-// onto real outputs. Split out so test_output.cpp can link it without a display.
+// The pure half of output management: which output each workspace belongs on, what counts as a
+// lid-controlled panel, and what scale a screen wants. No wlroots, no compositor state,
+// output.cpp maps the result back onto real outputs. Split out so test_output.cpp can link it
+// without a display.
 
 #include "output.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 namespace fenriz::output {
 
     bool is_internal(const std::string& name) {
         // wlroots exposes no "built-in panel" bit, so go by connector name like sway/Hyprland.
         return name.rfind("eDP-", 0) == 0 || name.rfind("LVDS-", 0) == 0 || name.rfind("DSI-", 0) == 0;
+    }
+
+    float guess_scale(int phys_w_mm, int phys_h_mm, int px_w, int px_h) {
+        if (phys_w_mm <= 0 || phys_h_mm <= 0 || px_w <= 0 || px_h <= 0)
+            return 1.0f;
+
+        // EDIDs lie (projector, TV)
+        const double diag_mm = std::hypot((double)phys_w_mm, (double)phys_h_mm);
+        if (diag_mm < 100.0)
+            return 1.0f;
+
+        if (px_h < 1200)
+            return 1.0f;
+
+        const double dpi = std::hypot((double)px_w, (double)px_h) / (diag_mm / 25.4);
+        if (dpi >= 192.0)
+            return 2.0f;
+        if (dpi >= 144.0)
+            return 1.5f;
+        return 1.0f;
     }
 
     void assign_workspaces(const std::string home[WS_COUNT],

@@ -298,6 +298,18 @@ int main() {
     assert(!is_internal("HDMI-A-1"));
     assert(!is_internal(""));
 
+    assert(guess_scale(290, 190, 2880, 1920) == 2.0f);  // 13.5" laptop panel, 253 dpi
+    assert(guess_scale(1190, 340, 3840, 1080) == 1.0f); // 49" 32:9 ultrawide, 82 dpi
+    assert(guess_scale(600, 340, 3840, 2160) == 1.5f);  // 27" 4K, 163 dpi
+    assert(guess_scale(600, 340, 2560, 1440) == 1.0f);  // 27" 1440p, 109 dpi
+    assert(guess_scale(1600, 900, 3840, 2160) == 1.0f); // 72" TV, 61 dpi
+
+    assert(guess_scale(0, 0, 2880, 1920) == 1.0f);
+    assert(guess_scale(160, 90, 1920, 1080) == 1.0f); // implausibly small "monitor"
+    assert(guess_scale(-1, -1, 2880, 1920) == 1.0f);
+    assert(guess_scale(290, 190, 0, 0) == 1.0f); // no mode yet
+    assert(guess_scale(100, 60, 1920, 1080) == 1.0f);
+
     printf("test_output: ok\n");
     return 0;
 }

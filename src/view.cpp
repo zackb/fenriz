@@ -839,7 +839,7 @@ namespace fenriz {
         }
 
         if (o)
-            wlr_fractional_scale_v1_notify_scale(surface, output::scale_of(server, o));
+            wlr_fractional_scale_v1_notify_scale(surface, output::scale_of(o));
     }
 
     void focus_topmost_visible(Server& server) {

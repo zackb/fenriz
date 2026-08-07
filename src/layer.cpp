@@ -36,7 +36,7 @@ namespace fenriz::layer {
             if (ls->handle->output) {
                 wlr_surface_send_enter(surface, ls->handle->output);
                 if (output::Output* o = output::by_handle(*ls->server, ls->handle->output))
-                    wlr_fractional_scale_v1_notify_scale(surface, output::scale_of(*ls->server, o));
+                    wlr_fractional_scale_v1_notify_scale(surface, output::scale_of(o));
             }
 
             // Never let a layer surface grab the keyboard while locked

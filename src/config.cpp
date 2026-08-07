@@ -217,7 +217,7 @@ namespace fenriz {
                 if (parts.size() > 2 && !parts[2].empty())
                     o.position = parts[2];
                 if (parts.size() > 3 && !parts[3].empty())
-                    o.scale = parse_float(parts[3], o.scale, 0.25f, 10.0f);
+                    o.scale = parts[3] == "auto" ? -1.0f : parse_float(parts[3], o.scale, 0.25f, 10.0f);
                 cfg.outputs.push_back(o);
                 continue;
             }
@@ -298,7 +298,7 @@ namespace fenriz {
             else if (key == "opacity")
                 cfg.opacity = parse_float(val, cfg.opacity, 0.0f, 1.0f);
             else if (key == "scale")
-                cfg.scale = parse_float(val, cfg.scale, 0.25f, 10.0f);
+                cfg.scale = val == "auto" ? 0.0f : parse_float(val, cfg.scale, 0.25f, 10.0f);
             else if (key == "natural_scroll")
                 cfg.natural_scroll = parse_bool(val, cfg.natural_scroll);
             else if (key == "tap_to_click")

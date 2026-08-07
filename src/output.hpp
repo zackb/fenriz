@@ -69,6 +69,9 @@ namespace fenriz {
         // is_internal(). Use this, not is_internal, for policy decisions.
         bool lid_controls(Server& server, const Output* o);
 
+        // Scale for a screen with no configured one
+        float guess_scale(int phys_w_mm, int phys_h_mm, int px_w, int px_h);
+
         // The area windows may occupy on `o`, in layout coordinates: the usable area left by
         // this output's exclusive zones (bars), falling back to its full box before any layer
         // surface has reserved space. Empty box for a null output.
@@ -175,8 +178,8 @@ namespace fenriz {
         Output* by_name(Server& server, const std::string& name);
         Output* by_handle(Server& server, const wlr_output* handle);
 
-        // This output's effective scale: its `output = ...` entry, else the global `scale`.
-        float scale_of(Server& server, const Output* o);
+        // This output's effective scale
+        float scale_of(const Output* o);
 
         // The output that should receive new windows / layer surfaces: the focused view's
         // output, else the one under the cursor, else the first. Derived, never stored — one
