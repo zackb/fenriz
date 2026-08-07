@@ -60,8 +60,8 @@ added in v6, is not advertised).
 | relative-pointer-v1 | `wlr_relative_pointer_manager_v1` | `cursor.cpp` | Raw pointer deltas — what a pointer-locked client steers with |
 | wlr-output-management-v1 | `wlr_output_manager_v1` (v4) | `output.cpp` | Dynamic output config (kanshi, wlr-randr, nwg-displays). An apply is folded into `config.outputs`, so it shares every path with the config file; a config reload re-asserts the file |
 
-Plus a native, non-Wayland control socket (`FENRIZ_SOCKET`) for bars/shells — see
-[IPC.md](IPC.md).
+Plus a native, non-Wayland control socket (`FENRIZ_SOCKET`) for bars/shells, or from the
+command line by `fenrizctl`: see [IPC.md](IPC.md).
 
 ## Should implement
 

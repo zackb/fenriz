@@ -293,7 +293,20 @@ If nothing shows up as shareable, check that `pipewire`, `wireplumber`, and
 fenriz exposes a Unix socket at `$XDG_RUNTIME_DIR/fenriz-$WAYLAND_DISPLAY.sock`, exported to
 clients as `FENRIZ_SOCKET`. It streams workspace, window, and output state as newline-delimited
 JSON and takes one-line commands. This is enough to drive a status bar or shell (waybar, quickshell,
-etc.). There's no CLI wrapper; talk to it with `socat` or `printf`. See [IPC.md](IPC.md).
+etc.).
+
+`fenrizctl`, installed alongside the compositor, is the command-line front end:
+
+```
+fenrizctl state | jq            # everything fenriz knows, right now
+fenrizctl watch                 # the same, streamed on every change
+fenrizctl workspace 3
+fenrizctl killactive            # any keybind action works as a subcommand
+fenrizctl output DP-1 off
+fenrizctl reload                # re-read fenriz.conf
+```
+
+`fenrizctl --help` lists the rest; the wire protocol is in [IPC.md](IPC.md).
 
 ## Protocol and tool support
 

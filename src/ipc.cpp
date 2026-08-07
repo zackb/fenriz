@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <vector>
 
+#include "keyboard.hpp"
 #include "lock.hpp"
 #include "output.hpp"
 #include "server.hpp"
@@ -126,7 +127,26 @@ namespace fenriz::ipc {
                 first = false;
                 s += std::to_string(id);
             }
-            s += "]},\"activeWindow\":";
+            s += "]},\"windows\":[";
+            first = true;
+            for (View* v : server.views) {
+                if (!v->mapped)
+                    continue;
+                if (!first)
+                    s += ',';
+                first = false;
+                s += "{\"appId\":\"";
+                json_escape(s, view_app_id(v));
+                s += "\",\"title\":\"";
+                json_escape(s, view_title(v));
+                s += "\",\"workspace\":" + std::to_string(v->workspace + 1);
+                s += ",\"floating\":" + std::string(v->floating ? "true" : "false");
+                s += ",\"fullscreen\":" + std::string(v->fullscreen ? "true" : "false");
+                s += ",\"focused\":" + std::string(v == server.focused_view ? "true" : "false");
+                s += '}';
+            }
+
+            s += "],\"activeWindow\":";
             View* f = server.focused_view;
             if (f && f->mapped) {
                 s += "{\"appId\":\"";
@@ -178,21 +198,25 @@ namespace fenriz::ipc {
             }
         }
 
-        // Pull a "key":"value" string out of a command line. Same substring approach as the
-        // rest of the parser — no escape handling, which is fine for output names.
+        // Pull a "key":"value" string out of a command line, undoing \" and \\ escapes. Same
+        // substring approach as the rest of the parser; the escapes matter because a dispatch
+        // `exec` arg is an arbitrary shell command that may quote.
         std::string extract_string(const std::string& line, const char* key) {
             const std::string pat = std::string("\"") + key + "\":\"";
             size_t p = line.find(pat);
             if (p == std::string::npos)
                 return "";
-            p += pat.size();
-            size_t e = line.find('"', p);
-            return e == std::string::npos ? "" : line.substr(p, e - p);
+            std::string out;
+            for (p += pat.size(); p < line.size(); ++p) {
+                if (line[p] == '"')
+                    return out;
+                if (line[p] == '\\' && p + 1 < line.size())
+                    ++p;
+                out += line[p];
+            }
+            return "";
         }
 
-        // ponytail: parses whole "\n"-terminated lines in one read; a command split across
-        // reads is dropped. Commands are single tiny writes (socat/printf), so fine — add
-        // per-client line buffering only if a real client streams partial commands.
         void handle_command_line(Server& server, const std::string& line) {
             if (line.find("\"cmd\":\"workspace\"") != std::string::npos) {
                 size_t p = line.find("\"n\":");
@@ -201,6 +225,18 @@ namespace fenriz::ipc {
                 int n = std::atoi(line.c_str() + p + 4);
                 if (n >= 1 && n <= 10)
                     set_workspace(server, n - 1);
+                return;
+            }
+            if (line.find("\"cmd\":\"dispatch\"") != std::string::npos) {
+                Bind b;
+                b.action = action_from_string(extract_string(line, "action"));
+                b.arg = extract_string(line, "arg");
+                if (b.action != Action::None)
+                    execute_bind(server, b);
+                return;
+            }
+            if (line.find("\"cmd\":\"reload\"") != std::string::npos) {
+                reload_config(server);
                 return;
             }
             if (line.find("\"cmd\":\"unlock\"") != std::string::npos) {
