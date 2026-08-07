@@ -250,7 +250,8 @@ namespace fenriz {
             auto* ev = static_cast<wlr_gamma_control_manager_v1_set_gamma_event*>(data);
             // Applied on the next frame (output.cpp); mark dirty + wake the output so the
             // frame handler commits even though the scene itself needs no repaint.
-            sl->server->gamma_dirty = true;
+            if (output::Output* o = output::by_handle(*sl->server, ev->output))
+                o->gamma_dirty = true;
             wlr_output_schedule_frame(ev->output);
         }
 

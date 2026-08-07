@@ -62,14 +62,30 @@ namespace fenriz::output {
             return animating;
         }
 
+        // How many commits in a row may be retried before backing off
+        constexpr int MAX_COMMIT_RETRIES = 8;
+
+        bool retry_after_failed_commit(Output* output, bool committed) {
+            output->commit_failures = committed ? 0 : output->commit_failures + 1;
+            if (committed)
+                return false;
+            wlr_log(WLR_DEBUG,
+                    "fenriz: output %s: commit rejected (%d in a row)",
+                    name_of(output).c_str(),
+                    output->commit_failures);
+            return output->commit_failures <= MAX_COMMIT_RETRIES;
+        }
+
         // Apply a pending client gamma LUT (wlsunset/gammastep) to an output state, if any.
-        void apply_gamma(Server& server, wlr_output* handle, wlr_output_state* state) {
-            if (!server.gamma_dirty)
-                return;
-            server.gamma_dirty = false;
+        // Returns whether a LUT was consumed, so a failed commit can hand it back.
+        bool apply_gamma(Server& server, Output* output, wlr_output_state* state) {
+            if (!output->gamma_dirty)
+                return false;
+            output->gamma_dirty = false;
             if (server.gamma_control_manager)
-                if (auto* g = wlr_gamma_control_manager_v1_get_control(server.gamma_control_manager, handle))
+                if (auto* g = wlr_gamma_control_manager_v1_get_control(server.gamma_control_manager, output->handle))
                     wlr_gamma_control_v1_apply(g, state);
+            return true;
         }
 
         // Zoomed render: draw the whole scene into an offscreen buffer, then blit a
@@ -123,10 +139,18 @@ namespace fenriz::output {
                 }
                 wlr_texture_destroy(tex);
             }
-            apply_gamma(server, handle, &out_state);
-            wlr_output_commit_state(handle, &out_state);
+            const bool took_gamma = apply_gamma(server, output, &out_state);
+            const bool committed = wlr_output_commit_state(handle, &out_state);
             wlr_output_state_finish(&out_state);
             wlr_output_state_finish(&scene_state);
+
+            const bool retry = retry_after_failed_commit(output, committed);
+            if (!committed) {
+                output->gamma_dirty = output->gamma_dirty || took_gamma;
+                if (retry)
+                    wlr_output_schedule_frame(handle);
+                return;
+            }
             wlr_scene_output_send_frame_done(so, now);
         }
 
@@ -171,7 +195,7 @@ namespace fenriz::output {
 
             // Only commit when the scene needs a repaint, a gamma LUT change is pending, or a
             // zoom is active/animating/just-ended here. An idle, unchanged output commits nothing.
-            if (wlr_scene_output_needs_frame(so) || server.gamma_dirty || zoomed || zoom_animating || exiting_zoom) {
+            if (wlr_scene_output_needs_frame(so) || output->gamma_dirty || zoomed || zoom_animating || exiting_zoom) {
                 // (Re)apply SceneFX per-window effects right before rendering. scenefx re-syncs
                 // each surface buffer during its own commit handling (after our commit handler),
                 // resetting opacity to 1.0 — so effects set at commit time never reach the
@@ -188,10 +212,18 @@ namespace fenriz::output {
                     wlr_output_state state;
                     wlr_output_state_init(&state);
                     wlr_scene_output_build_state(so, &state, nullptr);
-                    apply_gamma(server, output->handle, &state);
-                    wlr_output_commit_state(output->handle, &state);
+                    const bool took_gamma = apply_gamma(server, output, &state);
+                    const bool committed = wlr_output_commit_state(output->handle, &state);
                     wlr_output_state_finish(&state);
-                    wlr_scene_output_send_frame_done(so, &now);
+                    const bool retry = retry_after_failed_commit(output, committed);
+                    if (committed) {
+                        wlr_scene_output_send_frame_done(so, &now);
+                    } else {
+                        wlr_damage_ring_add_whole(&so->damage_ring);
+                        output->gamma_dirty = output->gamma_dirty || took_gamma;
+                        if (retry)
+                            wlr_output_schedule_frame(output->handle);
+                    }
                 }
             }
             output->zoom_active = zoomed;

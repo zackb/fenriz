@@ -52,6 +52,12 @@ namespace fenriz {
             // is then blitted scaled to fill the output. Null unless zoom is/was active here.
             wlr_swapchain* zoom_swapchain = nullptr;
             bool zoom_active = false; // rendered zoomed last frame; drives the exit full-repaint
+
+            // A client (wlsunset/gammastep) changed this output's gamma LUT.
+            bool gamma_dirty = false;
+
+            // Consecutive rejected commits.
+            int commit_failures = 0;
         };
 
         // Register the backend's new_output listener.
