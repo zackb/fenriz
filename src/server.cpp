@@ -410,7 +410,9 @@ namespace fenriz {
             wlr_log(WLR_ERROR, "failed to create renderer");
             return false;
         }
-        wlr_renderer_init_wl_display(renderer, display);
+        // wl_shm only. The dmabuf global is created explicitly below at the version we want
+        // wlr_renderer_init_wl_display would add a second one at version 4
+        wlr_renderer_init_wl_shm(renderer, display);
 
         allocator = wlr_allocator_autocreate(backend, renderer);
         if (!allocator) {
