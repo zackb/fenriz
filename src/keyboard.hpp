@@ -27,4 +27,7 @@ namespace fenriz {
     struct Bind;
     const Bind* handle_keybind(Server& server, uint32_t mods, xkb_keysym_t sym);
 
+    // Run a bind's action.
+    void execute_bind(Server& server, const Bind& b);
+
 } // namespace fenriz

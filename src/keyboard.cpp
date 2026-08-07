@@ -13,8 +13,6 @@
 
 namespace fenriz {
 
-    void execute_bind(Server& server, const Bind& b); // defined below; run a matched bind's action
-
     namespace {
 
         // Per-keyboard state. Standard-layout so wl_container_of recovers it cleanly.

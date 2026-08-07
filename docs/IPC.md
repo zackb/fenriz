@@ -4,7 +4,41 @@ fenriz exposes a native control socket for status bars and shells (e.g. quickshe
 it streams the current workspace/window state as newline-delimited JSON and accepts
 one-line JSON commands. Implemented in `src/ipc.cpp`.
 
-## Connecting
+## fenrizctl
+
+`fenrizctl` is installed next to the compositor and speaks the protocol below.
+
+```
+fenrizctl state                    # current state, one JSON line
+fenrizctl watch                    # stream state changes (NDJSON)
+
+fenrizctl workspace 3
+fenrizctl dpms off                 # or: dpms on DP-1
+fenrizctl output DP-1 off
+fenrizctl lid closed
+fenrizctl reload                   # re-read fenriz.conf
+fenrizctl unlock                   # escape a stuck lock screen
+fenrizctl exit                     # quit the compositor
+
+fenrizctl killactive               # any keybind action, see `dispatch` below
+fenrizctl movetoworkspace 3
+fenrizctl exec 'foot -e htop'
+```
+
+Read commands print the raw feed
+
+```
+fenrizctl state | jq -r .activeWindow.title
+fenrizctl state | jq '.windows[] | select(.floating)'
+fenrizctl watch | while read -r line; do …; done
+```
+
+Exit status is `0` on success, `1` for a bad argument, `2` when the socket is unreachable
+(fenriz isn't running).
+
+The rest of this document is the wire protocol, for writing a client directly.
+
+## Socket
 
 On startup fenriz binds a Unix stream socket at
 
@@ -33,6 +67,7 @@ means something changed.
  "lid":"open",
  "cursor":{"x":100,"y":200},
  "workspaces":{"active":1,"occupied":[1,2,4],"urgent":[4]},
+ "windows":[{"appId":"foot","title":"~","workspace":1,"floating":false,"fullscreen":false,"focused":true}],
  "activeWindow":{"appId":"foot","title":"~"}}
 ```
 
@@ -50,7 +85,14 @@ means something changed.
 | `workspaces.active` | int | The **focused output's** workspace, 1-indexed. Unchanged meaning on a single screen. |
 | `workspaces.occupied` | int[] | Sorted 1-indexed workspaces with mapped windows, plus whatever each output is showing. |
 | `workspaces.urgent` | int[] | Sorted 1-indexed workspaces holding a window that asked to be activated (xdg-activation) while unfocused. Cleared when the window is focused. Usually empty. |
-| `activeWindow` | object \| null | Focused window, or `null` when nothing is focused. |
+| `windows` | object[] | Every mapped window, across all workspaces, in stacking order (bottom → top). |
+| `windows[].appId` | string | xdg app id, or the X11 `WM_CLASS` for XWayland windows. |
+| `windows[].title` | string | Window title. |
+| `windows[].workspace` | int | Which workspace it's on, 1-indexed. |
+| `windows[].floating` | bool | Escaped the tiling tree (free move/resize). |
+| `windows[].fullscreen` | bool | Currently fullscreen. |
+| `windows[].focused` | bool | The focused window. At most one is true. |
+| `activeWindow` | object \| null | Focused window, or `null` when nothing is focused. Redundant with `windows[].focused`, kept for existing bars. |
 | `activeWindow.appId` | string | Focused window's app id. |
 | `activeWindow.title` | string | Focused window's title. |
 
@@ -88,6 +130,35 @@ Send one JSON object per line, terminated by `\n`. Commands implemented:
 Shows workspace `n` (1–10); out-of-range values are ignored. If `n` lives on another
 output, focus (and the cursor) follow it there rather than dragging it to the current
 screen.
+
+```json
+{"cmd":"dispatch","action":"killactive"}
+{"cmd":"dispatch","action":"movetoworkspace","arg":"3"}
+{"cmd":"dispatch","action":"exec","arg":"foot -e htop"}
+```
+
+Runs a keybind action by name using the same names the config's `bind =` lines take.
+
+| Action | Effect |
+|--------|--------|
+| `killactive` | Ask the focused window to close. |
+| `fullscreen` | Toggle fullscreen on the focused window. |
+| `togglefloating` | Toggle floating on the focused window. |
+| `pin` | Toggle pin (a float shown on every workspace of its output). |
+| `focusnext` / `focusprev` | Cycle focus through the workspace's windows. |
+| `focusleft` / `focusright` / `focusup` / `focusdown` | Move focus geometrically. |
+| `workspace` | `arg` = 1–10. Same as `{"cmd":"workspace"}`. |
+| `movetoworkspace` | `arg` = 1–10. Send the focused window there. |
+| `exec` | `arg` = a shell command, run detached. |
+| `exit` | Quit the compositor. Same as `{"cmd":"exit"}`. |
+| `togglelayout` | Accepted, currently a no-op (only master-stack exists). |
+
+
+```json
+{"cmd":"reload"}
+```
+
+Re-reads `fenriz.conf` and applies it live.
 
 ```json
 {"cmd":"dpms","on":false}
@@ -135,8 +206,15 @@ manager (greetd), that ends the session, which is what a shell's "Log out" wants
 
 The command parser is substring-based, not a full JSON parser: a command is
 recognized by its `"cmd":"…"` substring (and `"n":` / `"on":true` for arguments),
-so whitespace and key order don't matter. Each command must arrive as one complete
-line in a single write — a command split across reads is dropped.
+so whitespace and key order don't matter. String values (`name`, `action`, `arg`)
+are read up to the closing quote, honoring `\"` and `\\` escapes — so an `exec` arg
+may contain quotes as long as you escape them as JSON requires. Each command must
+arrive as one complete line in a single write — a command split across reads is dropped.
+
+Commands are not acknowledged. Nothing is written back except the ordinary state feed.
+A command naming something that doesn't exist (an unknown output, an out-of-range
+workspace, an unknown action) is silently ignored, so check the feed if you need to
+confirm an effect.
 
 ## Example
 
@@ -156,4 +234,10 @@ Recover from a broken lock screen, e.g. from a TTY (`Ctrl+Alt+F2`):
 
 ```
 printf '{"cmd":"dpms","on":true}\n{"cmd":"unlock"}\n' | socat - UNIX-CONNECT:$FENRIZ_SOCKET
+```
+
+The same, with the CLI:
+
+```
+fenrizctl dpms on && fenrizctl unlock
 ```
