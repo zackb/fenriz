@@ -17,6 +17,9 @@ namespace fenriz {
         // switch, view map/unmap/destroy).
         void publish(Server& server);
 
+        // Close the control socket, drop every connected client, and remove the socket file.
+        void shutdown();
+
     } // namespace ipc
 
 } // namespace fenriz

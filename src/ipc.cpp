@@ -30,7 +30,8 @@ namespace fenriz::ipc {
         struct IpcState {
             Server* server = nullptr;
             wl_event_loop* loop = nullptr;
-            int listen_fd = -1;
+            wl_event_source* listen_src = nullptr;
+            std::string path;
             std::vector<Client> clients;
             std::string last;             // last broadcast snapshot; skip re-sending if unchanged
             bool publish_pending = false; // an idle broadcast is already queued this iteration
@@ -350,8 +351,15 @@ namespace fenriz::ipc {
         g = new IpcState{};
         g->server = &server;
         g->loop = wl_display_get_event_loop(server.display);
-        g->listen_fd = fd;
-        wl_event_loop_add_fd(g->loop, fd, WL_EVENT_READABLE, on_listen_readable, g);
+        g->path = path;
+        g->listen_src = wl_event_loop_add_fd(g->loop, fd, WL_EVENT_READABLE, on_listen_readable, g);
+        if (!g->listen_src) {
+            close(fd);
+            delete g;
+            g = nullptr;
+            wlr_log(WLR_ERROR, "fenriz ipc: could not register the listen socket");
+            return;
+        }
 
         setenv("FENRIZ_SOCKET", path.c_str(), true);
         wlr_log(WLR_INFO, "fenriz ipc: listening on FENRIZ_SOCKET=%s", path.c_str());
@@ -390,6 +398,18 @@ namespace fenriz::ipc {
             return;
         g->publish_pending = true;
         wl_event_loop_add_idle(g->loop, publish_idle, nullptr);
+    }
+
+    void shutdown() {
+        if (!g)
+            return;
+        for (const Client& c : g->clients)
+            wl_event_source_remove(c.src);
+        wl_event_source_remove(g->listen_src);
+        if (!g->path.empty())
+            unlink(g->path.c_str());
+        delete g;
+        g = nullptr;
     }
 
 } // namespace fenriz::ipc
