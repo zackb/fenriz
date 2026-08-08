@@ -110,25 +110,21 @@ namespace fenriz::output {
             }
             wlr_texture* tex = wlr_texture_from_buffer(server.renderer, scene_state.buffer);
 
-            // Zoom viewport, centered on the cursor and clamped to the output.
+            // Zoom viewport
             wlr_box lb; // output box in layout coords (== effective resolution)
             wlr_output_layout_get_box(server.output_layout, handle, &lb);
             const double z = server.zoom;
-            double cx = std::clamp(server.cursor->x - lb.x, 0.0, (double)lb.width);
-            double cy = std::clamp(server.cursor->y - lb.y, 0.0, (double)lb.height);
-            double vw = lb.width / z, vh = lb.height / z;
-            double vx = std::clamp(cx - vw / 2, 0.0, lb.width - vw);
-            double vy = std::clamp(cy - vh / 2, 0.0, lb.height - vh);
-            // src_box is in buffer pixels; buffer may be larger than layout box under output scale.
+            const double cx = std::clamp(server.cursor->x - lb.x, 0.0, (double)lb.width);
+            const double cy = std::clamp(server.cursor->y - lb.y, 0.0, (double)lb.height);
+            const double vw = lb.width / z, vh = lb.height / z;
+            const double vx = zoom_viewport_origin(cx, z);
+            const double vy = zoom_viewport_origin(cy, z);
             const double sx = (double)handle->width / lb.width, sy = (double)handle->height / lb.height;
 
             wlr_output_state out_state;
             wlr_output_state_init(&out_state);
             if (tex) {
                 if (wlr_render_pass* pass = wlr_output_begin_render_pass(handle, &out_state, nullptr)) {
-                    // Plain textured blit — no SceneFX effects needed on the zoom, and its
-                    // pass.h is un-includable here (pulls a private egl.h). The fx_renderer
-                    // still services this base wlr_render_pass call.
                     wlr_render_texture_options o = {};
                     o.texture = tex;
                     o.src_box = {vx * sx, vy * sy, vw * sx, vh * sy};

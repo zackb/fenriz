@@ -508,8 +508,7 @@ namespace fenriz::cursor {
 
             process_motion(c, event->time_msec); // rebase pointer focus; see cursor_button
 
-            // Modifier + scroll = screen zoom (default CTRL, configurable via zoom_mod).
-            // The compositor consumes the event: the client never sees it.
+            // zoom_mod + scroll = screen zoom
             const uint32_t zmod = server.config.zoom_mod;
             wlr_keyboard* kb = wlr_seat_get_keyboard(server.seat);
             const uint32_t mods = kb ? wlr_keyboard_get_modifiers(kb) : 0;

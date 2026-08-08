@@ -4,6 +4,7 @@
 #include "output.hpp"
 
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -309,6 +310,21 @@ int main() {
     assert(guess_scale(-1, -1, 2880, 1920) == 1.0f);
     assert(guess_scale(290, 190, 0, 0) == 1.0f); // no mode yet
     assert(guess_scale(100, 60, 1920, 1080) == 1.0f);
+
+    {
+        const double W = 1920;
+        for (double z : {1.0, 1.01, 1.5, 2.0, 3.0, 10.0}) {
+            const double vw = W / z;
+            for (double c : {0.0, 1.0, 640.0, 960.0, 1279.0, W}) {
+                const double v = zoom_viewport_origin(c, z);
+                assert(std::abs((c - v) / vw * W - c) < 1e-9); // pointer's point is a fixed point
+                assert(v >= 0.0 && v <= W - vw + 1e-9);        // in range without clamping
+            }
+        }
+        assert(zoom_viewport_origin(1234.0, 1.0) == 0.0);
+        assert(zoom_viewport_origin(0.0, 4.0) == 0.0);
+        assert(std::abs(zoom_viewport_origin(W, 4.0) - (W - W / 4)) < 1e-9);
+    }
 
     printf("test_output: ok\n");
     return 0;
