@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-project(fenriz VERSION 0.1.5 LANGUAGES CXX C)
+project(fenriz VERSION 0.1.6 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
