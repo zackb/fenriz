@@ -35,6 +35,8 @@ namespace fenriz::output {
         return 1.0f;
     }
 
+    double zoom_viewport_origin(double c, double z) { return z > 1.0 ? c * (1.0 - 1.0 / z) : 0.0; }
+
     void assign_workspaces(const std::string home[WS_COUNT],
                            const bool needed[WS_COUNT],
                            const std::vector<std::string>& live,

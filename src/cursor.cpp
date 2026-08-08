@@ -493,6 +493,14 @@ namespace fenriz::cursor {
             wlr_seat_pointer_notify_button(server.seat, event->time_msec, event->button, event->state);
         }
 
+        // True if libinput is inverting this device's scroll deltas
+        bool device_natural_scroll(wlr_input_device* device) {
+            if (!wlr_input_device_is_libinput(device))
+                return false;
+            libinput_device* dev = wlr_libinput_get_device_handle(device);
+            return dev && libinput_device_config_scroll_get_natural_scroll_enabled(dev);
+        }
+
         void cursor_axis(wl_listener* listener, void* data) {
             Cursor* c = wl_container_of(listener, c, axis);
             Server& server = *c->server;
@@ -500,15 +508,17 @@ namespace fenriz::cursor {
 
             process_motion(c, event->time_msec); // rebase pointer focus; see cursor_button
 
-            // Modifier + scroll = screen zoom (default CTRL, configurable via zoom_mod).
-            // The compositor consumes the event: the client never sees it.
+            // zoom_mod + scroll = screen zoom
             const uint32_t zmod = server.config.zoom_mod;
             wlr_keyboard* kb = wlr_seat_get_keyboard(server.seat);
             const uint32_t mods = kb ? wlr_keyboard_get_modifiers(kb) : 0;
             if (zmod != 0 && (mods & zmod) && event->delta != 0) {
                 const float step = server.config.zoom_step;
-                // Scroll up (negative delta) zooms in, down zooms out
-                float f = event->delta < 0 ? (1.0f + step) : (1.0f / (1.0f + step));
+                // zoom scrolling up/away always zooms in regardless of natural_scroll
+                float delta = event->delta;
+                if (device_natural_scroll(&event->pointer->base))
+                    delta = -delta;
+                float f = delta < 0 ? (1.0f + step) : (1.0f / (1.0f + step));
                 server.zoom_target = std::clamp(server.zoom_target * f, 1.0f, server.config.zoom_max);
                 schedule_frame_at_cursor(c);
                 return;

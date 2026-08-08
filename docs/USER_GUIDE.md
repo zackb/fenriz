@@ -146,7 +146,7 @@ Colors are `0xRRGGBBAA` hex.
 
 ### Zoom
 
-Hold `zoom_mod` and scroll to magnify around the cursor.
+Hold `zoom_mod` and scroll to magnify around the cursor. Scrolling up zooms in and down zooms out.
 
 | Key | Default | Meaning |
 |---|---|---|

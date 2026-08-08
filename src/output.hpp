@@ -78,6 +78,10 @@ namespace fenriz {
         // Scale for a screen with no configured one
         float guess_scale(int phys_w_mm, int phys_h_mm, int px_w, int px_h);
 
+        // Origin of the magnifier viewport along one axis, given the cursor's offset `c` into the output on that axis
+        // and zoom level `z >= 1`.
+        double zoom_viewport_origin(double c, double z);
+
         // The area windows may occupy on `o`, in layout coordinates: the usable area left by
         // this output's exclusive zones (bars), falling back to its full box before any layer
         // surface has reserved space. Empty box for a null output.
