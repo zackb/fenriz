@@ -507,8 +507,11 @@ namespace fenriz::cursor {
             const uint32_t mods = kb ? wlr_keyboard_get_modifiers(kb) : 0;
             if (zmod != 0 && (mods & zmod) && event->delta != 0) {
                 const float step = server.config.zoom_step;
-                // Scroll up (negative delta) zooms in, down zooms out
-                float f = event->delta < 0 ? (1.0f + step) : (1.0f / (1.0f + step));
+                // zoom scrolling up/away always zooms in regardless of natural_scroll
+                float delta = event->delta;
+                if (event->relative_direction == WL_POINTER_AXIS_RELATIVE_DIRECTION_INVERTED)
+                    delta = -delta;
+                float f = delta < 0 ? (1.0f + step) : (1.0f / (1.0f + step));
                 server.zoom_target = std::clamp(server.zoom_target * f, 1.0f, server.config.zoom_max);
                 schedule_frame_at_cursor(c);
                 return;
