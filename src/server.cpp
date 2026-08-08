@@ -505,6 +505,10 @@ namespace fenriz {
         wlr_data_control_manager_v1_create(display);
         wlr_ext_data_control_manager_v1_create(display, 1);
 
+        // Export configured env vars (QT_QPA_PLATFORMTHEME, XCURSOR_THEME) before anything reads the environment
+        for (const auto& [name, value] : config.env)
+            setenv(name.c_str(), value.c_str(), 1);
+
         // XWayland: managed X11 toplevels. Needs the compositor + seat (both live now), and
         // exports DISPLAY so exec-once X clients (run below) can find it.
         xwayland::setup(*this);
@@ -583,12 +587,6 @@ namespace fenriz {
         // Hot-reload: apply edits to fenriz.conf live (no restart). See init_config_watch.
         init_config_watch(*this, loop);
 
-        // Export configured env vars (QT_QPA_PLATFORMTHEME) before spawning anything,
-        // so exec-once clients inherit them. Set after WAYLAND_DISPLAY/FENRIZ_SOCKET so a
-        // stray `env` line can't shadow those.
-        for (const auto& [name, value] : config.env)
-            setenv(name.c_str(), value.c_str(), 1);
-
         // Run startup commands now that the socket is live and WAYLAND_DISPLAY is set,
         // so the spawned clients connect to us.
         for (const std::string& cmd : config.exec_once)
@@ -619,6 +617,7 @@ namespace fenriz {
         // Re-apply output mode/scale/position and workspace homes, then re-home + re-arrange.
         // Editing an `output =` line takes effect live, no restart.
         output::apply_config(server);
+        cursor::reload(server); // `cursor =` / `cursor_size =` re-theme the pointer live
         for (View* v : server.views)
             place_view_nodes(v); // border width/color/rounding on all views (incl. floating)
         wlr_log(WLR_INFO, "fenriz: config reloaded");

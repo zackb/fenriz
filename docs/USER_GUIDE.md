@@ -139,6 +139,10 @@ Colors are `0xRRGGBBAA` hex.
 | `focus_follows_pointer` | `true` | hovering focuses; `false` = click to focus |
 | `repeat_delay` | `250` | ms before a held key repeats |
 | `repeat_rate` | `15` | key repeats per second |
+| `cursor` | unset | cursor theme name (a directory under `/usr/share/icons` or `~/.local/share/icons`); unset = `XCURSOR_THEME` from the environment, then the system `default` theme |
+| `cursor_size` | `24` | cursor base size in px at scale 1; `0`/unset = `XCURSOR_SIZE`, then `24` |
+
+`cursor` and `cursor_size` are exported as `XCURSOR_THEME`/`XCURSOR_SIZE`, so clients and XWayland apps draw the same cursor the compositor does.
 
 ### Zoom
 

@@ -23,6 +23,8 @@ int main() {
                        "bind = SUPER SHIFT, E, exit\n"
                        "bind = SUPER, 2, workspace, 3\n"
                        "bind = SUPER SHIFT, 4, movetoworkspace, 5\n"
+                       "cursor = catppuccin-mocha-mauve-cursors\n"
+                       "cursor_size = 32\n"
                        "repeat_delay = 300\n"
                        "repeat_rate = 20\n"
                        "zoom_mod = alt\n"
@@ -56,6 +58,13 @@ int main() {
 
     assert(c.repeat_delay == 300);
     assert(c.repeat_rate == 20);
+
+    assert(c.cursor_theme == "catppuccin-mocha-mauve-cursors");
+    assert(c.cursor_size == 32);
+    // Unset means "ask the environment", which only cursor.cpp can resolve.
+    assert(Config{}.cursor_theme.empty() && Config{}.cursor_size == 0);
+    // A negative size would reach wlr_xcursor_manager_create as a huge unsigned; clamp to auto.
+    assert(Config::parse("cursor_size = -8\n").cursor_size == 0);
 
     assert(c.zoom_mod == 8u); // "alt" -> WLR_MODIFIER_ALT bit
     assert(c.zoom_max > 3.99f && c.zoom_max < 4.01f);

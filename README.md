@@ -66,11 +66,8 @@ make install      # install to /usr/local/bin/fenriz
 fenriz            # launch the compositor (from a greeter, TTY, or inside an existing Wayland session)
 ```
 
-Logs go to stderr and to `$XDG_STATE_HOME/fenriz/fenriz.log` (default
-`~/.local/state/fenriz/fenriz.log`), so a session started by a greeter still leaves something
-readable behind. The previous run is kept as `fenriz.log.1`. Override the path with
-`FENRIZ_LOG=<path>`, raise the level with `FENRIZ_DEBUG=1`. For the journal instead, launch it
-as `systemd-cat -t fenriz fenriz`.
+Logs go to stderr and to `$XDG_STATE_HOME/fenriz/fenriz.log` (default `~/.local/state/fenriz/fenriz.log`).
+Override the path with `FENRIZ_LOG=<path>`, raise the level with `FENRIZ_DEBUG=1`.
 
 ## Multi-monitor and clamshell
 

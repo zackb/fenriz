@@ -13,6 +13,8 @@ namespace fenriz {
     namespace cursor {
         // Create the cursor + xcursor manager and wire pointer/seat events.
         void init(Server& server);
+        // Re-apply the configured cursor theme/size after a config reload.
+        void reload(Server& server);
         // Route a newly-attached pointer device's motion through the cursor.
         void attach_pointer(Server& server, wlr_input_device* device);
         // Cancel any interactive grab on `view` (called when it unmaps, before it's freed,
