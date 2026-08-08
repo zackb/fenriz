@@ -193,9 +193,8 @@ namespace fenriz::output {
             // zoom is active/animating/just-ended here. An idle, unchanged output commits nothing.
             if (wlr_scene_output_needs_frame(so) || output->gamma_dirty || zoomed || zoom_animating || exiting_zoom) {
                 // (Re)apply SceneFX per-window effects right before rendering. scenefx re-syncs
-                // each surface buffer during its own commit handling (after our commit handler),
-                // resetting opacity to 1.0 — so effects set at commit time never reach the
-                // render. Applying here, per visible view, is the reliable point.
+                // each surface buffer during its own commit handling (after our commit handler), resetting opacity
+                // to 1.0
                 for (View* view : server.views)
                     if (view_visible(server, view) && view_output(server, view) == output)
                         apply_view_effects(view);
@@ -203,8 +202,13 @@ namespace fenriz::output {
                 if (zoomed) {
                     render_zoomed(output, so, &now);
                 } else {
-                    if (exiting_zoom)
+                    if (exiting_zoom) {
                         wlr_damage_ring_add_whole(&so->damage_ring); // propagates to every buffer via rotate
+                        if (output->zoom_swapchain) {
+                            wlr_swapchain_destroy(output->zoom_swapchain);
+                            output->zoom_swapchain = nullptr;
+                        }
+                    }
                     wlr_output_state state;
                     wlr_output_state_init(&state);
                     wlr_scene_output_build_state(so, &state, nullptr);

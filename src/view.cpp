@@ -1,6 +1,7 @@
 #include "view.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -366,9 +367,18 @@ namespace fenriz {
             set_fullscreen(*view->server, view, want);
         }
 
+        // wlroots unmaps a surface before destroying its role object, so `mapped` should always
+        // be false here.
+        void view_force_unmap(View* view) {
+            assert(!view->mapped && "view destroyed while still mapped");
+            if (view->mapped)
+                view_handle_unmap(&view->unmap, nullptr);
+        }
+
         void view_handle_destroy(wl_listener* listener, void* data) {
             View* view = wl_container_of(listener, view, destroy);
             (void)data;
+            view_force_unmap(view);
             wl_list_remove(&view->map.link);
             wl_list_remove(&view->unmap.link);
             wl_list_remove(&view->commit.link);
@@ -427,6 +437,7 @@ namespace fenriz {
         void view_xwl_handle_destroy(wl_listener* listener, void* data) {
             View* view = wl_container_of(listener, view, destroy);
             (void)data;
+            view_force_unmap(view);
             // map/unmap/commit were already removed at dissociate (wlroots dissociates before
             // destroy); remove only the surface-independent links wired in the ctor.
             wl_list_remove(&view->destroy.link);
@@ -883,6 +894,15 @@ namespace fenriz {
         place_view_nodes(view);
     }
 
+    // Unreference the gradient texture from this view's edge bands.
+    static void release_gradient(View* view) {
+        if (view->grad_gen == 0)
+            return;
+        for (wlr_scene_buffer* edge : view->grad_edge)
+            wlr_scene_buffer_set_buffer(edge, nullptr);
+        view->grad_gen = 0;
+    }
+
     // has the client answered the last size we asked it for
     static bool view_settled(const View* view) {
         if (view->kind == View::Kind::Xdg)
@@ -897,8 +917,10 @@ namespace fenriz {
         view->frame = view->box; // never leave it zeroed; the real value is computed below
         const bool vis = view_visible(server, view);
         wlr_scene_node_set_enabled(&view->scene_tree->node, vis);
-        if (!vis)
+        if (!vis) {
+            release_gradient(view);
             return;
+        }
 
         const int bw = view->fullscreen ? 0 : server.config.border_width;
 
@@ -1011,8 +1033,7 @@ namespace fenriz {
             const bool reupload = view->grad_gen != gen;
             for (int i = 0; i < 4; i++) {
                 wlr_scene_buffer* n = view->grad_edge[i];
-                if (band[i].width <= 0 || band[i].height <= 0)
-                    continue;
+                // Re-upload every band, including currently-empty ones.
                 if (reupload) {
                     // HACK: the node caches the built texture and handing it a different buffer does
                     // not invalidate that cache. removing the nullptr makes the bands keep drawing the
@@ -1020,12 +1041,16 @@ namespace fenriz {
                     wlr_scene_buffer_set_buffer(n, nullptr);
                     wlr_scene_buffer_set_buffer(n, tex);
                 }
+                if (band[i].width <= 0 || band[i].height <= 0)
+                    continue;
                 wlr_scene_node_set_position(&n->node, band[i].x, band[i].y);
                 wlr_scene_buffer_set_dest_size(n, band[i].width, band[i].height);
                 const wlr_fbox src = grad_src(band[i].x, band[i].y, band[i].width, band[i].height, W, H);
                 wlr_scene_buffer_set_source_box(n, &src);
             }
             view->grad_gen = gen;
+        } else {
+            release_gradient(view); // gradient off, or this view lost focus
         }
 
         // glow

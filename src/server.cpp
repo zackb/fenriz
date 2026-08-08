@@ -37,6 +37,7 @@ namespace fenriz {
             wl_listener commit;
             wl_listener destroy;
             wl_listener reposition;
+            wl_listener tree_destroy;
         };
 
         // Walk up through nested submenus to the xdg surface a popup chain hangs off.
@@ -126,12 +127,23 @@ namespace fenriz {
             wlr_xdg_surface_schedule_configure(p->popup->base);
         }
 
+        // The popup's scene tree was freed. base->data still points at it, and wlroots never
+        // invalidates that field, so null it here.
+        void on_popup_tree_destroy(wl_listener* listener, void* data) {
+            Popup* p = wl_container_of(listener, p, tree_destroy);
+            (void)data;
+            p->popup->base->data = nullptr;
+            wl_list_remove(&p->tree_destroy.link);
+            wl_list_init(&p->tree_destroy.link); // on_popup_destroy removes it again
+        }
+
         void on_popup_destroy(wl_listener* listener, void* data) {
             Popup* p = wl_container_of(listener, p, destroy);
             (void)data;
             wl_list_remove(&p->commit.link);
             wl_list_remove(&p->destroy.link);
             wl_list_remove(&p->reposition.link);
+            wl_list_remove(&p->tree_destroy.link);
             delete p;
         }
 
@@ -146,8 +158,6 @@ namespace fenriz {
             wlr_xdg_surface* parent = wlr_xdg_surface_try_from_wlr_surface(popup->parent);
             if (!parent || !parent->data)
                 return;
-            // parent->data holds a raw scene tree wlroots never invalidates. If the owning
-            // toplevel has unmapped, view_handle_unmap freed its whole scene subtree
             wlr_xdg_surface* root = popup_root(parent);
             if (!root)
                 return; // non-xdg (layer-shell) root: not placed here
@@ -193,15 +203,18 @@ namespace fenriz {
             if (path.empty())
                 return;
             std::string dir = path.substr(0, path.find_last_of('/'));
-            server.inotify_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
-            if (server.inotify_fd < 0)
+            int fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+            if (fd < 0)
                 return;
-            if (inotify_add_watch(server.inotify_fd, dir.c_str(), IN_CLOSE_WRITE | IN_MOVED_TO) < 0) {
-                close(server.inotify_fd);
-                server.inotify_fd = -1;
+            if (inotify_add_watch(fd, dir.c_str(), IN_CLOSE_WRITE | IN_MOVED_TO) < 0) {
+                close(fd);
                 return;
             }
-            wl_event_loop_add_fd(loop, server.inotify_fd, WL_EVENT_READABLE, on_config_changed, &server);
+            server.config_watch = wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, on_config_changed, &server);
+            if (!server.config_watch) {
+                close(fd);
+                return;
+            }
             wlr_log(WLR_INFO, "fenriz: watching %s for changes", path.c_str());
         }
 
@@ -221,8 +234,9 @@ namespace fenriz {
 
         void on_drag_icon_destroy(wl_listener* listener, void*) {
             SignalListener* sl = wl_container_of(listener, sl, listener);
-            sl->server->drag_icon = nullptr;    // scene node is freed by wlroots; just drop our handle
-            wl_list_remove(&sl->listener.link); // re-arm for the next drag
+            sl->server->drag_icon = nullptr; // scene node is freed by wlroots
+            wl_list_remove(&sl->listener.link);
+            wl_list_init(&sl->listener.link);
         }
 
         void on_request_start_drag(wl_listener* listener, void* data) {
@@ -239,7 +253,14 @@ namespace fenriz {
             // (process_motion) track it. wlroots frees the node when the icon is destroyed.
             if (ev->drag->icon) {
                 Server* s = sl->server;
-                s->drag_icon = wlr_scene_drag_icon_create(s->scene_overlay, ev->drag->icon);
+                if (s->drag_icon) {
+                    wl_list_remove(&s->l_drag_icon_destroy.listener.link);
+                    s->drag_icon = nullptr;
+                }
+                wlr_scene_tree* icon = wlr_scene_drag_icon_create(s->scene_overlay, ev->drag->icon);
+                if (!icon)
+                    return; // nothing to render or track
+                s->drag_icon = icon;
                 s->l_drag_icon_destroy.server = s;
                 add_listener(s->l_drag_icon_destroy.listener, ev->drag->icon->events.destroy, on_drag_icon_destroy);
             }
@@ -347,11 +368,16 @@ namespace fenriz {
     // Parent a popup into `parent_tree` so it renders above its parent and tracks its
     // position, and take responsibility for configuring it.
     void popup_create(Server& server, wlr_xdg_popup* popup, wlr_scene_tree* parent_tree) {
-        popup->base->data = wlr_scene_xdg_surface_create(parent_tree, popup->base);
-        Popup* p = new Popup{&server, popup, {}, {}, {}};
+        wlr_scene_tree* tree = wlr_scene_xdg_surface_create(parent_tree, popup->base);
+        popup->base->data = tree;
+        Popup* p = new Popup{&server, popup, {}, {}, {}, {}};
         add_listener(p->commit, popup->base->surface->events.commit, on_popup_commit);
         add_listener(p->destroy, popup->events.destroy, on_popup_destroy);
         add_listener(p->reposition, popup->events.reposition, on_popup_reposition);
+        if (tree)
+            add_listener(p->tree_destroy, tree->node.events.destroy, on_popup_tree_destroy);
+        else
+            wl_list_init(&p->tree_destroy.link); // on_popup_destroy removes it unconditionally
     }
 
     void spawn(const std::string& cmd) {
@@ -377,16 +403,12 @@ namespace fenriz {
     Server::Server() { config = Config::load(); }
 
     Server::~Server() {
-        if (inotify_fd >= 0)
-            close(inotify_fd);
+        if (config_watch)
+            wl_event_source_remove(config_watch);
+        ipc::shutdown();
         if (display) {
-            // Disconnect clients politely, then stop. We deliberately don't
-            // wl_display_destroy(): wlroots' globals assert on teardown that nobody is still
-            // subscribed to their signals.
             wl_display_destroy_clients(display);
         }
-        // ponytail: backend/renderer/allocator leak at process exit — add explicit
-        // teardown (wlr_backend_destroy etc.) if fenriz ever restarts in-process.
     }
 
     bool Server::start() {

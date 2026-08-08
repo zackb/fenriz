@@ -17,6 +17,18 @@
       }
     },
     {
+      "name": "sanitize",
+      "displayName": "Sanitizer Build (Ninja, ASan+UBSan)",
+      "description": "Debug build with address/undefined sanitizers, for memory audits",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/sanitize",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "FENRIZ_SANITIZE": "ON"
+      }
+    },
+    {
       "name": "release",
       "displayName": "Release Build (Ninja)",
       "description": "Ninja Release build inside build/release",
@@ -33,6 +45,10 @@
     {
       "name": "debug",
       "configurePreset": "debug"
+    },
+    {
+      "name": "sanitize",
+      "configurePreset": "sanitize"
     },
     {
       "name": "release",

@@ -95,7 +95,10 @@ namespace fenriz::xwayland {
 
         void unmanaged_destroy(wl_listener* listener, void* data) {
             Unmanaged* u = wl_container_of(listener, u, destroy);
-            (void)data;
+            if (u->surface_tree) {
+                wlr_scene_node_destroy(&u->surface_tree->node);
+                u->surface_tree = nullptr;
+            }
             // map/unmap already removed at dissociate; drop the surface-independent links.
             wl_list_remove(&u->associate.link);
             wl_list_remove(&u->dissociate.link);

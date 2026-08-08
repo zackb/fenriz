@@ -136,7 +136,8 @@ namespace fenriz {
         // The workspaces (see Workspace above). Tree nodes leak at shutdown.
         Workspace workspaces[WS_COUNT];
 
-        int inotify_fd = -1; // watches the config dir for hot-reload; closed in ~Server
+        // Watches the config dir for hot-reload.
+        wl_event_source* config_watch = nullptr;
 
         // Held-key repeat for `binde` binds. One timer for the seat.
         wl_event_source* repeat_timer = nullptr;

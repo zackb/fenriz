@@ -1,0 +1,40 @@
+# LeakSanitizer suppressions for `cmake --preset sanitize` runs.
+#
+# Everything here is allocated once and deliberately never freed, because fenriz exits by
+# ending the process. They are real allocations, just not real leaks — without this file they
+# bury the findings that matter. See ~Server in src/server.cpp for why teardown is skipped
+# (wlroots' globals assert if anything is still subscribed to their signals at destroy).
+#
+# Usage:
+#   LSAN_OPTIONS=suppressions=scripts/lsan-suppressions.txt:print_suppressions=0 \
+#   ASAN_OPTIONS=detect_leaks=1 ./build/sanitize/fenriz
+#
+# If you add a suppression, say WHY it can never be a real leak. A suppression that hides a
+# per-event allocation is how a leak audit ends up proving nothing.
+
+# --- fenriz session singletons: one per process, freed by exit ---
+# NOT ipc::init — a `leak:fenriz::ipc::init` line here hid a genuinely fixable leak (its
+# listen-socket event source) until valgrind, which has no such suppression, found it.
+# ipc::shutdown() now cleans up, so nothing there needs suppressing. Cautionary tale:
+# suppress the narrowest thing that is truly unfixable, never a whole init function.
+leak:fenriz::cursor::init
+leak:fenriz::lock::init
+
+# --- compositor-lifetime wlroots/scenefx objects (~Server leaves these up on purpose) ---
+leak:wlr_backend_autocreate
+leak:wlr_allocator_autocreate
+leak:fx_renderer_create
+leak:wlr_xwayland_create
+leak:wlr_scene_create
+
+# --- graphics stack: mesa/GL/EGL/DRM keep process-lifetime caches and TLS ---
+leak:libEGL
+leak:libGLESv2
+leak:swrast_dri.so
+leak:libgallium
+leak:radeonsi_dri.so
+leak:libdrm
+
+# --- fontconfig / xkbcommon one-time caches ---
+leak:libfontconfig
+leak:xkb_context_new
