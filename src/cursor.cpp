@@ -493,6 +493,14 @@ namespace fenriz::cursor {
             wlr_seat_pointer_notify_button(server.seat, event->time_msec, event->button, event->state);
         }
 
+        // True if libinput is inverting this device's scroll deltas
+        bool device_natural_scroll(wlr_input_device* device) {
+            if (!wlr_input_device_is_libinput(device))
+                return false;
+            libinput_device* dev = wlr_libinput_get_device_handle(device);
+            return dev && libinput_device_config_scroll_get_natural_scroll_enabled(dev);
+        }
+
         void cursor_axis(wl_listener* listener, void* data) {
             Cursor* c = wl_container_of(listener, c, axis);
             Server& server = *c->server;
@@ -509,7 +517,7 @@ namespace fenriz::cursor {
                 const float step = server.config.zoom_step;
                 // zoom scrolling up/away always zooms in regardless of natural_scroll
                 float delta = event->delta;
-                if (event->relative_direction == WL_POINTER_AXIS_RELATIVE_DIRECTION_INVERTED)
+                if (device_natural_scroll(&event->pointer->base))
                     delta = -delta;
                 float f = delta < 0 ? (1.0f + step) : (1.0f / (1.0f + step));
                 server.zoom_target = std::clamp(server.zoom_target * f, 1.0f, server.config.zoom_max);
