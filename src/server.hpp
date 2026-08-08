@@ -129,10 +129,6 @@ namespace fenriz {
         // only to the lock surface. Owned by src/lock.cpp; other modules just read it.
         bool locked = false;
 
-        // A client (wlsunset/gammastep) changed the gamma LUT. Setting gamma doesn't damage
-        // the scene, so the frame handler must commit even when the scene needs no repaint.
-        bool gamma_dirty = false;
-
         // A split ratio changed and the layout needs recomputing. Set by tiling::resize_split
         // instead of arranging inline.
         bool layout_dirty = false;
