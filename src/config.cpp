@@ -317,6 +317,10 @@ namespace fenriz {
                 cfg.repeat_rate = parse_int(val, cfg.repeat_rate, 1, 1000); // lower bound avoids /0 in timer
             else if (key == "zoom_mod")
                 cfg.zoom_mod = mod_from_token(val); // "ctrl"/"alt"/"super"/"shift"; unknown = 0 = off
+            else if (key == "cursor")
+                cfg.cursor_theme = val;
+            else if (key == "cursor_size")
+                cfg.cursor_size = parse_int(val, cfg.cursor_size, 0, 256); // 0 = auto, like `scale`
             else if (key == "zoom_max")
                 cfg.zoom_max = parse_float(val, cfg.zoom_max, 1.0f, 10.0f);
             else if (key == "zoom_step")

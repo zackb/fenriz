@@ -75,6 +75,8 @@ namespace fenriz {
         bool focus_follows_pointer = true; // window under the moving cursor gains focus
         int repeat_delay = 250;            // ms a `binde` key is held before it starts repeating
         int repeat_rate = 15;              // `binde` fires per second while held
+        std::string cursor_theme;
+        int cursor_size = 0;
         uint32_t zoom_mod = 4;  // modifier + scroll = screen zoom; 4 = CTRL (mirrors WLR_MODIFIER_*), 0 = off
         float zoom_max = 3.0f;  // ceiling for the zoom level
         float zoom_step = 0.1f; // fraction of zoom added/removed per scroll notch

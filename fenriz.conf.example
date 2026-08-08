@@ -20,6 +20,10 @@ sensitivity      = 0.55          # trackpad/mouse speed, -1.0 (slow) .. 1.0 (fas
 tap_to_click     = true          # trackpad tap = click; 1/2/3 fingers = left/right/middle
 clickfinger      = true          # two-finger press = right-click; false = bottom-right corner
 focus_follows_pointer = true     # window under the moving cursor gains focus; false = click-to-focus only
+# cursor         = BreezeX-RosePine-Linux  # icon theme name under /usr/share/icons or ~/.local/share/icons.
+                                 # Unset = XCURSOR_THEME from the environment, then the system default.
+                                 # Exported to clients too, so apps match the compositor's pointer.
+# cursor_size    = 24            # base size in px at scale 1; unset = XCURSOR_SIZE, then 24
 
 # Screen zoom / magnifier: hold zoom_mod and scroll to zoom in/out around the cursor.
 zoom_mod         = ctrl          # ctrl / alt / super / shift; empty or unknown = off

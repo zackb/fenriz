@@ -1,7 +1,9 @@
 #include "cursor.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <linux/input-event-codes.h>
+#include <string>
 
 #include "layer.hpp"
 #include "server.hpp"
@@ -46,6 +48,9 @@ namespace fenriz::cursor {
             wlr_pointer_constraint_v1* active = nullptr;
             wl_listener constraint_destroy; // linked only while `active` is set
 
+            std::string theme;
+            int size = 0;
+
             Grab grab = Grab::None;
             View* grabbed = nullptr;
             View* preview_partner = nullptr;     // tiled view swapped into grabbed's home slot (live drag rearrange)
@@ -56,6 +61,39 @@ namespace fenriz::cursor {
 
         // The singleton, so forget_view() can reach the grab state (init() sets it).
         Cursor* g_cursor = nullptr;
+
+        // (Re)build the xcursor manager. Theme and size come from `cursor =` / `cursor_size =`,
+        // falling back to XCURSOR_THEME/XCURSOR_SIZE in the environment, then to the system
+        // "default" theme at 24px. Exported as XCURSOR_THEME/XCURSOR_SIZE for clients.
+        void load_theme(Cursor* c) {
+            const Config& cfg = c->server->config;
+            std::string theme = cfg.cursor_theme;
+            if (theme.empty())
+                if (const char* e = getenv("XCURSOR_THEME"))
+                    theme = e;
+            int size = cfg.cursor_size;
+            if (size <= 0) {
+                const char* e = getenv("XCURSOR_SIZE");
+                size = e ? (int)strtol(e, nullptr, 10) : 0;
+                if (size <= 0)
+                    size = 24;
+            }
+            if (c->mgr && theme == c->theme && size == c->size)
+                return;
+
+            wlr_xcursor_manager* old = c->mgr;
+            c->mgr = wlr_xcursor_manager_create(theme.empty() ? nullptr : theme.c_str(), size);
+            c->theme = theme;
+            c->size = size;
+            wlr_cursor_set_xcursor(c->cursor, c->mgr, "default");
+            if (old)
+                wlr_xcursor_manager_destroy(old);
+
+            if (!theme.empty())
+                setenv("XCURSOR_THEME", theme.c_str(), 1);
+            setenv("XCURSOR_SIZE", std::to_string(size).c_str(), 1);
+            wlr_log(WLR_INFO, "fenriz: cursor theme '%s' at %dpx", theme.empty() ? "default" : theme.c_str(), size);
+        }
 
         // Surface under (lx,ly) via the scene graph, honoring z-order. While locked, only
         // the lock tree is considered so input can't reach the desktop. *sx,*sy return
@@ -292,9 +330,12 @@ namespace fenriz::cursor {
                                ? wlr_pointer_constraints_v1_constraint_for_surface(c->constraints, surface, server.seat)
                                : nullptr);
 
-            if (!surface) {
-                // Over empty desktop: show the default cursor and drop pointer focus.
+            // dont reset the cursor on dnd
+            if (!server.seat->drag && surface != server.seat->pointer_state.focused_surface)
                 wlr_cursor_set_xcursor(c->cursor, c->mgr, "default");
+
+            if (!surface) {
+                // Over empty desktop: nothing holds pointer focus.
                 wlr_seat_pointer_notify_clear_focus(server.seat);
                 return;
             }
@@ -434,6 +475,7 @@ namespace fenriz::cursor {
                             rc = top ? (left ? "nw-resize" : "ne-resize") : (left ? "sw-resize" : "se-resize");
                         }
                         wlr_cursor_set_xcursor(c->cursor, c->mgr, rc);
+                        wlr_seat_pointer_notify_clear_focus(server.seat);
                         return; // consume the press; don't forward to the client
                     }
                 }
@@ -616,10 +658,7 @@ namespace fenriz::cursor {
         c->cursor = wlr_cursor_create();
         server.cursor = c->cursor;
         wlr_cursor_attach_output_layout(c->cursor, server.output_layout);
-        c->mgr = wlr_xcursor_manager_create(nullptr, 24);
-        // Load the cursor theme at the output scale so the pointer isn't a tiny 1x sprite.
-        if (server.config.scale > 0)
-            wlr_xcursor_manager_load(c->mgr, server.config.scale);
+        load_theme(c);
 
         add_listener(c->motion, c->cursor->events.motion, cursor_motion);
         add_listener(c->motion_absolute, c->cursor->events.motion_absolute, cursor_motion_absolute);
@@ -655,6 +694,11 @@ namespace fenriz::cursor {
         // Cursor is value-initialized, so this link is {null,null}, not a valid empty list. Init it
         // so set_constraint's unconditional wl_list_remove is safe before the first constraint.
         wl_list_init(&c->constraint_destroy.link);
+    }
+
+    void reload(Server&) {
+        if (g_cursor)
+            load_theme(g_cursor);
     }
 
     void attach_pointer(Server& server, wlr_input_device* device) {
