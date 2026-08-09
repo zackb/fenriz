@@ -714,10 +714,20 @@ namespace fenriz::cursor {
             load_theme(g_cursor);
     }
 
+    // wlroots exposes no device->output getter
+    static void map_to_own_output(Server& server, wlr_input_device* device) {
+        if (!wlr_input_device_is_wl(device) || server.outputs.empty())
+            return;
+        output::Output* out = server.outputs.back();
+        if (!out->handle)
+            return;
+        wlr_cursor_map_input_to_output(server.cursor, device, out->handle);
+        wlr_log(WLR_DEBUG, "cursor: mapped %s to output %s", device->name, out->handle->name);
+    }
+
     void attach_pointer(Server& server, wlr_input_device* device) {
         wlr_cursor_attach_input_device(server.cursor, device);
-        // Apply the scroll direction to real (libinput) pointers that support it — trackpads
-        // and some mice. Nested/headless backends aren't libinput and are skipped.
+        map_to_own_output(server, device);
         if (wlr_input_device_is_libinput(device)) {
             libinput_device* dev = wlr_libinput_get_device_handle(device);
             if (dev && libinput_device_config_scroll_has_natural_scroll(dev))
