@@ -8,6 +8,7 @@ shadow           = on            # soft glow behind the focused window
 shadow_color     = 0x00000055    # RGBA hex; alpha = glow intensity, hue tracks border_active
 shadow_blur      = 28            # glow spread in px; wider = softer
 # border_gradient  = 0xff2090ff  # RGBA hex, Optional; focused border fades border_active (top-left) to this (bottom-right), 45°.
+# border_gradient_ease = 1.0     # 0.0 = straight linear sweep, 1.0 = smoothstep
 gaps             = 8
 rounding         = 10           # corner radius in px
 animation        = 150          # window slide-into-place, ms; 0 = instant (off)
