@@ -1,3 +1,4 @@
+#include "color.hpp"
 #include "config.hpp"
 
 #include <cassert>
@@ -46,6 +47,23 @@ int main() {
 
     // unset leaves the border flat
     assert(Config::parse("").border_gradient == 0u);
+
+    assert(u32_mix(0x16b8f3ffu, 0x16b8f3ffu) == 0x16b8f3ffu);    // identity
+    assert(u32_mix(0x000000ffu, 0xffffffffu) == 0xbcbcbcffu);    // linear grey, not 0x80
+    assert(u32_mix(0x16b8f3ffu, 0xff2090ffu) == 0xbc88caffu);    // zima blue -> magenta
+    assert((u32_mix(0x16b8f300u, 0x16b8f3ffu) & 0xff) == 0x80u); // alpha averages directly, rounded
+
+    assert(u32_lerp(0x16b8f3ffu, 0xff2090ffu, 0.0f) == 0x16b8f3ffu);
+    assert(u32_lerp(0x16b8f3ffu, 0xff2090ffu, 1.0f) == 0xff2090ffu);
+
+    assert(ramp_ease(0.5f, 1.0f) == 0.5f);
+    assert(ramp_ease(0.0f, 1.0f) == 0.0f && ramp_ease(1.0f, 1.0f) == 1.0f);
+    assert(ramp_ease(0.25f, 0.0f) == 0.25f); // amount 0 = linear passthrough
+    assert(ramp_ease(0.25f, 1.0f) < 0.25f);  // pulled toward the low endpoint
+    assert(ramp_ease(0.75f, 1.0f) > 0.75f);  // pulled toward the high endpoint
+    assert(Config{}.border_gradient_ease == 1.0f);
+    assert(Config::parse("border_gradient_ease = 0.4\n").border_gradient_ease > 0.39f);
+    assert(Config::parse("border_gradient_ease = 9\n").border_gradient_ease == 1.0f); // clamped
 
     // exec-once keeps the full command (not comma-split like binds).
     assert(c.exec_once.size() == 1);

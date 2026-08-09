@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdlib>
 
+#include "color.hpp"
 #include "cursor.hpp"
 #include "ipc.hpp"
 #include "server.hpp"
@@ -28,19 +29,12 @@ namespace fenriz {
             out[3] = a;
         }
 
-        // halfway between two 0xRRGGBBAA colors per channel
-        uint32_t u32_mix(uint32_t a, uint32_t b) {
-            uint32_t out = 0;
-            for (int shift = 0; shift < 32; shift += 8) {
-                const uint32_t ca = (a >> shift) & 0xff, cb = (b >> shift) & 0xff;
-                out |= ((ca + cb) / 2) << shift;
-            }
-            return out;
-        }
+        // ramp resolution
+        constexpr int GRAD_N = 17;
 
         struct GradBuffer {
             wlr_buffer base;
-            uint32_t px[4]; // premultiplied ARGB8888, row-major: TL, TR, BL, BR
+            uint32_t px[GRAD_N * GRAD_N]; // premultiplied ARGB8888, row-major
         };
 
         void grad_buffer_destroy(wlr_buffer* buffer) {
@@ -54,7 +48,7 @@ namespace fenriz {
             GradBuffer* g = wl_container_of(buffer, g, base);
             *data = g->px;
             *format = DRM_FORMAT_ARGB8888;
-            *stride = 2 * sizeof(uint32_t);
+            *stride = GRAD_N * sizeof(uint32_t);
             return true;
         }
 
@@ -80,19 +74,23 @@ namespace fenriz {
         wlr_buffer* gradient_texture(const Config& cfg, uint32_t* gen) {
             static wlr_buffer* cached = nullptr;
             static uint32_t cached_from = 0, cached_to = 0, generation = 0;
+            static float cached_ease = -1.0f;
 
-            if (cached && cached_from == cfg.border_active && cached_to == cfg.border_gradient) {
+            if (cached && cached_from == cfg.border_active && cached_to == cfg.border_gradient &&
+                cached_ease == cfg.border_gradient_ease) {
                 *gen = generation;
                 return cached;
             }
 
             GradBuffer* g = new GradBuffer{};
-            wlr_buffer_init(&g->base, &grad_buffer_impl, 2, 2);
-            const uint32_t mid = u32_mix(cfg.border_active, cfg.border_gradient);
-            g->px[0] = premul_argb(cfg.border_active);
-            g->px[1] = premul_argb(mid);
-            g->px[2] = premul_argb(mid);
-            g->px[3] = premul_argb(cfg.border_gradient);
+            wlr_buffer_init(&g->base, &grad_buffer_impl, GRAD_N, GRAD_N);
+            for (int j = 0; j < GRAD_N; j++) {
+                for (int i = 0; i < GRAD_N; i++) {
+                    const float t = (float)(i + j) / (2 * (GRAD_N - 1));
+                    const float e = ramp_ease(t, cfg.border_gradient_ease);
+                    g->px[j * GRAD_N + i] = premul_argb(u32_lerp(cfg.border_active, cfg.border_gradient, e));
+                }
+            }
 
             if (cached)
                 wlr_buffer_drop(cached); // live nodes keep their lock until they re-set
@@ -100,16 +98,19 @@ namespace fenriz {
             cached = &g->base;
             cached_from = cfg.border_active;
             cached_to = cfg.border_gradient;
+            cached_ease = cfg.border_gradient_ease;
             *gen = ++generation;
             return cached;
         }
 
+        // Map a band's window-space rect into the ramp texture
         wlr_fbox grad_src(int x, int y, int w, int h, int fw, int fh) {
+            constexpr double s = GRAD_N - 1;
             return {
-                .x = 0.5 + (double)x / fw,
-                .y = 0.5 + (double)y / fh,
-                .width = (double)w / fw,
-                .height = (double)h / fh,
+                .x = 0.5 + s * x / fw,
+                .y = 0.5 + s * y / fh,
+                .width = s * w / fw,
+                .height = s * h / fh,
             };
         }
 
@@ -1057,10 +1058,14 @@ namespace fenriz {
         const bool glow = server.config.shadow && !view->fullscreen && view == server.focused_view;
         wlr_scene_node_set_enabled(&view->shadow->node, glow);
         if (glow) {
+            const uint32_t glow_rgba = server.config.border_gradient
+                                           ? u32_mix(server.config.border_active, server.config.border_gradient)
+                                           : server.config.border_active;
             float scol[4];
-            u32_color(server.config.border_active, scol);
+            u32_color(glow_rgba, scol);
             scol[3] = (server.config.shadow_color & 0xff) / 255.0f;
             wlr_scene_shadow_set_color(view->shadow, scol);
+            wlr_scene_shadow_set_blur_sigma(view->shadow, (float)server.config.shadow_blur);
             wlr_scene_shadow_set_size(view->shadow, box.width, box.height);
             wlr_scene_shadow_set_corner_radius(view->shadow, server.config.rounding);
             wlr_scene_shadow_set_clipped_region(view->shadow, hole);

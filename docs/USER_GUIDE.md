@@ -117,12 +117,13 @@ Colors are `0xRRGGBBAA` hex.
 | Key | Default | Meaning |
 |---|---|---|
 | `border_width` | `2` | border thickness, px |
-| `border_active` | `0x33ccffff` | focused window border |
-| `border_inactive` | `0x444444ff` | unfocused window border |
+| `border_active` | `0x16b8f3cc` | focused window border |
+| `border_inactive` | `0x44444488` | unfocused window border |
 | `border_gradient` | unset | focused border fades from `border_active` (top-left) to this (bottom-right) at 45°; unset = flat |
+| `border_gradient_ease` | `1.0` | how long the ramp holds its endpoint colors. `0` = straight linear sweep, `1` = smoothstep |
 | `shadow` | `on` | soft glow behind the focused window |
-| `shadow_color` | `0x33ccff66` | glow color (low alpha = subtle) |
-| `shadow_blur` | `18` | glow spread, px |
+| `shadow_color` | `0x00000055` | glow intensity: only the alpha is used |
+| `shadow_blur` | `28` | glow spread, px |
 | `gaps` | `8` | gap between windows, px |
 | `rounding` | `10` | corner radius, px |
 | `animation` | `150` | slide-into-place duration, ms; `0` = off |
