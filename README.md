@@ -56,6 +56,7 @@ Also needs `cmake` (>= 3.19) and `ninja`.
 make debug      # configure + build into build/debug
 make release
 make test       # run the config/tiling/keybind/output self-checks
+make test-wl    # drive real Wayland clients against a throwaway compositor
 make run        # build debug and launch
 ```
 

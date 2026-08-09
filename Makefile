@@ -20,12 +20,15 @@ package: release
 	cd build/release && cpack
 
 test: debug
-	ctest --test-dir build/debug --output-on-failure
+	ctest --test-dir build/debug --output-on-failure -LE integration
+
+test-wl: debug
+	ctest --test-dir build/debug --output-on-failure -L integration
 
 .PHONY: fmt
 fmt:
 	@echo "Formatting code with clang-format..."
-	@find ./src \( -name "*.cpp" -o -name "*.hpp" \) -print0 | xargs -0 -n 1 clang-format -i
+	@find ./src ./tests \( -name "*.cpp" -o -name "*.hpp" -o -name "*.c" -o -name "*.h" \) -print0 | xargs -0 -n 1 clang-format -i
 	@echo "Done."
 
 clean:
