@@ -461,6 +461,9 @@ namespace fenriz::cursor {
                                               : (resize ? Grab::ResizeTile : Grab::Swap);
                         v->dragging = (c->grab == Grab::Swap); // float above tiles, hold offset
                         if (c->grab == Grab::Swap) {
+                            // dragged tile leaves the layout and follows the cursor above its siblings
+                            if (v->scene_tree)
+                                wlr_scene_node_raise_to_top(&v->scene_tree->node);
                             c->grab_home = v->box; // dragging back over here reverts the preview
                             c->grab_fx = v->box.width > 0 ? (c->cursor->x - v->box.x) / v->box.width : 0.5;
                             c->grab_fy = v->box.height > 0 ? (c->cursor->y - v->box.y) / v->box.height : 0.5;
