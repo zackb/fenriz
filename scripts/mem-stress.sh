@@ -17,6 +17,7 @@ set -u
 CYCLES=${1:-10}
 MODE=${2:-plain}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+source "$ROOT/scripts/nested.sh"
 OUT=$(mktemp -d /tmp/fenriz-memstress.XXXXXX)
 LOG=$OUT/fenriz.log
 
@@ -30,13 +31,8 @@ esac
 command -v socat >/dev/null || { echo "socat required"; exit 1; }
 # Two nested instances land on the same WAYLAND_DISPLAY, hence the same control socket, and
 # silently drive each other's commands. Refuse to start rather than produce a bogus number.
-# Anchored at both ends so it matches only the nested binary itself — not the user's live
-# /usr/bin/fenriz, and not a shell whose command line happens to contain the path.
-if pgrep -f "^${ROOT}/build/[a-z]*/fenriz$" >/dev/null; then
-    echo "a nested fenriz is already running — stop it first (pkill -f '$ROOT/build/.*/fenriz')"; exit 1
-fi
+fenriz_refuse_if_running "$ROOT" || exit 1
 
-export WLR_BACKENDS=wayland WLR_WL_OUTPUTS=2 FENRIZ_LOG=$LOG
 export ASAN_OPTIONS="detect_leaks=1:halt_on_error=0:abort_on_error=0:detect_stack_use_after_return=1"
 export LSAN_OPTIONS="suppressions=$ROOT/scripts/lsan-suppressions.txt:print_suppressions=0"
 export UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0"
@@ -51,34 +47,33 @@ case $MODE in
 esac
 
 echo "mode=$MODE cycles=$CYCLES out=$OUT"
-"${LAUNCH[@]}" >"$OUT/stdout.txt" 2>"$OUT/stderr.txt" &
-LAUNCH_PID=$!
-
-# The compositor's own log is the only trustworthy source for its socket path.
 # Startup under valgrind is ~50x slower (GL/EGL init dominates), so wait much longer there.
-SOCK=""
-WAIT=60
-[ "$MODE" = valgrind ] && WAIT=600
-for _ in $(seq $WAIT); do
-    [ -s "$LOG" ] && SOCK=$(grep -o 'FENRIZ_SOCKET=[^ ]*' "$LOG" | tail -1 | cut -d= -f2)
-    [ -n "$SOCK" ] && [ -S "$SOCK" ] && break
-    sleep 0.5
-done
-[ -n "$SOCK" ] || { echo "nested fenriz never came up; see $OUT/stderr.txt"; kill $LAUNCH_PID 2>/dev/null; exit 1; }
-NESTED_DISPLAY=$(grep -o 'WAYLAND_DISPLAY=[^ ]*' "$LOG" | tail -1 | cut -d= -f2)
-FENRIZ_PID=$(pgrep -f "^${BIN}$" | head -1)
-[ -n "$FENRIZ_PID" ] || FENRIZ_PID=$LAUNCH_PID
+[ "$MODE" = valgrind ] && export FENRIZ_BOOT_TRIES=600
+fenriz_boot "$LOG" nested "${LAUNCH[@]}" || exit 1
+SOCK=$FENRIZ_SOCK
+NESTED_DISPLAY=$FENRIZ_DISPLAY
+LAUNCH_PID=$FENRIZ_LAUNCH_PID
 echo "nested display=$NESTED_DISPLAY sock=$SOCK pid=$FENRIZ_PID"
 
-ipc() { printf '%s\n' "$1" | timeout 2 socat -T1 - "UNIX-CONNECT:$SOCK" >/dev/null 2>&1; }
+ipc() { fenriz_ipc "$1"; }
 rss() { awk '/^VmRSS:/{print $2}' "/proc/$FENRIZ_PID/status" 2>/dev/null || echo 0; }
 
-# A couple of real clients so map/unmap, popups and the tiling tree are actually exercised.
+# Real clients, so map/unmap, popups and the tiling tree are actually exercised. Prefer our
+# own test client: it's always built alongside fenriz, where foot may not be installed at
+# all — in which case this loop used to silently produce a client-free run.
 spawn_clients() {
-    for _ in 1 2; do
+    local ours=$ROOT/build/$PRESET/fenriz-test
+    if [ -x "$ours" ]; then
+        WAYLAND_DISPLAY=$NESTED_DISPLAY "$ours" popup --hold >/dev/null 2>&1 &
+        WAYLAND_DISPLAY=$NESTED_DISPLAY "$ours" subsurface --hold >/dev/null 2>&1 &
+    elif command -v foot >/dev/null; then
         WAYLAND_DISPLAY=$NESTED_DISPLAY foot >/dev/null 2>&1 &
-    done 2>/dev/null
-    command -v foot >/dev/null || WAYLAND_DISPLAY=$NESTED_DISPLAY weston-terminal >/dev/null 2>&1 &
+        WAYLAND_DISPLAY=$NESTED_DISPLAY foot >/dev/null 2>&1 &
+    elif command -v weston-terminal >/dev/null; then
+        WAYLAND_DISPLAY=$NESTED_DISPLAY weston-terminal >/dev/null 2>&1 &
+    else
+        echo "warning: no test client available; map/unmap paths will not be exercised"
+    fi
     sleep 1
 }
 
@@ -119,7 +114,7 @@ wait $LAUNCH_PID 2>/dev/null
 case $MODE in
     sanitize)
         echo "--- sanitizer report ---"
-        grep -E "ERROR: (Address|Leak)Sanitizer|runtime error|SUMMARY" "$OUT/stderr.txt" || echo "clean"
+        grep -E "ERROR: (Address|Leak)Sanitizer|runtime error|SUMMARY" "$OUT/fenriz.stderr" || echo "clean"
         ;;
     valgrind)  echo "--- valgrind ---"; grep -E "definitely lost|indirectly lost|ERROR SUMMARY" "$OUT/valgrind.txt" ;;
     heaptrack)

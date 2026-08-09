@@ -43,6 +43,28 @@ add_custom_command(
     VERBATIM
 )
 
+pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
+pkg_get_variable(WL_PROTO_DIR wayland-protocols pkgdatadir)
+
+set(WL_CLIENT_PROTO_SRC "")
+function(wl_client_proto name xml)
+    set(hdr ${CMAKE_CURRENT_BINARY_DIR}/${name}-client-protocol.h)
+    set(src ${CMAKE_CURRENT_BINARY_DIR}/${name}-protocol.c)
+    add_custom_command(OUTPUT ${hdr}
+        COMMAND ${WAYLAND_SCANNER} client-header ${xml} ${hdr}
+        DEPENDS ${xml} VERBATIM)
+    add_custom_command(OUTPUT ${src}
+        COMMAND ${WAYLAND_SCANNER} private-code ${xml} ${src}
+        DEPENDS ${xml} VERBATIM)
+    set(WL_CLIENT_PROTO_SRC ${WL_CLIENT_PROTO_SRC} ${hdr} ${src} PARENT_SCOPE)
+endfunction()
+
+wl_client_proto(xdg-shell            ${WL_PROTO_DIR}/stable/xdg-shell/xdg-shell.xml)
+wl_client_proto(viewporter           ${WL_PROTO_DIR}/stable/viewporter/viewporter.xml)
+wl_client_proto(xdg-decoration-unstable-v1
+                                     ${WL_PROTO_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml)
+wl_client_proto(fractional-scale-v1  ${WL_PROTO_DIR}/staging/fractional-scale/fractional-scale-v1.xml)
+
 add_executable(fenriz
     src/main.cpp
     src/log.cpp
@@ -113,7 +135,17 @@ target_link_libraries(fenriz_keybind_test PRIVATE PkgConfig::XKBCOMMON)
 add_executable(fenrizctl_test src/test_fenrizctl.cpp)
 target_include_directories(fenrizctl_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-foreach(t fenriz_config_test fenriz_tiling_test fenriz_keybind_test fenriz_output_test fenrizctl_test)
+# Wayland client tests for integration testing
+add_executable(fenriz-test
+    tests/client/main.c
+    tests/client/wlclient.c
+    tests/client/scenarios.c
+    ${WL_CLIENT_PROTO_SRC}
+)
+target_include_directories(fenriz-test PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+target_link_libraries(fenriz-test PRIVATE PkgConfig::WAYLAND_CLIENT rt)
+
+foreach(t fenriz_config_test fenriz_tiling_test fenriz_keybind_test fenriz_output_test fenrizctl_test fenriz-test)
     target_compile_options(${t} PRIVATE -UNDEBUG)
 endforeach()
 
@@ -123,6 +155,13 @@ add_test(NAME tiling  COMMAND fenriz_tiling_test)
 add_test(NAME keybind COMMAND fenriz_keybind_test)
 add_test(NAME output  COMMAND fenriz_output_test)
 add_test(NAME ctl     COMMAND fenrizctl_test)
+
+foreach(s popup resize fullscreen dnd grab subsurface scale destroy-parent hotplug evil)
+    add_test(NAME wl-${s}
+             COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/wltest.sh
+                     --build-dir ${CMAKE_CURRENT_BINARY_DIR} ${s})
+    set_tests_properties(wl-${s} PROPERTIES LABELS integration TIMEOUT 120)
+endforeach()
 
 set(CPACK_SET_DESTDIR ON)
 set(CPACK_PACKAGE_RELOCATABLE FALSE)
