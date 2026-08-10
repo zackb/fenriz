@@ -68,8 +68,9 @@ menu = Screenshot, grim -g "$(slurp)" - | wl-copy
 
 ## Desktop menu
 
-Right-click the desktop. Sleep / Log Out / Restart / Shut Down plus your config.
-(`terminal =` and `menu =` add to them.
+Right-click the desktop. Every installed application, grouped into submenus by
+freedesktop category, then Applications / Terminal / your `menu =` entries, then
+Power (Lock / Sleep / Log Out / Restart / Shut Down).
 
 Log Out uses `fenrizctl exit` under fenriz and falls back to
 `loginctl terminate-session` elsewhere.

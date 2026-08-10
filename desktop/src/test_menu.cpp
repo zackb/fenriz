@@ -43,6 +43,31 @@ namespace {
         }
     }
 
+    // An app is listed under every category it claims, in menu order rather than the order
+    // the desktop entry happens to list them in.
+    void test_categories_for() {
+        using V = std::vector<std::string>;
+
+        assert(menu::categories_for({"Utility"}) == V{"Accessories"});
+        assert(menu::categories_for({"Network", "WebBrowser"}) == V{"Internet"});
+
+        // Several matches: a video editor really does belong in both.
+        assert(menu::categories_for({"AudioVideo", "Graphics"}) == V{"Graphics", "Multimedia"});
+
+        // Menu order wins over the entry's own order.
+        assert(menu::categories_for({"System", "Development"}) == V{"Development", "System"});
+
+        // Multimedia collects three keys but must still appear once.
+        assert(menu::categories_for({"AudioVideo", "Audio", "Video"}) == V{"Multimedia"});
+
+        // Nothing recognised — the caller puts these under "Other".
+        assert(menu::categories_for({}).empty());
+        assert(menu::categories_for({"GTK", "X-Foo", "ConsoleOnly"}).empty());
+
+        // Additional (non-main) categories alone are not enough to place an app.
+        assert(menu::categories_for({"TextEditor"}).empty());
+    }
+
     void test_power_submenu_always_present() {
         setenv("PATH", "/nonexistent", 1);
         unsetenv("TERMINAL");
@@ -154,6 +179,12 @@ namespace {
 } // namespace
 
 int main() {
+    // Before any GIO call: the structural tests below count menu items, so the machine's
+    // own installed apps must not leak in. An empty data path means no desktop entries.
+    setenv("XDG_DATA_HOME", "/nonexistent", 1);
+    setenv("XDG_DATA_DIRS", "/nonexistent", 1);
+
+    test_categories_for();
     test_power_submenu_always_present();
     test_terminal_and_custom_entries_in_order();
     test_launcher_entry_tracks_config();

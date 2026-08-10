@@ -3,12 +3,16 @@
 #include <gtk/gtk.h>
 
 #include <string>
+#include <vector>
 
 #include "config.hpp"
 
 namespace fenriz::desktop::menu {
 
-    // Installs the single "exec" action every menu item drives. Call once per application.
+    // Submenus an app with these freedesktop categories belongs under, in menu order.
+    std::vector<std::string> categories_for(const std::vector<std::string>& categories);
+
+    // Installs the actions menu items drive. Call once per application.
     void install_actions(GtkApplication* app);
 
     // The context-menu model. Transfers ownership to the caller.
