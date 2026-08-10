@@ -19,6 +19,10 @@ install: release
 test: debug
 	ctest --test-dir build/debug --output-on-failure
 
+test-polkit:
+	@echo "Triggering a polkit prompt..."
+	pkexec --user root id
+
 .PHONY: fmt
 fmt:
 	@echo "Formatting code with clang-format..."
