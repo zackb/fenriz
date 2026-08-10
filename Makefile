@@ -25,6 +25,17 @@ test: debug
 test-wl: debug
 	ctest --test-dir build/debug --output-on-failure -L integration
 
+# fenriz-desktop is a standalone subproject with its own presets; these just forward.
+.PHONY: desktop install-desktop run-desktop
+desktop:
+	$(MAKE) -C desktop
+
+install-desktop:
+	$(MAKE) -C desktop install
+
+run-desktop:
+	$(MAKE) -C desktop run
+
 .PHONY: fmt
 fmt:
 	@echo "Formatting code with clang-format..."
