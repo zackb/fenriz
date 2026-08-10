@@ -16,6 +16,11 @@ run: debug
 install: release
 	cmake --install build/release
 
+reinstall: release
+	sudo cmake --install build/release
+	$(MAKE) -C desktop release
+	sudo $(MAKE) -C desktop install
+
 package: release
 	cd build/release && cpack
 
