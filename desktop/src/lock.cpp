@@ -11,6 +11,7 @@ namespace fenriz::desktop {
                    ".lock-scrim { background-color: rgba(0,0,0,0.45); }"
                    ".lock-clock { font-size: 76px; font-weight: 300; color: white; }"
                    ".lock-date  { font-size: 18px; color: alpha(white, 0.85); }"
+                   ".lock-entry { caret-color: transparent; }"
                    ".lock-error { font-size: 14px; color: #ff8080; }";
         }
 
@@ -111,6 +112,8 @@ namespace fenriz::desktop {
 
         s.entry = gtk_password_entry_new();
         gtk_password_entry_set_show_peek_icon(GTK_PASSWORD_ENTRY(s.entry), FALSE);
+        gtk_widget_add_css_class(s.entry, "lock-entry");
+        gtk_editable_set_alignment(GTK_EDITABLE(s.entry), 0.5f);
         gtk_widget_set_size_request(s.entry, 280, -1);
         gtk_widget_set_halign(s.entry, GTK_ALIGN_CENTER);
         g_signal_connect(s.entry, "activate", G_CALLBACK(on_entry_activate), this);
