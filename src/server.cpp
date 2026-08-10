@@ -41,9 +41,7 @@ namespace fenriz {
         };
 
         // Walk up through nested submenus to the xdg surface a popup chain hangs off.
-        // Null ONLY when the chain escapes to a non-xdg surface — a layer-shell bar's menu,
-        // which neither caller handles. Callers check the role themselves: "rooted at a bar"
-        // and "rooted at something that isn't a toplevel" are different cases to them.
+        // Null ONLY when the chain escapes to a non-xdg surface
         wlr_xdg_surface* popup_root(wlr_xdg_surface* from) {
             wlr_xdg_surface* root = from;
             while (root->role == WLR_XDG_SURFACE_ROLE_POPUP) {
@@ -78,14 +76,7 @@ namespace fenriz {
             if (!o)
                 return false;
 
-            // usable_area is layout coords with the bars' exclusive zones removed, so menus
-            // stay clear of them. unconstrain_from_box wants the box in the root toplevel's
-            // *surface* coordinate space: wlr_xdg_popup_get_toplevel_coords converts the popup
-            // into surface coords by adding the toplevel's window-geometry offset. So shift the
-            // usable area from layout coords to that same surface origin.
-            // layout is (view->box + bw) - geometry, hence the + geometry here. CSD clients
-            // (GTK/Firefox/Zen) ship a large shadow-margin geometry offset; omitting it left the
-            // box shifted up-left by the margin, so bottom-anchored menus spilled off-screen.
+            // usable_area is layout coords with the bars' exclusive zones removed, so menus stay clear of them.
             const int bw = view->fullscreen ? 0 : server.config.border_width;
             // `frame`, not `box`: a client that refuses its tile size is drawn centered in it,
             // and popups anchor to where the window actually is.
@@ -148,8 +139,9 @@ namespace fenriz {
         }
 
         // The parent's scene tree is stashed in xdg_surface->data (by view map, and by
-        // popup_create for nested popups). Layer-shell popups have a non-xdg parent at this
-        // point and are handled in layer.cpp.
+        // popup_create for nested popups). A popup whose parent IS the layer surface has a
+        // non-xdg parent at this point and is handled in layer.cpp; its own submenus come
+        // back through here with a popup parent.
         void on_new_popup(wl_listener* listener, void* data) {
             SignalListener* sl = wl_container_of(listener, sl, listener);
             auto* popup = static_cast<wlr_xdg_popup*>(data);
@@ -158,10 +150,9 @@ namespace fenriz {
             wlr_xdg_surface* parent = wlr_xdg_surface_try_from_wlr_surface(popup->parent);
             if (!parent || !parent->data)
                 return;
+            // null root means the chain ends at a layer surface (menu's submenu).
             wlr_xdg_surface* root = popup_root(parent);
-            if (!root)
-                return; // non-xdg (layer-shell) root: not placed here
-            if (root->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
+            if (root && root->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
                 View* owner = view_for_toplevel(*sl->server, root, /*mapped_only=*/true);
                 if (!owner)
                     return; // toplevel unmapped: parent->data is freed
