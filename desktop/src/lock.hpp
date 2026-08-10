@@ -44,6 +44,7 @@ namespace fenriz::desktop {
         static void on_failed(GtkSessionLockInstance* self, gpointer data);
         static void on_unlocked(GtkSessionLockInstance* self, gpointer data);
         static void on_entry_activate(GtkWidget* entry, gpointer data);
+        static void on_entry_changed(GtkEditable* entry, gpointer data);
         static gboolean on_tick(gpointer data);
 
         const Config& cfg_;
