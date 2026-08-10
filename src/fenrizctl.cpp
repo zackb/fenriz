@@ -32,21 +32,11 @@ namespace {
                         "                        movetoworkspace N, exec CMD\n"
                         "\n"
                         "Reads $FENRIZ_SOCKET, falling back to\n"
-                        "$XDG_RUNTIME_DIR/fenriz-$WAYLAND_DISPLAY.sock.\n"
+                        "$XDG_RUNTIME_DIR/fenriz-$WAYLAND_DISPLAY.sock, and from a TTY (no\n"
+                        "WAYLAND_DISPLAY) to the only $XDG_RUNTIME_DIR/fenriz-*.sock present.\n"
                         "\n"
                         "  fenrizctl state | jq .windows      # the window list\n"
                         "  fenrizctl movetoworkspace 3\n";
-
-    std::string socket_path() {
-        if (const char* s = getenv("FENRIZ_SOCKET"); s && *s)
-            return s;
-        // not inherited when run from a TTY or a bare ssh session
-        const char* xdg = getenv("XDG_RUNTIME_DIR");
-        const char* disp = getenv("WAYLAND_DISPLAY");
-        if (!xdg || !disp)
-            return "";
-        return std::string(xdg) + "/fenriz-" + disp + ".sock";
-    }
 
     int connect_socket(const std::string& path) {
         int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
@@ -112,11 +102,12 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::string path = socket_path();
+    std::string path = fenrizctl::socket_path();
     if (path.empty()) {
         fprintf(stderr,
-                "fenrizctl: FENRIZ_SOCKET unset and XDG_RUNTIME_DIR/WAYLAND_DISPLAY "
-                "give no fallback path\n");
+                "fenrizctl: no socket. Set FENRIZ_SOCKET, or WAYLAND_DISPLAY, e.g.\n"
+                "  WAYLAND_DISPLAY=wayland-0 fenrizctl %s\n",
+                args[0].c_str());
         return 2;
     }
     int fd = connect_socket(path);

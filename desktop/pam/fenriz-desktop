@@ -1,0 +1,10 @@
+# PAM service for fenriz-desktop's lock screen and polkit agent.
+# Install to /etc/pam.d/fenriz-desktop.
+#
+# Password only. Fingerprint and face each need their OWN single-module service
+# (fenriz-desktop-fprint, fenriz-desktop-gaze) because PAM is serial
+
+# Without this file PAM falls back to /etc/pam.d/other, which denies — so a missing
+# install fails closed, it does not let anyone in.
+auth    required pam_unix.so
+account required pam_unix.so

@@ -20,6 +20,7 @@ extern "C" {
 #include <wlr/backend.h>
 #include <wlr/backend/libinput.h>      // per-device libinput config (natural scroll); pulls in <libinput.h>
 #include <wlr/backend/session.h>       // wlr_session_change_vt, for the ctrl+alt+f<n>
+#include <wlr/backend/wayland.h>       // wlr_input_device_is_wl, to map nested pointers to their output
 #include <wlr/interfaces/wlr_buffer.h> // wlr_buffer_impl, for gradient texture
 #include <wlr/render/allocator.h>
 #include <wlr/render/pass.h>

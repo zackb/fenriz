@@ -1,10 +1,33 @@
 #pragma once
 
+#include <glob.h>
+
 #include <cstdlib>
 #include <string>
 #include <vector>
 
 namespace fenrizctl {
+
+    // Where to reach the compositor. Args are the environment.
+    inline std::string socket_path(const char* env_socket, const char* xdg, const char* display) {
+        if (env_socket && *env_socket)
+            return env_socket;
+        if (!xdg || !*xdg)
+            return "";
+        if (display && *display)
+            return std::string(xdg) + "/fenriz-" + display + ".sock";
+
+        glob_t g = {};
+        std::string found;
+        if (glob((std::string(xdg) + "/fenriz-*.sock").c_str(), 0, nullptr, &g) == 0 && g.gl_pathc == 1)
+            found = g.gl_pathv[0];
+        globfree(&g);
+        return found;
+    }
+
+    inline std::string socket_path() {
+        return socket_path(getenv("FENRIZ_SOCKET"), getenv("XDG_RUNTIME_DIR"), getenv("WAYLAND_DISPLAY"));
+    }
 
     enum class Mode {
         None,

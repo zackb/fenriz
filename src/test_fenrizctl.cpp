@@ -1,5 +1,8 @@
+#include <unistd.h>
+
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
 
 #include "fenrizctl.hpp"
 
@@ -9,6 +12,40 @@ namespace {
 
     Command run(std::initializer_list<const char*> argv) {
         return parse(std::vector<std::string>(argv.begin(), argv.end()));
+    }
+
+    void touch(const std::string& path) {
+        FILE* f = fopen(path.c_str(), "w");
+        assert(f);
+        fclose(f);
+    }
+
+    // The TTY case: no WAYLAND_DISPLAY, so the socket has to be discovered.
+    void test_socket_path() {
+        char dir[] = "/tmp/fenrizctl-test-XXXXXX";
+        assert(mkdtemp(dir));
+        const std::string one = std::string(dir) + "/fenriz-wayland-0.sock";
+
+        // FENRIZ_SOCKET wins over everything, even a display that would resolve.
+        assert(socket_path("/run/explicit.sock", dir, "wayland-0") == "/run/explicit.sock");
+        assert(socket_path("", dir, "wayland-1") == std::string(dir) + "/fenriz-wayland-1.sock");
+
+        // Nothing to discover yet.
+        assert(socket_path(nullptr, dir, nullptr).empty());
+        assert(socket_path(nullptr, nullptr, nullptr).empty());
+
+        touch(one);
+        assert(socket_path(nullptr, dir, nullptr) == one);
+        assert(socket_path(nullptr, dir, "") == one); // empty display counts as unset
+
+        // Two compositors running: guessing would talk to the wrong session.
+        const std::string two = std::string(dir) + "/fenriz-wayland-1.sock";
+        touch(two);
+        assert(socket_path(nullptr, dir, nullptr).empty());
+
+        unlink(one.c_str());
+        unlink(two.c_str());
+        rmdir(dir);
     }
 
     // The sent line, without its trailing newline.
@@ -62,6 +99,8 @@ int main() {
     assert(run({"exec"}).mode == Mode::None); // exec with no command
     assert(run({"movetoworkspace"}).mode == Mode::None);
     assert(run({"killactiv"}).mode == Mode::None); // typo, not silently ignored
+
+    test_socket_path();
 
     printf("fenrizctl tests passed\n");
     return 0;
