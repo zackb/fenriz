@@ -19,16 +19,21 @@ namespace fenriz::desktop {
 
         void start(GtkApplication* app);
 
+        // Re-reads the config's wallpaper for every monitor and swaps it in place.
+        void reload();
+
     private:
         struct Surface {
             GtkWindow* window;
             GtkWidget* content;
             GtkWidget* popover;
+            GtkWidget* picture;
         };
 
         void sync_monitors();
         void add_monitor(GdkMonitor* monitor);
         void drop_monitor(GdkMonitor* monitor);
+        void apply_wallpaper(GdkMonitor* monitor, const Surface& surface);
 
         static void on_monitors_changed(GListModel* model, guint position, guint removed, guint added, gpointer data);
         static void on_right_click(GtkGestureClick* gesture, int n_press, double x, double y, gpointer data);

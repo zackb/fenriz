@@ -70,6 +70,16 @@ fenriz            # launch the compositor (from a greeter, TTY, or inside an exi
 Logs go to stderr and to `$XDG_STATE_HOME/fenriz/fenriz.log` (default `~/.local/state/fenriz/fenriz.log`).
 Override the path with `FENRIZ_LOG=<path>`, raise the level with `FENRIZ_DEBUG=1`.
 
+## Desktop
+If you are new to tilers, or just don't want to configure the typical wayland tools (quickshell, waybar, rofi, wlogout, hypridle, etc.), and just want a working minimal desktop, try the [fenriz-desktop](desktop). If you already have the stack you like, don't use it. It's for people that don't want to bring all their own tools.
+
+`fenriz-desktop` is a small desktop environment that compliments tilers well. It includes:
+- Wallpaper - with a switcher
+- Lock screen  - with PAM integration for password, fingerprint, face recognition (gaze)
+- Launcher - launch apps with a menu (like rofi, spotlight)
+- Desktop context menu - right click on the desktop to get a menu with a bunch of stuff
+- Idle managment - dim, lock, sleep on a configurable timer
+
 ## Multi-monitor and clamshell
 
 ***[None](https://github.com/Kore29/hyprland-clamshell) [of](https://adamhollister.com/hyprland-clamshell-mode) [this](https://github.com/chris4540/hyprland-clamshell) [needs](https://www.reddit.com/r/hyprland/comments/1bzc05s/monitor_not_detected_on_docking_station/) [configuring](https://github.com/zackb/dots/blob/main/.config/hypr/clamshell.lua)***. Each of the 10 workspaces lives on one output. When a

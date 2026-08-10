@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdlib>
+#include <filesystem>
 
 #include "config.hpp"
 
@@ -33,6 +34,41 @@ namespace {
         Config c = Config::parse("output_wallpaper = DP-1, /pic/b.png\n");
         assert(c.wallpaper_for("DP-1") == "/pic/b.png");
         assert(c.wallpaper_for("eDP-1").empty());
+    }
+
+    void test_wallpaper_dir() {
+        setenv("HOME", "/home/nobody", 1);
+        Config c = Config::parse("wallpaper_dir = ~/Pictures/walls\n");
+        assert(c.wallpaper_dir == "/home/nobody/Pictures/walls");
+        // The directory alone is not a wallpaper.
+        assert(c.wallpaper_for("eDP-1").empty());
+    }
+
+    // A runtime pick is session state and outranks every config key, so that editing
+    // the config after picking cannot silently half-apply.
+    void test_selected_outranks_config() {
+        Config c = Config::parse("wallpaper = /pic/a.png\n"
+                                 "output_wallpaper = DP-1, /pic/b.png\n");
+        c.selected_wallpaper = "/pic/picked.png";
+        assert(c.wallpaper_for("DP-1") == "/pic/picked.png");
+        assert(c.wallpaper_for("eDP-1") == "/pic/picked.png");
+
+        c.selected_wallpaper.clear();
+        assert(c.wallpaper_for("DP-1") == "/pic/b.png");
+        assert(c.wallpaper_for("eDP-1") == "/pic/a.png");
+    }
+
+    void test_wallpaper_state_round_trip() {
+        setenv("XDG_STATE_HOME", "/tmp/fenriz-desktop-test-state", 1);
+        assert(fenriz::desktop::wallpaper_state_path() == "/tmp/fenriz-desktop-test-state/fenriz/wallpaper");
+
+        fenriz::desktop::save_selected_wallpaper("/pic/picked.png");
+        assert(fenriz::desktop::load_selected_wallpaper() == "/pic/picked.png");
+
+        // Deleting the state file is the documented way back to the config.
+        std::filesystem::remove_all("/tmp/fenriz-desktop-test-state");
+        assert(fenriz::desktop::load_selected_wallpaper().empty());
+        unsetenv("XDG_STATE_HOME");
     }
 
     void test_comments_and_blanks() {
@@ -140,6 +176,9 @@ int main() {
     test_global_wallpaper();
     test_per_output_overrides_global();
     test_per_output_without_global();
+    test_wallpaper_dir();
+    test_selected_outranks_config();
+    test_wallpaper_state_round_trip();
     test_comments_and_blanks();
     test_garbage_is_ignored();
     test_comma_in_path();

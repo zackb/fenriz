@@ -58,29 +58,40 @@ namespace fenriz::desktop {
             drop_monitor(monitor);
     }
 
-    void Background::add_monitor(GdkMonitor* monitor) {
+    void Background::apply_wallpaper(GdkMonitor* monitor, const Surface& surface) {
         const char* connector = gdk_monitor_get_connector(monitor);
+        const std::string& path = cfg_.wallpaper_for(connector ? connector : "");
+        if (path.empty()) {
+            gtk_picture_set_paintable(GTK_PICTURE(surface.picture), nullptr);
+            return;
+        }
 
+        GError* err = nullptr;
+        GdkTexture* texture = gdk_texture_new_from_filename(path.c_str(), &err);
+        if (!texture) {
+            g_warning("wallpaper: %s: %s", path.c_str(), err->message);
+            g_error_free(err);
+            return;
+        }
+        gtk_picture_set_paintable(GTK_PICTURE(surface.picture), GDK_PAINTABLE(texture));
+        g_object_unref(texture);
+        g_message("wallpaper: %s -> %s", connector ? connector : "?", path.c_str());
+    }
+
+    void Background::reload() {
+        for (auto& [monitor, surface] : surfaces_)
+            apply_wallpaper(monitor, surface);
+    }
+
+    void Background::add_monitor(GdkMonitor* monitor) {
         GtkWidget* content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
         gtk_widget_add_css_class(content, "fenriz-background");
 
-        const std::string& path = cfg_.wallpaper_for(connector ? connector : "");
-        if (!path.empty()) {
-            GError* err = nullptr;
-            GdkTexture* texture = gdk_texture_new_from_filename(path.c_str(), &err);
-            if (texture) {
-                GtkWidget* picture = gtk_picture_new_for_paintable(GDK_PAINTABLE(texture));
-                g_object_unref(texture);
-                gtk_picture_set_content_fit(GTK_PICTURE(picture), GTK_CONTENT_FIT_COVER);
-                gtk_widget_set_can_target(picture, FALSE); // right-clicks belong to the surface
-                gtk_widget_set_vexpand(picture, TRUE);
-                gtk_box_append(GTK_BOX(content), picture);
-                g_message("wallpaper: %s -> %s", connector ? connector : "?", path.c_str());
-            } else {
-                g_warning("wallpaper: %s: %s", path.c_str(), err->message);
-                g_error_free(err);
-            }
-        }
+        GtkWidget* picture = gtk_picture_new();
+        gtk_picture_set_content_fit(GTK_PICTURE(picture), GTK_CONTENT_FIT_COVER);
+        gtk_widget_set_can_target(picture, FALSE); // right-clicks belong to the surface
+        gtk_widget_set_vexpand(picture, TRUE);
+        gtk_box_append(GTK_BOX(content), picture);
 
         GtkWindow* window = GTK_WINDOW(gtk_application_window_new(app_));
         gtk_layer_init_for_window(window);
@@ -102,10 +113,11 @@ namespace fenriz::desktop {
 
         GtkGesture* click = gtk_gesture_click_new();
         gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(click), GDK_BUTTON_SECONDARY);
-        surfaces_[monitor] = Surface{window, content, popover};
+        surfaces_[monitor] = Surface{window, content, popover, picture};
         g_signal_connect(click, "pressed", G_CALLBACK(on_right_click), popover);
         gtk_widget_add_controller(content, GTK_EVENT_CONTROLLER(click));
 
+        apply_wallpaper(monitor, surfaces_[monitor]);
         gtk_window_present(window);
     }
 

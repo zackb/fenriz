@@ -14,6 +14,17 @@
 # output_wallpaper = eDP-1, ~/Pictures/laptop.png
 # output_wallpaper = DP-1,  ~/Pictures/desk.png
 
+# The directory the wallpaper picker offers, scanned recursively. Unset removes the
+# picker and drops its entry from the desktop menu. Open it from the desktop menu, or
+# bind it from fenriz.conf with
+#   bind = SUPER, W, exec, fenriz-desktop wallpaper
+# wallpaper_dir = ~/Pictures/wallpapers
+
+# A picked wallpaper is written to ~/.local/state/fenriz/wallpaper, and it applies to every screen.
+# It outranks both keys above, so once you have picked one, editing them here has no visible effect until you
+#   rm ~/.local/state/fenriz/wallpaper
+# Thumbnails are cached under ~/.cache/fenriz/thumbnails and are safe to delete.
+
 # --- Launcher --------------------------------------------------------------
 # Applications only, ranked by frecency. Bind it from fenriz.conf with
 #   bind = SUPER, D, exec, fenriz-desktop launcher

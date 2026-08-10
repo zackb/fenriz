@@ -15,6 +15,7 @@
 #include "menu.hpp"
 #include "polkit.hpp"
 #include "power.hpp"
+#include "wallpaper_picker.hpp"
 
 namespace {
 
@@ -26,10 +27,12 @@ namespace {
     using fenriz::desktop::Lock;
     using fenriz::desktop::OutputPower;
     using fenriz::desktop::Polkit;
+    using fenriz::desktop::WallpaperPicker;
 
     struct Session {
         Config cfg;
         std::unique_ptr<Background> background;
+        std::unique_ptr<WallpaperPicker> wallpaper;
         std::unique_ptr<Launcher> launcher;
         std::unique_ptr<Lock> lock;
         std::unique_ptr<Idle> idle;
@@ -59,6 +62,13 @@ namespace {
             session->launcher->toggle(app);
     }
 
+    void on_wallpaper(GSimpleAction*, GVariant*, gpointer data) {
+        auto* app = static_cast<GtkApplication*>(data);
+        auto* session = static_cast<Session*>(g_object_get_data(G_OBJECT(app), "session"));
+        if (session->wallpaper)
+            session->wallpaper->toggle(app);
+    }
+
     // Idempotent: the first invocation builds the desktop, later ones are routed
     // here by GApplication and must not rebuild it.
     void ensure_started(GtkApplication* app, Session* session) {
@@ -74,6 +84,11 @@ namespace {
         g_object_unref(css);
 
         session->cfg = Config::load();
+        if (!session->cfg.selected_wallpaper.empty() &&
+            (!session->cfg.wallpaper.empty() || !session->cfg.output_wallpaper.empty()))
+            g_message("wallpaper: using the picked %s; delete %s to fall back to the config",
+                      session->cfg.selected_wallpaper.c_str(),
+                      fenriz::desktop::wallpaper_state_path().c_str());
         fenriz::desktop::menu::install_actions(app);
 
         GSimpleAction* lock_action = g_simple_action_new("lock", nullptr);
@@ -85,6 +100,11 @@ namespace {
         g_signal_connect(launcher_action, "activate", G_CALLBACK(on_launcher), app);
         g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(launcher_action));
         g_object_unref(launcher_action);
+
+        GSimpleAction* wallpaper_action = g_simple_action_new("wallpaper", nullptr);
+        g_signal_connect(wallpaper_action, "activate", G_CALLBACK(on_wallpaper), app);
+        g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(wallpaper_action));
+        g_object_unref(wallpaper_action);
 
         if (session->cfg.launcher)
             session->launcher = std::make_unique<Launcher>(session->cfg);
@@ -128,6 +148,8 @@ namespace {
         session->polkit->start();
         session->background = std::make_unique<Background>(session->cfg);
         session->background->start(app);
+        if (!session->cfg.wallpaper_dir.empty())
+            session->wallpaper = std::make_unique<WallpaperPicker>(session->cfg, *session->background);
 
         // nothing else holds the process alive once every surface is torn down.
         g_application_hold(G_APPLICATION(app));
@@ -148,6 +170,11 @@ namespace {
                     session->launcher->toggle(app);
                 else
                     g_warning("launcher is disabled in the config");
+            } else if (arg == "wallpaper") {
+                if (session->wallpaper)
+                    session->wallpaper->toggle(app);
+                else
+                    g_warning("wallpaper_dir is not set in the config");
             } else {
                 g_application_command_line_printerr(cmdline, "unknown command: %s\n", argv[i]);
             }
@@ -197,6 +224,7 @@ int main(int argc, char** argv) {
     session.power.reset();
     session.lock.reset();
     session.launcher.reset();
+    session.wallpaper.reset();
     session.background.reset();
     g_object_unref(app);
     return status;

@@ -60,6 +60,7 @@ nothing.
 ```ini
 wallpaper = ~/Pictures/wall.png
 output_wallpaper = DP-1, ~/Pictures/desk.png
+wallpaper_dir = ~/Pictures/wallpapers
 
 terminal = kitty
 menu = Files,      nautilus
@@ -186,4 +187,5 @@ bind = SUPER, D, exec, fenriz-desktop launcher
 |---------|--------|
 | `fenriz-desktop` | run the desktop (wallpaper, menu, launcher) |
 | `fenriz-desktop launcher` | toggle the launcher on the running desktop |
+| `fenriz-desktop wallpaper` | toggle the wallpaper picker (needs `wallpaper_dir`) |
 | `fenriz-desktop lock` | locks the session |
