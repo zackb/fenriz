@@ -37,6 +37,7 @@ wayland_client_protocol(PROTO_SRC
 add_executable(fenriz-desktop
     src/main.cpp
     src/config.cpp
+    src/log.cpp
     src/background.cpp
     src/brightness.cpp
     src/menu.cpp

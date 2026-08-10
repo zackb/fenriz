@@ -11,6 +11,7 @@
 #include "idle.hpp"
 #include "launcher.hpp"
 #include "lock.hpp"
+#include "log.hpp"
 #include "menu.hpp"
 #include "polkit.hpp"
 #include "power.hpp"
@@ -63,6 +64,8 @@ namespace {
     void ensure_started(GtkApplication* app, Session* session) {
         if (session->background)
             return;
+
+        fenriz::desktop::log::init();
 
         GtkCssProvider* css = gtk_css_provider_new();
         gtk_css_provider_load_from_string(css, CSS);
