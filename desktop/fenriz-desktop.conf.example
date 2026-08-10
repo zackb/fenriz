@@ -33,7 +33,10 @@
 
 # --- Idle and lock ------------------------------------------------------------
 # Lock after this many seconds without input. 0 (the default) never locks.
-# An idle inhibitor (video player) suppresses it.
+# A video player suppresses it, via either the Wayland idle-inhibit protocol or the
+# org.freedesktop.ScreenSaver DBus interface. Audio-only inhibits are ignored, so
+# music alone still lets the screen dim and lock. Every idle stage below is
+# suppressed the same way.
 # idle_lock = 600
 
 # Dim the backlight after this many seconds without input, as a warning before the

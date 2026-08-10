@@ -11,6 +11,8 @@ namespace fenriz::desktop {
         Idle::Handler idled;
         Idle::Handler resumed;
         ext_idle_notification_v1* notification = nullptr;
+        int seconds = 0;
+        bool is_idle = false;
     };
 
     namespace {
@@ -32,12 +34,14 @@ namespace fenriz::desktop {
 
         void on_idled(void* data, ext_idle_notification_v1*) {
             auto* watch = static_cast<IdleWatch*>(data);
+            watch->is_idle = true;
             if (watch->idled)
                 watch->idled();
         }
 
         void on_resumed(void* data, ext_idle_notification_v1*) {
             auto* watch = static_cast<IdleWatch*>(data);
+            watch->is_idle = false;
             if (watch->resumed)
                 watch->resumed();
         }
@@ -80,6 +84,15 @@ namespace fenriz::desktop {
         return true;
     }
 
+    void Idle::arm(IdleWatch& watch) {
+        if (watch.notification)
+            return;
+        watch.notification =
+            ext_idle_notifier_v1_get_idle_notification(notifier_, static_cast<uint32_t>(watch.seconds) * 1000, seat_);
+        ext_idle_notification_v1_add_listener(watch.notification, &NOTIFICATION_LISTENER, &watch);
+        wl_display_flush(gdk_wayland_display_get_wl_display(gdk_display_get_default()));
+    }
+
     void Idle::watch(int seconds, Handler idled, Handler resumed) {
         if (!notifier_ || seconds <= 0)
             return;
@@ -87,11 +100,32 @@ namespace fenriz::desktop {
         auto watch = std::make_unique<IdleWatch>();
         watch->idled = std::move(idled);
         watch->resumed = std::move(resumed);
-        watch->notification =
-            ext_idle_notifier_v1_get_idle_notification(notifier_, static_cast<uint32_t>(seconds) * 1000, seat_);
-        ext_idle_notification_v1_add_listener(watch->notification, &NOTIFICATION_LISTENER, watch.get());
+        watch->seconds = seconds;
+        if (!inhibited_)
+            arm(*watch);
         watches_.push_back(std::move(watch));
+    }
 
+    void Idle::set_inhibited(bool inhibited) {
+        if (!notifier_ || inhibited == inhibited_)
+            return;
+        inhibited_ = inhibited;
+
+        for (auto& watch : watches_) {
+            if (!inhibited) {
+                arm(*watch);
+                continue;
+            }
+            if (watch->is_idle) {
+                watch->is_idle = false;
+                if (watch->resumed)
+                    watch->resumed();
+            }
+            if (watch->notification) {
+                ext_idle_notification_v1_destroy(watch->notification);
+                watch->notification = nullptr;
+            }
+        }
         wl_display_flush(gdk_wayland_display_get_wl_display(gdk_display_get_default()));
     }
 

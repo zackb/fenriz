@@ -30,10 +30,16 @@ namespace fenriz::desktop {
         // Ignored for seconds <= 0
         void watch(int seconds, Handler idled, Handler resumed);
 
+        // Suspend every watch while something is inhibiting idle (a video player)
+        void set_inhibited(bool inhibited);
+
     private:
+        void arm(IdleWatch& watch);
+
         ext_idle_notifier_v1* notifier_ = nullptr;
         wl_seat* seat_ = nullptr;
         std::vector<std::unique_ptr<IdleWatch>> watches_;
+        bool inhibited_ = false;
     };
 
 } // namespace fenriz::desktop

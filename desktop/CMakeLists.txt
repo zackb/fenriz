@@ -49,6 +49,7 @@ add_executable(fenriz-desktop
     src/auth.cpp
     src/lock.cpp
     src/idle.cpp
+    src/screensaver.cpp
     src/power.cpp
     src/polkit.cpp
     ${PROTO_SRC}
@@ -96,6 +97,11 @@ target_include_directories(desktop_brightness_test PRIVATE ${CMAKE_CURRENT_SOURC
 target_link_libraries(desktop_brightness_test PRIVATE PkgConfig::GIO_UNIX)
 target_compile_options(desktop_brightness_test PRIVATE -UNDEBUG)
 
+add_executable(desktop_screensaver_test src/screensaver.cpp src/test_screensaver.cpp)
+target_include_directories(desktop_screensaver_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(desktop_screensaver_test PRIVATE PkgConfig::GIO_UNIX)
+target_compile_options(desktop_screensaver_test PRIVATE -UNDEBUG)
+
 enable_testing()
 add_test(NAME config   COMMAND desktop_config_test)
 add_test(NAME menu     COMMAND desktop_menu_test)
@@ -103,3 +109,4 @@ add_test(NAME frecency COMMAND desktop_frecency_test)
 add_test(NAME auth     COMMAND desktop_auth_test)
 add_test(NAME brightness COMMAND desktop_brightness_test)
 add_test(NAME wallpaper COMMAND desktop_wallpaper_test)
+add_test(NAME screensaver COMMAND desktop_screensaver_test)

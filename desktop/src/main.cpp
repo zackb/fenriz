@@ -15,6 +15,7 @@
 #include "menu.hpp"
 #include "polkit.hpp"
 #include "power.hpp"
+#include "screensaver.hpp"
 #include "wallpaper_picker.hpp"
 
 namespace {
@@ -27,6 +28,7 @@ namespace {
     using fenriz::desktop::Lock;
     using fenriz::desktop::OutputPower;
     using fenriz::desktop::Polkit;
+    using fenriz::desktop::Screensaver;
     using fenriz::desktop::WallpaperPicker;
 
     struct Session {
@@ -36,6 +38,7 @@ namespace {
         std::unique_ptr<Launcher> launcher;
         std::unique_ptr<Lock> lock;
         std::unique_ptr<Idle> idle;
+        std::unique_ptr<Screensaver> screensaver;
         std::unique_ptr<Brightness> brightness;
         std::unique_ptr<OutputPower> power;
         std::unique_ptr<Polkit> polkit;
@@ -143,6 +146,16 @@ namespace {
                 g_message("idle: locking after %d seconds", cfg.idle_lock);
             if (cfg.idle_dpms > 0)
                 g_message("idle: screens off after %d seconds", cfg.idle_dpms);
+
+            // The Wayland idle-inhibit protocol is the compositor's job; this covers the DBus
+            // half, which browsers and VLC prefer and would otherwise inhibit nothing.
+            if (cfg.idle_dim > 0 || cfg.idle_lock > 0 || cfg.idle_dpms > 0) {
+                session->screensaver = std::make_unique<Screensaver>([session](bool inhibited) {
+                    g_message("idle: %s by a DBus inhibitor", inhibited ? "suspended" : "resumed");
+                    session->idle->set_inhibited(inhibited);
+                });
+                session->screensaver->start();
+            }
         }
         session->polkit = std::make_unique<Polkit>(session->cfg);
         session->polkit->start();
@@ -219,6 +232,7 @@ int main(int argc, char** argv) {
 
     int status = g_application_run(G_APPLICATION(app), argc, argv);
     session.polkit.reset(); // tear surfaces down while GTK is still alive
+    session.screensaver.reset();
     session.idle.reset();
     session.brightness.reset(); // undims if we are exiting while dimmed
     session.power.reset();
