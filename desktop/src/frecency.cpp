@@ -32,7 +32,7 @@ namespace fenriz::desktop {
     std::string UsageStore::path() {
         const char* state = g_getenv("XDG_STATE_HOME");
         std::string dir = (state && *state) ? std::string(state) : std::string(g_get_home_dir()) + "/.local/state";
-        return dir + "/fenriz-desktop/launcher.usage";
+        return dir + "/fenriz/launcher.usage";
     }
 
     void UsageStore::load() {

@@ -123,6 +123,16 @@ namespace {
         assert(c.wallpaper.empty());
     }
 
+    // Config sits next to fenriz.conf rather than in a directory of its own.
+    void test_config_path() {
+        setenv("XDG_CONFIG_HOME", "/tmp/config-under-test", 1);
+        assert(Config::config_path() == "/tmp/config-under-test/fenriz/fenriz-desktop.conf");
+
+        unsetenv("XDG_CONFIG_HOME");
+        setenv("HOME", "/home/nobody", 1);
+        assert(Config::config_path() == "/home/nobody/.config/fenriz/fenriz-desktop.conf");
+    }
+
 } // namespace
 
 int main() {
@@ -142,5 +152,6 @@ int main() {
     test_menu_garbage_is_ignored();
     test_hash_in_command_is_a_comment();
     test_missing_file_yields_defaults();
+    test_config_path();
     return 0;
 }

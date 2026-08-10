@@ -1,3 +1,4 @@
+#include <glib-unix.h>
 #include <gtk/gtk.h>
 #include <gtk4-layer-shell.h>
 
@@ -5,20 +6,24 @@
 #include <string>
 
 #include "background.hpp"
+#include "brightness.hpp"
 #include "config.hpp"
 #include "idle.hpp"
 #include "launcher.hpp"
 #include "lock.hpp"
 #include "menu.hpp"
 #include "polkit.hpp"
+#include "power.hpp"
 
 namespace {
 
     using fenriz::desktop::Background;
+    using fenriz::desktop::Brightness;
     using fenriz::desktop::Config;
     using fenriz::desktop::Idle;
     using fenriz::desktop::Launcher;
     using fenriz::desktop::Lock;
+    using fenriz::desktop::OutputPower;
     using fenriz::desktop::Polkit;
 
     struct Session {
@@ -27,10 +32,17 @@ namespace {
         std::unique_ptr<Launcher> launcher;
         std::unique_ptr<Lock> lock;
         std::unique_ptr<Idle> idle;
+        std::unique_ptr<Brightness> brightness;
+        std::unique_ptr<OutputPower> power;
         std::unique_ptr<Polkit> polkit;
     };
 
     const char* CSS = ".fenriz-background { background: transparent; }";
+
+    gboolean on_terminate(gpointer data) {
+        g_application_quit(G_APPLICATION(data));
+        return G_SOURCE_REMOVE;
+    }
 
     void on_lock(GSimpleAction*, GVariant*, gpointer data) {
         auto* app = static_cast<GtkApplication*>(data);
@@ -75,8 +87,40 @@ namespace {
             session->launcher = std::make_unique<Launcher>(session->cfg);
 
         session->lock = std::make_unique<Lock>(session->cfg);
-        session->idle = std::make_unique<Idle>(session->cfg);
-        session->idle->start([session] { session->lock->engage(); });
+        session->brightness = std::make_unique<Brightness>();
+        if (session->cfg.idle_dim > 0 && !session->brightness->available())
+            g_message("idle: no backlight to dim (external monitors need DDC/CI)");
+
+        session->power = std::make_unique<OutputPower>();
+        if (session->cfg.idle_dpms > 0)
+            session->power->start();
+        if (session->cfg.idle_dpms > 0 && session->cfg.idle_lock > 0 && session->cfg.idle_dpms < session->cfg.idle_lock)
+            g_warning("idle: idle_dpms (%ds) is before idle_lock (%ds), so the screens go dark "
+                      "while the session is still unlocked",
+                      session->cfg.idle_dpms,
+                      session->cfg.idle_lock);
+
+        session->idle = std::make_unique<Idle>();
+        if (session->idle->start()) {
+            const Config& cfg = session->cfg;
+            // Each stage undoes itself on the first input after it fired
+            session->idle->watch(
+                cfg.idle_dim,
+                [session] { session->brightness->dim_to(session->cfg.dim_brightness); },
+                [session] { session->brightness->restore(); });
+            session->idle->watch(cfg.idle_lock, [session] { session->lock->engage(); }, nullptr);
+            session->idle->watch(
+                cfg.idle_dpms,
+                [session] { session->power->set_all(false); },
+                [session] { session->power->set_all(true); });
+
+            if (cfg.idle_dim > 0)
+                g_message("idle: dimming after %d seconds", cfg.idle_dim);
+            if (cfg.idle_lock > 0)
+                g_message("idle: locking after %d seconds", cfg.idle_lock);
+            if (cfg.idle_dpms > 0)
+                g_message("idle: screens off after %d seconds", cfg.idle_dpms);
+        }
         session->polkit = std::make_unique<Polkit>(session->cfg);
         session->polkit->start();
         session->background = std::make_unique<Background>(session->cfg);
@@ -126,6 +170,9 @@ int main(int argc, char** argv) {
     g_object_set_data(G_OBJECT(app), "session", &session);
     g_signal_connect(app, "command-line", G_CALLBACK(on_command_line), &session);
 
+    g_unix_signal_add(SIGTERM, on_terminate, app);
+    g_unix_signal_add(SIGINT, on_terminate, app);
+
     GError* err = nullptr;
     if (!g_application_register(G_APPLICATION(app), nullptr, &err)) {
         g_printerr("fenriz-desktop: %s\n", err->message);
@@ -143,6 +190,8 @@ int main(int argc, char** argv) {
     int status = g_application_run(G_APPLICATION(app), argc, argv);
     session.polkit.reset(); // tear surfaces down while GTK is still alive
     session.idle.reset();
+    session.brightness.reset(); // undims if we are exiting while dimmed
+    session.power.reset();
     session.lock.reset();
     session.launcher.reset();
     session.background.reset();

@@ -101,6 +101,13 @@ namespace fenriz::desktop {
                 cfg.lock_blur = parse_int(value, cfg.lock_blur, 0, 200);
             } else if (key == "idle_lock") {
                 cfg.idle_lock = parse_int(value, cfg.idle_lock, 0, 86400);
+            } else if (key == "idle_dim") {
+                cfg.idle_dim = parse_int(value, cfg.idle_dim, 0, 86400);
+            } else if (key == "idle_dpms") {
+                cfg.idle_dpms = parse_int(value, cfg.idle_dpms, 0, 86400);
+            } else if (key == "dim_brightness") {
+                // 0 would read as a dead screen on panels that honour it, so the floor is 1.
+                cfg.dim_brightness = parse_int(value, cfg.dim_brightness, 1, 100);
             } else if (key == "launcher") {
                 cfg.launcher = parse_bool(value, cfg.launcher);
             } else if (key == "menu") {
@@ -112,11 +119,12 @@ namespace fenriz::desktop {
         return cfg;
     }
 
+    // Alongside fenriz.conf in ~/.config/fenriz
     std::string Config::config_path() {
         if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg)
-            return std::string(xdg) + "/fenriz-desktop/fenriz-desktop.conf";
+            return std::string(xdg) + "/fenriz/fenriz-desktop.conf";
         if (const char* home = std::getenv("HOME"); home && *home)
-            return std::string(home) + "/.config/fenriz-desktop/fenriz-desktop.conf";
+            return std::string(home) + "/.config/fenriz/fenriz-desktop.conf";
         return "";
     }
 

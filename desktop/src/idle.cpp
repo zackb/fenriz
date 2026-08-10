@@ -7,6 +7,12 @@
 
 namespace fenriz::desktop {
 
+    struct IdleWatch {
+        Idle::Handler idled;
+        Idle::Handler resumed;
+        ext_idle_notification_v1* notification = nullptr;
+    };
+
     namespace {
 
         struct Bind {
@@ -25,37 +31,39 @@ namespace fenriz::desktop {
         const wl_registry_listener REGISTRY_LISTENER = {on_global, on_global_remove};
 
         void on_idled(void* data, ext_idle_notification_v1*) {
-            auto* handler = static_cast<Idle::Handler*>(data);
-            if (*handler)
-                (*handler)();
+            auto* watch = static_cast<IdleWatch*>(data);
+            if (watch->idled)
+                watch->idled();
         }
 
-        void on_resumed(void*, ext_idle_notification_v1*) {}
+        void on_resumed(void* data, ext_idle_notification_v1*) {
+            auto* watch = static_cast<IdleWatch*>(data);
+            if (watch->resumed)
+                watch->resumed();
+        }
 
         const ext_idle_notification_v1_listener NOTIFICATION_LISTENER = {on_idled, on_resumed};
 
     } // namespace
 
-    Idle::Idle(const Config& cfg) : cfg_(cfg) {}
+    Idle::Idle() = default;
 
     Idle::~Idle() {
-        if (notification_)
-            ext_idle_notification_v1_destroy(notification_);
+        for (auto& watch : watches_)
+            if (watch->notification)
+                ext_idle_notification_v1_destroy(watch->notification);
         if (notifier_)
             ext_idle_notifier_v1_destroy(notifier_);
     }
 
-    void Idle::start(Handler on_idle) {
-        if (cfg_.idle_lock <= 0)
-            return;
-
+    bool Idle::start() {
         GdkDisplay* display = gdk_display_get_default();
         if (!GDK_IS_WAYLAND_DISPLAY(display))
-            return;
+            return false;
         wl_display* wl = gdk_wayland_display_get_wl_display(display);
         GdkSeat* seat = gdk_display_get_default_seat(display);
         if (!wl || !seat)
-            return;
+            return false;
 
         Bind bind;
         wl_registry* registry = wl_display_get_registry(wl);
@@ -64,18 +72,27 @@ namespace fenriz::desktop {
         wl_registry_destroy(registry);
 
         if (!bind.notifier) {
-            g_warning("idle: compositor does not support ext-idle-notify-v1; idle lock is off");
-            return;
+            g_warning("idle: compositor does not support ext-idle-notify-v1; idle actions are off");
+            return false;
         }
         notifier_ = bind.notifier;
-        on_idle_ = std::move(on_idle);
+        seat_ = gdk_wayland_seat_get_wl_seat(seat);
+        return true;
+    }
 
-        notification_ = ext_idle_notifier_v1_get_idle_notification(
-            notifier_, static_cast<uint32_t>(cfg_.idle_lock) * 1000, gdk_wayland_seat_get_wl_seat(seat));
-        ext_idle_notification_v1_add_listener(notification_, &NOTIFICATION_LISTENER, &on_idle_);
-        wl_display_flush(wl);
+    void Idle::watch(int seconds, Handler idled, Handler resumed) {
+        if (!notifier_ || seconds <= 0)
+            return;
 
-        g_message("idle: locking after %d seconds", cfg_.idle_lock);
+        auto watch = std::make_unique<IdleWatch>();
+        watch->idled = std::move(idled);
+        watch->resumed = std::move(resumed);
+        watch->notification =
+            ext_idle_notifier_v1_get_idle_notification(notifier_, static_cast<uint32_t>(seconds) * 1000, seat_);
+        ext_idle_notification_v1_add_listener(watch->notification, &NOTIFICATION_LISTENER, watch.get());
+        watches_.push_back(std::move(watch));
+
+        wl_display_flush(gdk_wayland_display_get_wl_display(gdk_display_get_default()));
     }
 
 } // namespace fenriz::desktop

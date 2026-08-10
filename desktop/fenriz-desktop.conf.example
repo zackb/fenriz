@@ -1,4 +1,4 @@
-# fenriz-desktop config — copy to ~/.config/fenriz-desktop/fenriz-desktop.conf
+# fenriz-desktop config — copy to ~/.config/fenriz/fenriz-desktop.conf
 #
 # settings: key = value, `#` starts a comment. Everything here is optional;
 # with no config file at all fenriz-desktop shows a transparent desktop with a
@@ -24,6 +24,20 @@
 # Lock after this many seconds without input. 0 (the default) never locks.
 # An idle inhibitor (video player) suppresses it.
 # idle_lock = 600
+
+# Dim the backlight after this many seconds without input, as a warning before the
+# lock. 0 (the default) never dims. Any input puts the brightness straight back.
+# Set it below idle_lock, or the screen locks before it ever dims.
+# idle_dim = 300
+
+# How dim, as a percent of the panel's maximum. Never 0 — a black panel reads as a
+# broken screen rather than an idle one.
+# dim_brightness = 10
+
+# Switch the screens off after this many seconds without input, via
+# wlr-output-power-management. 0 (the default) never does. Input turns them back on.
+# Keep it above idle_lock, or the screens go dark while still unlocked.
+# idle_dpms = 900
 
 # Wallpaper blur radius on the lock screen, in pixels.
 # lock_blur = 24

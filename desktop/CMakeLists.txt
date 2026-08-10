@@ -13,23 +13,32 @@ pkg_check_modules(GIO_UNIX   REQUIRED IMPORTED_TARGET gio-unix-2.0)
 pkg_check_modules(WAYLAND    REQUIRED IMPORTED_TARGET wayland-client)
 pkg_check_modules(POLKIT     REQUIRED IMPORTED_TARGET polkit-agent-1)
 
-# ext-idle-notify-v1 has no library; generate the client stubs from the protocol XML.
 find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
 pkg_get_variable(WL_PROTO_DIR wayland-protocols pkgdatadir)
-set(IDLE_XML ${WL_PROTO_DIR}/staging/ext-idle-notify/ext-idle-notify-v1.xml)
-set(IDLE_HDR ${CMAKE_CURRENT_BINARY_DIR}/ext-idle-notify-v1-client-protocol.h)
-set(IDLE_SRC ${CMAKE_CURRENT_BINARY_DIR}/ext-idle-notify-v1-protocol.c)
-add_custom_command(OUTPUT ${IDLE_HDR}
-    COMMAND ${WAYLAND_SCANNER} client-header ${IDLE_XML} ${IDLE_HDR}
-    DEPENDS ${IDLE_XML} VERBATIM)
-add_custom_command(OUTPUT ${IDLE_SRC}
-    COMMAND ${WAYLAND_SCANNER} private-code ${IDLE_XML} ${IDLE_SRC}
-    DEPENDS ${IDLE_XML} VERBATIM)
+
+function(wayland_client_protocol out_var xml basename)
+    set(hdr ${CMAKE_CURRENT_BINARY_DIR}/${basename}-client-protocol.h)
+    set(src ${CMAKE_CURRENT_BINARY_DIR}/${basename}-protocol.c)
+    add_custom_command(OUTPUT ${hdr}
+        COMMAND ${WAYLAND_SCANNER} client-header ${xml} ${hdr}
+        DEPENDS ${xml} VERBATIM)
+    add_custom_command(OUTPUT ${src}
+        COMMAND ${WAYLAND_SCANNER} private-code ${xml} ${src}
+        DEPENDS ${xml} VERBATIM)
+    set(${out_var} ${${out_var}} ${hdr} ${src} PARENT_SCOPE)
+endfunction()
+
+wayland_client_protocol(PROTO_SRC
+    ${WL_PROTO_DIR}/staging/ext-idle-notify/ext-idle-notify-v1.xml ext-idle-notify-v1)
+wayland_client_protocol(PROTO_SRC
+    ${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-output-power-management-unstable-v1.xml
+    wlr-output-power-management-unstable-v1)
 
 add_executable(fenriz-desktop
     src/main.cpp
     src/config.cpp
     src/background.cpp
+    src/brightness.cpp
     src/menu.cpp
     src/launcher.cpp
     src/frecency.cpp
@@ -37,9 +46,9 @@ add_executable(fenriz-desktop
     src/auth.cpp
     src/lock.cpp
     src/idle.cpp
+    src/power.cpp
     src/polkit.cpp
-    ${IDLE_HDR}
-    ${IDLE_SRC}
+    ${PROTO_SRC}
 )
 target_include_directories(fenriz-desktop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(fenriz-desktop PRIVATE PkgConfig::GTK4 PkgConfig::LAYER_SHELL PkgConfig::GIO_UNIX PkgConfig::WAYLAND PkgConfig::POLKIT pam)
@@ -74,8 +83,14 @@ target_include_directories(desktop_auth_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
 target_link_libraries(desktop_auth_test PRIVATE PkgConfig::GTK4 pam)
 target_compile_options(desktop_auth_test PRIVATE -UNDEBUG)
 
+add_executable(desktop_brightness_test src/brightness.cpp src/test_brightness.cpp)
+target_include_directories(desktop_brightness_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(desktop_brightness_test PRIVATE PkgConfig::GIO_UNIX)
+target_compile_options(desktop_brightness_test PRIVATE -UNDEBUG)
+
 enable_testing()
 add_test(NAME config   COMMAND desktop_config_test)
 add_test(NAME menu     COMMAND desktop_menu_test)
 add_test(NAME frecency COMMAND desktop_frecency_test)
 add_test(NAME auth     COMMAND desktop_auth_test)
+add_test(NAME brightness COMMAND desktop_brightness_test)

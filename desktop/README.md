@@ -32,7 +32,9 @@ of [quickshell](https://quickshell.org), which is the right tool if you want to 
 
 ## Portability
 
-Requires only `wlr-layer-shell`, `ext-session-lock-v1`, and `ext-idle-notify-v1`
+Requires only `wlr-layer-shell`, `ext-session-lock-v1`, `ext-idle-notify-v1`, and
+`wlr-output-power-management-unstable-v1` (only for `idle_dpms`; without it
+everything else still runs)
 
 fenriz's own IPC (`FENRIZ_SOCKET`) is used as an optional enhancement when
 present, never a dependency.
@@ -50,8 +52,8 @@ Or from the fenriz root: `make desktop`, `make run-desktop`,
 
 ## Config
 
-`~/.config/fenriz-desktop/fenriz-desktop.conf`, same `key = value` as
-`fenriz.conf`. See [fenriz-desktop.conf.example](fenriz-desktop.conf.example).
+`~/.config/fenriz/fenriz-desktop.conf`, next to `fenriz.conf` and in the same
+`key = value` shape. See [fenriz-desktop.conf.example](fenriz-desktop.conf.example).
 Every setting is optional with no config file at all, fenriz-desktop draws
 nothing.
 
@@ -86,17 +88,24 @@ Running `fenriz-desktop launcher` does not start a second copy. It is
 handed the argument to the instance already running. Escape or the same command
 again closes it.
 
-Usage counts live in `$XDG_STATE_HOME/fenriz-desktop/launcher.usage`. Delete it
+Usage counts live in `$XDG_STATE_HOME/fenriz/launcher.usage`. Delete it
 to reset the ranking. `launcher = off` removes the launcher and its menu entry.
 
 ## Lock screen
 
 Blurred wallpaper, clock, password field.
 
+Three stages, each independent and each off by default:
+
 ```ini
-idle_lock = 600   # lock after 10 minutes idle; 0 (default) = never
+idle_dim = 300    # dim the backlight after 5 minutes
+dim_brightness = 10
+idle_lock = 600   # lock after 10 minutes
+idle_dpms = 900   # screens off after 15 minutes
 lock_blur = 24
 ```
+
+Any input undoes whichever stages were reached.
 
 Lock now from the desktop menu (Power -> Lock), or bind it:
 

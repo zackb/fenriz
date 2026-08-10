@@ -91,6 +91,17 @@ namespace {
         assert(s.uses().empty());
     }
 
+    // State lives beside fenriz's own, not in a directory of its own.
+    void test_state_path() {
+        setenv("XDG_STATE_HOME", "/tmp/state-under-test", 1);
+        assert(UsageStore::path() == "/tmp/state-under-test/fenriz/launcher.usage");
+
+        // Falling back to ~/.local/state keeps the same shape.
+        unsetenv("XDG_STATE_HOME");
+        const std::string fallback = UsageStore::path();
+        assert(fallback.find("/.local/state/fenriz/launcher.usage") != std::string::npos);
+    }
+
 } // namespace
 
 int main() {
@@ -101,5 +112,6 @@ int main() {
     test_store_records_and_scores();
     test_store_persists();
     test_empty_id_is_ignored();
+    test_state_path();
     return 0;
 }
