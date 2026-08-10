@@ -39,6 +39,8 @@ add_executable(fenriz-desktop
     src/config.cpp
     src/log.cpp
     src/background.cpp
+    src/wallpaper.cpp
+    src/wallpaper_picker.cpp
     src/brightness.cpp
     src/menu.cpp
     src/launcher.cpp
@@ -84,6 +86,11 @@ target_include_directories(desktop_auth_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
 target_link_libraries(desktop_auth_test PRIVATE PkgConfig::GTK4 pam)
 target_compile_options(desktop_auth_test PRIVATE -UNDEBUG)
 
+add_executable(desktop_wallpaper_test src/wallpaper.cpp src/test_wallpaper.cpp)
+target_include_directories(desktop_wallpaper_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(desktop_wallpaper_test PRIVATE PkgConfig::GTK4)
+target_compile_options(desktop_wallpaper_test PRIVATE -UNDEBUG)
+
 add_executable(desktop_brightness_test src/brightness.cpp src/test_brightness.cpp)
 target_include_directories(desktop_brightness_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(desktop_brightness_test PRIVATE PkgConfig::GIO_UNIX)
@@ -95,3 +102,4 @@ add_test(NAME menu     COMMAND desktop_menu_test)
 add_test(NAME frecency COMMAND desktop_frecency_test)
 add_test(NAME auth     COMMAND desktop_auth_test)
 add_test(NAME brightness COMMAND desktop_brightness_test)
+add_test(NAME wallpaper COMMAND desktop_wallpaper_test)

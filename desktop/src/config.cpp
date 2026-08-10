@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <vector>
@@ -68,6 +69,8 @@ namespace fenriz::desktop {
     } // namespace
 
     const std::string& Config::wallpaper_for(const std::string& output) const {
+        if (!selected_wallpaper.empty())
+            return selected_wallpaper;
         auto it = output_wallpaper.find(output);
         if (it != output_wallpaper.end())
             return it->second;
@@ -91,6 +94,8 @@ namespace fenriz::desktop {
 
             if (key == "wallpaper") {
                 cfg.wallpaper = expand(value);
+            } else if (key == "wallpaper_dir") {
+                cfg.wallpaper_dir = expand(value);
             } else if (key == "output_wallpaper") {
                 std::vector<std::string> f = split_n(value, ',', 2);
                 if (f.size() == 2 && !f[0].empty() && !f[1].empty())
@@ -129,12 +134,43 @@ namespace fenriz::desktop {
     }
 
     Config Config::load() {
+        Config cfg;
         std::ifstream f(config_path());
-        if (!f)
-            return Config{}; // built-in defaults
-        std::stringstream buf;
-        buf << f.rdbuf();
-        return parse(buf.str());
+        if (f) {
+            std::stringstream buf;
+            buf << f.rdbuf();
+            cfg = parse(buf.str());
+        }
+        cfg.selected_wallpaper = load_selected_wallpaper();
+        return cfg;
+    }
+
+    std::string wallpaper_state_path() {
+        if (const char* xdg = std::getenv("XDG_STATE_HOME"); xdg && *xdg)
+            return std::string(xdg) + "/fenriz/wallpaper";
+        if (const char* home = std::getenv("HOME"); home && *home)
+            return std::string(home) + "/.local/state/fenriz/wallpaper";
+        return "";
+    }
+
+    std::string load_selected_wallpaper() {
+        const std::string file = wallpaper_state_path();
+        if (file.empty())
+            return "";
+        std::ifstream f(file);
+        std::string path;
+        std::getline(f, path);
+        return trim(path);
+    }
+
+    void save_selected_wallpaper(const std::string& path) {
+        const std::string file = wallpaper_state_path();
+        if (file.empty())
+            return;
+        std::error_code ec;
+        std::filesystem::create_directories(std::filesystem::path(file).parent_path(), ec);
+        std::ofstream f(file, std::ios::trunc);
+        f << path << "\n";
     }
 
 } // namespace fenriz::desktop

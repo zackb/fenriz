@@ -99,8 +99,7 @@ namespace fenriz::desktop::menu {
     }
 
     void show_icons(GtkWidget* widget) {
-        for (GtkWidget* child = gtk_widget_get_first_child(widget); child;
-             child = gtk_widget_get_next_sibling(child)) {
+        for (GtkWidget* child = gtk_widget_get_first_child(widget); child; child = gtk_widget_get_next_sibling(child)) {
             if (GTK_IS_IMAGE(child) && gtk_image_get_gicon(GTK_IMAGE(child))) {
                 gtk_widget_set_visible(child, TRUE);
                 gtk_widget_set_margin_end(child, 8); // the row packs icon and label flush
@@ -224,6 +223,8 @@ namespace fenriz::desktop::menu {
         GMenu* apps = g_menu_new();
         if (cfg.launcher)
             g_menu_append(apps, "Applications", "app.launcher");
+        if (!cfg.wallpaper_dir.empty())
+            g_menu_append(apps, "Wallpaper", "app.wallpaper");
         if (std::string terminal = resolve_terminal(cfg); !terminal.empty())
             append_exec(apps, "Terminal", terminal);
         for (const auto& [label, command] : cfg.menu)
