@@ -98,6 +98,17 @@ namespace fenriz::desktop::menu {
         g_object_unref(launch);
     }
 
+    void show_icons(GtkWidget* widget) {
+        for (GtkWidget* child = gtk_widget_get_first_child(widget); child;
+             child = gtk_widget_get_next_sibling(child)) {
+            if (GTK_IS_IMAGE(child) && gtk_image_get_gicon(GTK_IMAGE(child))) {
+                gtk_widget_set_visible(child, TRUE);
+                gtk_widget_set_margin_end(child, 8); // the row packs icon and label flush
+            }
+            show_icons(child);
+        }
+    }
+
     std::string resolve_terminal(const Config& cfg) {
         auto in_path = [](const char* name) {
             char* found = g_find_program_in_path(name);

@@ -18,6 +18,8 @@ namespace fenriz::desktop::menu {
     // The context-menu model. Transfers ownership to the caller.
     GMenuModel* build_model(const Config& cfg);
 
+    void show_icons(GtkWidget* popover);
+
     // The terminal command to offer
     std::string resolve_terminal(const Config& cfg);
 
