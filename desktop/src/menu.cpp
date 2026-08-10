@@ -98,6 +98,17 @@ namespace fenriz::desktop::menu {
         g_object_unref(launch);
     }
 
+    void show_icons(GtkWidget* widget) {
+        for (GtkWidget* child = gtk_widget_get_first_child(widget); child;
+             child = gtk_widget_get_next_sibling(child)) {
+            if (GTK_IS_IMAGE(child) && gtk_image_get_gicon(GTK_IMAGE(child))) {
+                gtk_widget_set_visible(child, TRUE);
+                gtk_widget_set_margin_end(child, 8); // the row packs icon and label flush
+            }
+            show_icons(child);
+        }
+    }
+
     std::string resolve_terminal(const Config& cfg) {
         auto in_path = [](const char* name) {
             char* found = g_find_program_in_path(name);
@@ -133,6 +144,7 @@ namespace fenriz::desktop::menu {
         struct AppEntry {
             std::string id;
             std::string name;
+            std::string icon;
         };
 
         // One submenu per non-empty category, apps sorted by name inside it.
@@ -152,11 +164,15 @@ namespace fenriz::desktop::menu {
 
                 const char* raw =
                     G_IS_DESKTOP_APP_INFO(info) ? g_desktop_app_info_get_categories(G_DESKTOP_APP_INFO(info)) : nullptr;
+                GIcon* gicon = g_app_info_get_icon(info);
+                char* icon = gicon ? g_icon_to_string(gicon) : nullptr;
+
                 std::vector<std::string> labels = categories_for(split_categories(raw));
                 if (labels.empty())
                     labels.emplace_back(OTHER);
                 for (const std::string& label : labels)
-                    buckets[label].push_back({id, name});
+                    buckets[label].push_back({id, name, icon ? icon : ""});
+                g_free(icon);
             }
             g_list_free_full(all, g_object_unref);
 
@@ -182,6 +198,10 @@ namespace fenriz::desktop::menu {
                 GMenu* submenu = g_menu_new();
                 for (const AppEntry& app : apps) {
                     GMenuItem* item = g_menu_item_new(app.name.c_str(), nullptr);
+                    if (GIcon* icon = app.icon.empty() ? nullptr : g_icon_new_for_string(app.icon.c_str(), nullptr)) {
+                        g_menu_item_set_icon(item, icon);
+                        g_object_unref(icon);
+                    }
                     g_menu_item_set_action_and_target_value(item, "app.launch", g_variant_new_string(app.id.c_str()));
                     g_menu_append_item(submenu, item);
                     g_object_unref(item);

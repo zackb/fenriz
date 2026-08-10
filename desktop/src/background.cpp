@@ -97,6 +97,8 @@ namespace fenriz::desktop {
         gtk_widget_set_parent(popover, content);
         gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
         gtk_popover_set_position(GTK_POPOVER(popover), GTK_POS_BOTTOM);
+        gtk_widget_set_halign(popover, GTK_ALIGN_START);
+        menu::show_icons(popover);
 
         GtkGesture* click = gtk_gesture_click_new();
         gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(click), GDK_BUTTON_SECONDARY);

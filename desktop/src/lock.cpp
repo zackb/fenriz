@@ -11,6 +11,15 @@ namespace fenriz::desktop {
                    ".lock-scrim { background-color: rgba(0,0,0,0.45); }"
                    ".lock-clock { font-size: 76px; font-weight: 300; color: white; }"
                    ".lock-date  { font-size: 18px; color: alpha(white, 0.85); }"
+                   ".lock-entry, .lock-entry text { caret-color: transparent;"
+                   " -gtk-secondary-caret-color: transparent; }"
+                   ".lock-entry { color: white;"
+                   " background-image: none; background-color: #52516a;"
+                   " border: 2px solid alpha(#6c7086, 0.35); border-radius: 9999px;"
+                   " padding: 12px 16px; box-shadow: none; outline: none;"
+                   " transition: border-color 150ms; }"
+                   ".lock-entry:focus-within { border-color: #cba6f7; }"
+                   ".lock-entry.error { border-color: #f38ba8; }"
                    ".lock-error { font-size: 14px; color: #ff8080; }";
         }
 
@@ -111,9 +120,13 @@ namespace fenriz::desktop {
 
         s.entry = gtk_password_entry_new();
         gtk_password_entry_set_show_peek_icon(GTK_PASSWORD_ENTRY(s.entry), FALSE);
+        g_object_set(s.entry, "placeholder-text", "Password", nullptr);
+        gtk_widget_add_css_class(s.entry, "lock-entry");
+        gtk_editable_set_alignment(GTK_EDITABLE(s.entry), 0.5f);
         gtk_widget_set_size_request(s.entry, 280, -1);
         gtk_widget_set_halign(s.entry, GTK_ALIGN_CENTER);
         g_signal_connect(s.entry, "activate", G_CALLBACK(on_entry_activate), this);
+        g_signal_connect(s.entry, "changed", G_CALLBACK(on_entry_changed), this);
         gtk_box_append(GTK_BOX(column), s.entry);
 
         s.error = gtk_label_new("");
@@ -131,6 +144,13 @@ namespace fenriz::desktop {
     }
 
     void Lock::on_entry_activate(GtkWidget* entry, gpointer data) { static_cast<Lock*>(data)->submit(entry); }
+
+    // typing again drops the failure state, so the red border tracks the current attempt
+    void Lock::on_entry_changed(GtkEditable* entry, gpointer data) {
+        const char* text = gtk_editable_get_text(entry);
+        if (text && *text)
+            static_cast<Lock*>(data)->set_error("");
+    }
 
     void Lock::submit(GtkWidget* entry) {
         if (auth_.busy())
@@ -165,9 +185,16 @@ namespace fenriz::desktop {
     }
 
     void Lock::set_error(const std::string& text) {
-        for (Surface& s : surfaces_)
+        for (Surface& s : surfaces_) {
             if (s.error)
                 gtk_label_set_text(GTK_LABEL(s.error), text.c_str());
+            if (!s.entry)
+                continue;
+            if (text.empty())
+                gtk_widget_remove_css_class(s.entry, "error");
+            else
+                gtk_widget_add_css_class(s.entry, "error");
+        }
     }
 
     gboolean Lock::on_tick(gpointer data) {
