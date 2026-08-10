@@ -40,10 +40,13 @@ present, never a dependency.
 ## Build
 
 ```sh
-cmake -S desktop -B desktop/build -DCMAKE_BUILD_TYPE=Debug
-cmake --build desktop/build
-ctest --test-dir desktop/build
+make -C desktop          # debug (default)
+make -C desktop test
+make -C desktop release
 ```
+
+Or from the fenriz root: `make desktop`, `make run-desktop`,
+`make install-desktop`.
 
 ## Config
 
