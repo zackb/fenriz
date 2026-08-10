@@ -50,6 +50,11 @@ and exports its path as `FENRIZ_SOCKET`. Child processes (including `exec-once`
 clients) inherit it, so read `FENRIZ_SOCKET` rather than reconstructing the path.
 If `XDG_RUNTIME_DIR` or `WAYLAND_DISPLAY` is unset, no socket is created.
 
+`fenrizctl` resolves it in that order: `FENRIZ_SOCKET`, then the path above.
+When neither is in the environment (a TTY, a bare ssh session), the only
+`$XDG_RUNTIME_DIR/fenriz-*.sock` present. If more than one of those it refuses rather
+than picking a session for you.
+
 ```
 socat - UNIX-CONNECT:$FENRIZ_SOCKET
 ```
@@ -195,7 +200,19 @@ printf '{"cmd":"lid","closed":true}\n' | socat - UNIX-CONNECT:$FENRIZ_SOCKET
 ```
 
 Force-unlocks the session. This is a safety net: if a lock client crashes or hangs 
-it would otherwise leave the screen blank forever, recoverable only by killing the compositor. Run it from a TTY to escape.
+it would otherwise leave the screen blank forever, recoverable only by killing the compositor. Run it from a TTY to escape:
+
+```sh
+fenrizctl unlock
+```
+
+A TTY inherits neither `FENRIZ_SOCKET` nor `WAYLAND_DISPLAY`, so `fenrizctl`
+falls back to the single `$XDG_RUNTIME_DIR/fenriz-*.sock` it finds. With more
+than one compositor running, name the one you mean:
+
+```sh
+WAYLAND_DISPLAY=wayland-0 fenrizctl unlock
+```
 
 ```json
 {"cmd":"exit"}

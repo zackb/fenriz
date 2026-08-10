@@ -4,10 +4,12 @@
 
 #include <cassert>
 #include <security/pam_appl.h>
+#include <unistd.h>
 
 #include "auth.hpp"
 
 using fenriz::desktop::pam_result_unlocks;
+using fenriz::desktop::pam_service_installed;
 
 namespace {
 
@@ -45,10 +47,22 @@ namespace {
                 assert(!pam_result_unlocks(rc));
     }
 
+    // The lock refuses to engage when its service is missing, so a wrong answer here either
+    // locks you out of a session nothing can unlock, or drops the guard entirely.
+    void test_service_detection() {
+        assert(!pam_service_installed("fenriz-desktop-definitely-not-installed"));
+        assert(!pam_service_installed(""));
+        assert(!pam_service_installed("../pam.d/other")); // a path is not a service name
+
+        if (access("/etc/pam.d/other", R_OK) == 0)
+            assert(pam_service_installed("other"));
+    }
+
 } // namespace
 
 int main() {
     test_only_success_unlocks();
     test_unknown_codes_deny();
+    test_service_detection();
     return 0;
 }

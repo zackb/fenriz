@@ -10,6 +10,15 @@ namespace fenriz::desktop {
 
     bool pam_result_unlocks(int pam_result) { return pam_result == PAM_SUCCESS; }
 
+    bool pam_service_installed(const std::string& service) {
+        if (service.empty() || service.find('/') != std::string::npos)
+            return false;
+        for (const char* dir : {"/etc/pam.d/", "/usr/lib/pam.d/"})
+            if (access((dir + service).c_str(), R_OK) == 0)
+                return true;
+        return false;
+    }
+
     struct AuthAttempt {
         std::atomic<bool> cancelled{false};
         std::atomic<bool> running{true};

@@ -12,6 +12,9 @@ namespace fenriz::desktop {
     // The security invariant of this program: only PAM_SUCCESS unlocks a session.
     bool pam_result_unlocks(int pam_result);
 
+    // Is a PAM service file installed for `service`?
+    bool pam_service_installed(const std::string& service);
+
     // PAM authentication for the lock screen and the polkit agent.
     class Authenticator {
     public:
@@ -34,6 +37,8 @@ namespace fenriz::desktop {
         void cancel();
 
         bool busy() const;
+
+        const std::string& service() const { return service_; }
 
     private:
         std::string service_;

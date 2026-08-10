@@ -121,6 +121,12 @@ This project attempts to simplify that process, but will not mess with the secur
 settings on your system without you. Without these modules PAM falls back to
 `/etc/pam.d/other`, which denies everything: a missing install fails closed.
 
+If you do get stuck behind a lock screen, switch to a TTY and force-unlock
+
+```sh
+fenrizctl unlock                          # finds the socket on its own
+```
+
 Fingerprint and face are not wired up yet. They cannot share this PAM stack:
 PAM is serial, so "fingerprint OR face OR password, whichever answers first"
 needs one single-module service per method, raced, first success winning.

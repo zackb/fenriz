@@ -34,6 +34,15 @@ namespace fenriz::desktop {
             g_warning("lock: compositor does not support ext-session-lock-v1");
             return;
         }
+        // Locking with no PAM service would hand out a prompt that can never say yes.
+        if (!pam_service_installed(auth_.service())) {
+            g_warning("lock: refusing to lock, no PAM service '%s' installed — nothing could "
+                      "unlock it. Install it with:\n"
+                      "  sudo install -m644 /usr/share/fenriz-desktop/pam/%s /etc/pam.d/",
+                      auth_.service().c_str(),
+                      auth_.service().c_str());
+            return;
+        }
 
         if (!css_) {
             css_ = gtk_css_provider_new();
