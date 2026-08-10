@@ -93,7 +93,7 @@ namespace fenriz::desktop {
         gtk_layer_set_keyboard_mode(window, GTK_LAYER_SHELL_KEYBOARD_MODE_NONE);
         gtk_window_set_child(window, content);
 
-        GtkWidget* popover = gtk_popover_menu_new_from_model(menu_model_);
+        GtkWidget* popover = gtk_popover_menu_new_from_model_full(menu_model_, GTK_POPOVER_MENU_NESTED);
         gtk_widget_set_parent(popover, content);
         gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
         gtk_popover_set_position(GTK_POPOVER(popover), GTK_POS_BOTTOM);
