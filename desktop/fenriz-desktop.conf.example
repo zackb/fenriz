@@ -1,0 +1,54 @@
+# fenriz-desktop config — copy to ~/.config/fenriz-desktop/fenriz-desktop.conf
+#
+# settings: key = value, `#` starts a comment. Everything here is optional;
+# with no config file at all fenriz-desktop shows a transparent desktop with a
+# context menu on it and nothing else.
+
+# --- Wallpaper -------------------------------------------------------------
+
+# Applies to every screen.
+# wallpaper = ~/Pictures/wall.png
+
+# Per-screen override: output_wallpaper = CONNECTOR, PATH
+# Connector names are the same ones fenriz uses (`wlr-randr` lists them).
+# output_wallpaper = eDP-1, ~/Pictures/laptop.png
+# output_wallpaper = DP-1,  ~/Pictures/desk.png
+
+# --- Launcher --------------------------------------------------------------
+# Applications only, ranked by frecency. Bind it from fenriz.conf with
+#   bind = SUPER, D, exec, fenriz-desktop launcher
+# `off` removes it and drops its entry from the desktop menu.
+# launcher = on
+
+# --- Idle and lock ------------------------------------------------------------
+# Lock after this many seconds without input. 0 (the default) never locks.
+# An idle inhibitor (video player) suppresses it.
+# idle_lock = 600
+
+# Wallpaper blur radius on the lock screen, in pixels.
+# lock_blur = 24
+
+# The lock screen needs a PAM service. Install the shipped one:
+#   sudo install -m644 /usr/share/fenriz-desktop/pam/fenriz-desktop /etc/pam.d/
+# Without it PAM falls back to /etc/pam.d/other, which denies everything so a
+# missing install fails closed and you simply cannot unlock.
+
+# --- Polkit agent ----------------------------------------------------------
+# Registered automatically; nothing to configure. If another authentication
+# agent already owns the session, fenriz-desktop logs a warning and skips it.
+
+# --- Desktop context menu --------------------------------------------------
+# Right-click the desktop. A Power submenu (Sleep / Log Out / Restart /
+# Shut Down) is always present and needs no configuration.
+
+# The terminal the menu offers. Unset means: use $TERMINAL if it is installed,
+# otherwise the first of foot, ghostty, kitty, alacritty, wezterm, xterm found
+# in PATH. Set it to a full command line if you want arguments.
+# terminal = ghostty
+
+# Extra menu items: menu = LABEL, COMMAND. Repeat for as many as you want.
+# They appear in the order listed.
+#
+# menu = Files,      nautilus
+# menu = Browser,    firefox
+# menu = Screenshot, grim -g "$(slurp)" - | wl-copy
