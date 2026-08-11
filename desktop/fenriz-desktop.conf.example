@@ -28,6 +28,11 @@
 # Run after every wallpaper pick. The new image path is $1 (also in $FENRIZ_WALLPAPER).
 # wallpaper_hook = ~/bin/wallpaper-changed.sh "$1"
 
+# `off` drops the picker's search bar and drives the grid with vim keys instead:
+# hjkl move, gg and G jump to the first and last, Enter or Space picks, q closes.
+# Arrow keys, Escape and the mouse work either way.
+# wallpaper_search = on
+
 # --- Launcher --------------------------------------------------------------
 # Applications only, ranked by frecency. Bind it from fenriz.conf with
 #   bind = SUPER, D, exec, fenriz-desktop launcher

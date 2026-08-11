@@ -13,6 +13,7 @@ namespace fenriz::desktop {
         std::string wallpaper_dir;
         std::string wallpaper_hook;
         std::string selected_wallpaper;
+        bool wallpaper_search = true;
 
         std::string terminal;
         std::vector<std::pair<std::string, std::string>> menu;

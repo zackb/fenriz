@@ -62,6 +62,7 @@ wallpaper = ~/Pictures/wall.png
 output_wallpaper = DP-1, ~/Pictures/desk.png
 wallpaper_dir = ~/Pictures/wallpapers
 wallpaper_hook = matugen image "$1"
+wallpaper_search = off
 
 terminal = kitty
 menu = Files,      nautilus
@@ -76,6 +77,20 @@ Power (Lock / Sleep / Log Out / Restart / Shut Down).
 
 Log Out uses `fenrizctl exit` under fenriz and falls back to
 `loginctl terminate-session` elsewhere.
+
+## Wallpaper picker
+
+A grid of thumbnails from `wallpaper_dir`, scanned recursively, newest first.
+Open it from the desktop menu, or bind a key:
+
+```ini
+# fenriz.conf
+bind = SUPER, W, exec, fenriz-desktop wallpaper
+```
+
+Typing filters by path. `wallpaper_search = off` drops the search bar and uses vim keys instead:
+`hjkl` move, `gg` and `G` jump to the first and last, `Enter` or `Space` picks, `q` closes. Arrow keys, `Escape` and the mouse
+work in both modes.
 
 ## Launcher
 

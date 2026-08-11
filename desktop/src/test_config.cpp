@@ -50,6 +50,15 @@ namespace {
         assert(Config::parse("").wallpaper_hook.empty());
     }
 
+    void test_wallpaper_search() {
+        // The picker searches unless it is turned off, and garbage leaves it alone.
+        assert(Config::parse("").wallpaper_search);
+        assert(!Config::parse("wallpaper_search = off\n").wallpaper_search);
+        assert(!Config::parse("wallpaper_search = false\n").wallpaper_search);
+        assert(Config::parse("wallpaper_search = on\n").wallpaper_search);
+        assert(Config::parse("wallpaper_search = maybe\n").wallpaper_search);
+    }
+
     // A runtime pick is session state and outranks every config key, so that editing
     // the config after picking cannot silently half-apply.
     void test_selected_outranks_config() {
@@ -192,6 +201,7 @@ int main() {
     test_per_output_without_global();
     test_wallpaper_dir();
     test_wallpaper_hook();
+    test_wallpaper_search();
     test_selected_outranks_config();
     test_wallpaper_state_round_trip();
     test_comments_and_blanks();

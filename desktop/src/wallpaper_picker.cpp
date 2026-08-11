@@ -22,6 +22,8 @@ namespace fenriz::desktop {
     WallpaperPicker::~WallpaperPicker() {
         if (thumbnail_source_)
             g_source_remove(thumbnail_source_);
+        if (place_source_)
+            g_source_remove(place_source_);
         if (window_)
             gtk_window_destroy(window_);
     }
@@ -33,8 +35,13 @@ namespace fenriz::desktop {
             g_source_remove(thumbnail_source_);
             thumbnail_source_ = 0;
         }
+        // pending placement points at the grid this call is about to replace
+        if (place_source_) {
+            g_source_remove(place_source_);
+            place_source_ = 0;
+        }
         pictures_.clear();
-        current_child_ = nullptr;
+        current_index_ = -1;
         next_ = 0;
 
         grid_ = gtk_flow_box_new();
@@ -49,13 +56,15 @@ namespace fenriz::desktop {
         gtk_widget_set_margin_end(grid_, 10);
         gtk_widget_set_margin_bottom(grid_, 10);
         g_signal_connect(grid_, "child-activated", G_CALLBACK(on_child_activated), this);
+        g_signal_connect(grid_, "map", G_CALLBACK(on_grid_map), this);
 
         paths_ = wallpaper::scan(cfg_.wallpaper_dir);
         if (paths_.empty())
             g_warning("wallpaper: no images under %s", cfg_.wallpaper_dir.c_str());
 
         const std::string& current = cfg_.wallpaper_for("");
-        for (const std::string& path : paths_) {
+        for (size_t i = 0; i < paths_.size(); i++) {
+            const std::string& path = paths_[i];
             GtkWidget* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
             // Tiles keep their size instead of stretching to whatever the line has spare
             gtk_widget_set_halign(box, GTK_ALIGN_CENTER);
@@ -68,12 +77,14 @@ namespace fenriz::desktop {
             gtk_box_append(GTK_BOX(box), picture);
             pictures_.push_back(picture);
 
-            GtkWidget* label = gtk_label_new(std::filesystem::path(path).filename().string().c_str());
-            gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_MIDDLE);
-            // Together these ellipsize a long filename to the tile instead of widening it.
-            gtk_label_set_max_width_chars(GTK_LABEL(label), 1);
-            gtk_widget_set_size_request(label, TILE_WIDTH, -1);
-            gtk_box_append(GTK_BOX(box), label);
+            if (cfg_.wallpaper_search) {
+                GtkWidget* label = gtk_label_new(std::filesystem::path(path).filename().string().c_str());
+                gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_MIDDLE);
+                // Together these ellipsize a long filename to the tile instead of widening it.
+                gtk_label_set_max_width_chars(GTK_LABEL(label), 1);
+                gtk_widget_set_size_request(label, TILE_WIDTH, -1);
+                gtk_box_append(GTK_BOX(box), label);
+            }
 
             GtkWidget* child = gtk_flow_box_child_new();
             gtk_flow_box_child_set_child(GTK_FLOW_BOX_CHILD(child), box);
@@ -81,7 +92,7 @@ namespace fenriz::desktop {
             gtk_flow_box_append(GTK_FLOW_BOX(grid_), child);
 
             if (path == current)
-                current_child_ = GTK_FLOW_BOX_CHILD(child);
+                current_index_ = static_cast<int>(i);
         }
 
         // Drops the previous box, and the stale cursor pointer inside it, with it.
@@ -116,6 +127,8 @@ namespace fenriz::desktop {
     }
 
     bool WallpaperPicker::matches(GtkFlowBoxChild* child) const {
+        if (!search_)
+            return true;
         const char* raw = gtk_editable_get_text(GTK_EDITABLE(search_));
         if (!raw || !*raw)
             return true;
@@ -178,6 +191,9 @@ namespace fenriz::desktop {
 
     gboolean WallpaperPicker::on_key(GtkEventControllerKey*, guint keyval, guint, GdkModifierType, gpointer data) {
         auto* self = static_cast<WallpaperPicker*>(data);
+        const bool pending_g = self->pending_g_;
+        self->pending_g_ = false;
+
         switch (keyval) {
         case GDK_KEY_Escape:
             self->close();
@@ -185,6 +201,42 @@ namespace fenriz::desktop {
         case GDK_KEY_Return:
         case GDK_KEY_KP_Enter:
             self->activate(self->current());
+            return TRUE;
+        default:
+            break;
+        }
+
+        // upgrade to vim mode
+        if (self->search_)
+            return FALSE;
+
+        switch (keyval) {
+        case GDK_KEY_h:
+            self->move(GTK_MOVEMENT_VISUAL_POSITIONS, -1);
+            return TRUE;
+        case GDK_KEY_l:
+            self->move(GTK_MOVEMENT_VISUAL_POSITIONS, 1);
+            return TRUE;
+        case GDK_KEY_j:
+            self->move(GTK_MOVEMENT_DISPLAY_LINES, 1);
+            return TRUE;
+        case GDK_KEY_k:
+            self->move(GTK_MOVEMENT_DISPLAY_LINES, -1);
+            return TRUE;
+        case GDK_KEY_g:
+            if (pending_g)
+                self->move(GTK_MOVEMENT_BUFFER_ENDS, -1);
+            else
+                self->pending_g_ = true;
+            return TRUE;
+        case GDK_KEY_G:
+            self->move(GTK_MOVEMENT_BUFFER_ENDS, 1);
+            return TRUE;
+        case GDK_KEY_space:
+            self->activate(self->current());
+            return TRUE;
+        case GDK_KEY_q:
+            self->close();
             return TRUE;
         default:
             return FALSE;
@@ -202,13 +254,17 @@ namespace fenriz::desktop {
         GtkWidget* root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
         gtk_widget_add_css_class(root, "fenriz-wallpaper");
 
-        search_ = gtk_search_entry_new();
-        gtk_widget_set_margin_start(search_, 10);
-        gtk_widget_set_margin_end(search_, 10);
-        gtk_widget_set_margin_top(search_, 10);
-        gtk_widget_set_margin_bottom(search_, 6);
-        g_signal_connect(search_, "changed", G_CALLBACK(on_search_changed), this);
-        gtk_box_append(GTK_BOX(root), search_);
+        if (cfg_.wallpaper_search) {
+            search_ = gtk_search_entry_new();
+            gtk_widget_set_margin_start(search_, 10);
+            gtk_widget_set_margin_end(search_, 10);
+            gtk_widget_set_margin_top(search_, 10);
+            gtk_widget_set_margin_bottom(search_, 6);
+            g_signal_connect(search_, "changed", G_CALLBACK(on_search_changed), this);
+            gtk_box_append(GTK_BOX(root), search_);
+        } else {
+            gtk_widget_set_margin_top(root, 10);
+        }
 
         scroll_ = gtk_scrolled_window_new();
         gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll_), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
@@ -221,7 +277,8 @@ namespace fenriz::desktop {
         gtk_widget_add_controller(GTK_WIDGET(window_), keys);
 
         gtk_window_set_child(window_, root);
-        gtk_search_entry_set_key_capture_widget(GTK_SEARCH_ENTRY(search_), GTK_WIDGET(window_));
+        if (search_)
+            gtk_search_entry_set_key_capture_widget(GTK_SEARCH_ENTRY(search_), GTK_WIDGET(window_));
     }
 
     void WallpaperPicker::toggle(GtkApplication* app) {
@@ -231,23 +288,50 @@ namespace fenriz::desktop {
         }
         if (!window_)
             build(app);
-        gtk_editable_set_text(GTK_EDITABLE(search_), "");
+        if (search_)
+            gtk_editable_set_text(GTK_EDITABLE(search_), "");
         load();
         gtk_window_present(window_);
-        focus_first();
-        // After the cursor is placed, put the highlight on the wallpaper in use.
-        if (current_child_)
-            gtk_flow_box_select_child(GTK_FLOW_BOX(grid_), current_child_);
     }
 
-    void WallpaperPicker::focus_first() {
+    void WallpaperPicker::on_grid_map(GtkWidget*, gpointer data) {
+        auto* self = static_cast<WallpaperPicker*>(data);
+        if (!self->place_source_)
+            self->place_source_ = g_idle_add(on_place_cursor, self);
+    }
+
+    gboolean WallpaperPicker::on_place_cursor(gpointer data) {
+        auto* self = static_cast<WallpaperPicker*>(data);
+        GtkAdjustment* v = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(self->scroll_));
+        if (gtk_adjustment_get_page_size(v) == 0)
+            return gtk_widget_get_mapped(self->grid_) ? G_SOURCE_CONTINUE : G_SOURCE_REMOVE;
+        self->place_source_ = 0;
+
+        self->focus_first();
+        if (self->current_index_ > 0) {
+            self->move(GTK_MOVEMENT_VISUAL_POSITIONS, self->current_index_);
+
+            // focus only scrolls it far enough to be on screen center it instead.
+            GtkFlowBoxChild* child = gtk_flow_box_get_child_at_index(GTK_FLOW_BOX(self->grid_), self->current_index_);
+            graphene_rect_t bounds;
+            if (child && gtk_widget_compute_bounds(GTK_WIDGET(child), self->grid_, &bounds))
+                gtk_adjustment_set_value(
+                    v, bounds.origin.y + bounds.size.height / 2 - gtk_adjustment_get_page_size(v) / 2);
+        }
+        return G_SOURCE_REMOVE;
+    }
+
+    void WallpaperPicker::move(GtkMovementStep step, int count) {
         if (!grid_)
             return;
         gboolean handled = FALSE;
-        g_signal_emit_by_name(grid_, "move-cursor", GTK_MOVEMENT_BUFFER_ENDS, -1, FALSE, FALSE, &handled);
+        g_signal_emit_by_name(grid_, "move-cursor", step, count, FALSE, FALSE, &handled);
     }
 
+    void WallpaperPicker::focus_first() { move(GTK_MOVEMENT_BUFFER_ENDS, -1); }
+
     void WallpaperPicker::close() {
+        pending_g_ = false;
         if (window_)
             gtk_widget_set_visible(GTK_WIDGET(window_), FALSE);
     }

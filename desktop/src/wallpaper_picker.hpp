@@ -25,6 +25,7 @@ namespace fenriz::desktop {
     private:
         void build(GtkApplication* app);
         void load();
+        void move(GtkMovementStep step, int count);
         void focus_first();
         bool matches(GtkFlowBoxChild* child) const;
         GtkFlowBoxChild* first_match() const;
@@ -35,6 +36,8 @@ namespace fenriz::desktop {
         static gboolean on_filter(GtkFlowBoxChild* child, gpointer data);
         static void on_search_changed(GtkEditable* editable, gpointer data);
         static void on_child_activated(GtkFlowBox* box, GtkFlowBoxChild* child, gpointer data);
+        static void on_grid_map(GtkWidget* grid, gpointer data);
+        static gboolean on_place_cursor(gpointer data);
         static gboolean on_key(GtkEventControllerKey* c, guint keyval, guint code, GdkModifierType state, gpointer d);
 
         Config& cfg_;
@@ -43,11 +46,13 @@ namespace fenriz::desktop {
         std::vector<GtkWidget*> pictures_;
         size_t next_ = 0; // next path_ needing a thumbnail
         guint thumbnail_source_ = 0;
+        guint place_source_ = 0;
+        bool pending_g_ = false;
         GtkWindow* window_ = nullptr;
-        GtkWidget* search_ = nullptr;
+        GtkWidget* search_ = nullptr; // null in vim mode, which is how the two modes are told apart
         GtkWidget* scroll_ = nullptr;
         GtkWidget* grid_ = nullptr;
-        GtkFlowBoxChild* current_child_ = nullptr;
+        int current_index_ = -1; // grid position of the wallpaper in use, -1 if it is not in the directory
     };
 
 } // namespace fenriz::desktop

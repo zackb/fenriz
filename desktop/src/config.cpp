@@ -102,6 +102,8 @@ namespace fenriz::desktop {
                     cfg.output_wallpaper[f[0]] = expand(f[1]);
             } else if (key == "wallpaper_hook") {
                 cfg.wallpaper_hook = value;
+            } else if (key == "wallpaper_search") {
+                cfg.wallpaper_search = parse_bool(value, cfg.wallpaper_search);
             } else if (key == "terminal") {
                 cfg.terminal = value;
             } else if (key == "lock_blur") {
