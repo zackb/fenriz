@@ -118,8 +118,10 @@ namespace {
             g_message("idle: no backlight to dim (external monitors need DDC/CI)");
 
         session->power = std::make_unique<OutputPower>();
-        if (session->cfg.idle_dpms > 0)
+        if (session->cfg.idle_dpms > 0) {
             session->power->start();
+            session->lock->set_wake_screens([session] { session->power->set_all(true); });
+        }
         if (session->cfg.idle_dpms > 0 && session->cfg.idle_lock > 0 && session->cfg.idle_dpms < session->cfg.idle_lock)
             g_warning("idle: idle_dpms (%ds) is before idle_lock (%ds), so the screens go dark "
                       "while the session is still unlocked",

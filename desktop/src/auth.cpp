@@ -20,13 +20,17 @@ namespace fenriz::desktop {
         return false;
     }
 
+    namespace {
+        constexpr const char* FPRINT_SERVICE = "fenriz-desktop-fprint"; // pam_fprintd.so
+        constexpr const char* GAZE_SERVICE = "fenriz-desktop-gaze";     // pam_gaze.so
+    } // namespace
+
     const std::vector<std::string>& passive_services() {
-        static const std::vector<std::string> services = {
-            "fenriz-desktop-fprint", // pam_fprintd.so
-            "fenriz-desktop-gaze",   // pam_gaze.so
-        };
+        static const std::vector<std::string> services = {FPRINT_SERVICE, GAZE_SERVICE};
         return services;
     }
+
+    bool passive_service_persists(const std::string& service) { return service == FPRINT_SERVICE; }
 
     struct AuthAttempt {
         std::atomic<bool> cancelled{false};
@@ -188,10 +192,12 @@ namespace fenriz::desktop {
         start(attempt);
     }
 
-    void Authenticator::begin_passive(Callback done, Status status) {
+    void Authenticator::begin_passive(Callback done, Status status, bool persistent_only) {
         std::erase_if(passive_, [](const AttemptPtr& a) { return !a->running; });
 
         for (const std::string& service : passive_services()) {
+            if (persistent_only && !passive_service_persists(service))
+                continue;
             // no service file means the method is not set up on this machine
             if (!pam_service_installed(service))
                 continue;

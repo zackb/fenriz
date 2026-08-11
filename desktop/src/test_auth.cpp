@@ -10,6 +10,7 @@
 
 using fenriz::desktop::pam_result_unlocks;
 using fenriz::desktop::pam_service_installed;
+using fenriz::desktop::passive_service_persists;
 using fenriz::desktop::passive_services;
 
 namespace {
@@ -74,6 +75,21 @@ namespace {
         }
     }
 
+    // The lock re-arms the persistent services every second for as long as it is up. Saying yes
+    // to face auth here would hold the camera for the whole lock; saying no to the fingerprint
+    // reader puts back the bug where it goes cold 30 seconds in.
+    void test_persistent_services() {
+        int persistent = 0;
+        for (const std::string& service : passive_services())
+            persistent += passive_service_persists(service);
+        assert(persistent == 1);
+
+        assert(passive_service_persists("fenriz-desktop-fprint"));
+        assert(!passive_service_persists("fenriz-desktop-gaze"));
+        assert(!passive_service_persists("fenriz-desktop"));
+        assert(!passive_service_persists(""));
+    }
+
 } // namespace
 
 int main() {
@@ -81,5 +97,6 @@ int main() {
     test_unknown_codes_deny();
     test_service_detection();
     test_passive_services();
+    test_persistent_services();
     return 0;
 }

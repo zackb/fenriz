@@ -3,6 +3,7 @@
 #include <gtk/gtk.h>
 #include <gtk4-session-lock.h>
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,9 @@ namespace fenriz::desktop {
         void engage();
         bool active() const;
 
+        // Called when the session unlocks, to undo an idle blank the unlock itself cannot.
+        void set_wake_screens(std::function<void()> fn) { wake_screens_ = std::move(fn); }
+
     private:
         // One per monitor
         struct Surface {
@@ -35,8 +39,7 @@ namespace fenriz::desktop {
 
         void build_for_monitor(GdkMonitor* monitor);
         void submit(GtkWidget* entry);
-        // Starts fingerprint/face if their PAM services are installed. Safe to call repeatedly.
-        void arm_passive();
+        void arm_passive(bool persistent_only = false);
         void release_sleep_inhibitor();
         void tick();
         void set_error(const std::string& text);
@@ -64,6 +67,7 @@ namespace fenriz::desktop {
 
         const Config& cfg_;
         Authenticator auth_;
+        std::function<void()> wake_screens_;
         GtkSessionLockInstance* instance_ = nullptr;
         GtkCssProvider* css_ = nullptr;
         std::vector<Surface> surfaces_;

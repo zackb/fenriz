@@ -144,7 +144,7 @@ namespace fenriz::desktop {
         arm_passive();
     }
 
-    void Lock::arm_passive() {
+    void Lock::arm_passive(bool persistent_only) {
         if (!locked_)
             return;
         auth_.begin_passive(
@@ -152,7 +152,8 @@ namespace fenriz::desktop {
                 if (ok && instance_)
                     gtk_session_lock_instance_unlock(instance_);
             },
-            [this](std::string message) { set_status(message); });
+            [this](std::string message) { set_status(message); },
+            persistent_only);
     }
 
     void Lock::release_sleep_inhibitor() {
@@ -357,6 +358,10 @@ namespace fenriz::desktop {
     void Lock::tick() {
         if (!locked_)
             return;
+
+        // pam_fprintd gives up on its own (timeout=30 max-tries=3 by default)
+        arm_passive(true);
+
         GDateTime* now = g_date_time_new_now_local();
         char* time = g_date_time_format(now, "%-I:%M");
         char* date = g_date_time_format(now, "%A, %B %-d");
@@ -393,6 +398,8 @@ namespace fenriz::desktop {
     void Lock::on_unlocked(GtkSessionLockInstance*, gpointer data) {
         auto* self = static_cast<Lock*>(data);
         self->locked_ = false;
+        if (self->wake_screens_)
+            self->wake_screens_();
         self->auth_.cancel();
         self->surfaces_.clear(); // library already destroyed the windows
         if (self->tick_id_) {

@@ -19,6 +19,9 @@ namespace fenriz::desktop {
     // Services raced against the password: fingerprint, face. One module each, because PAM is serial.
     const std::vector<std::string>& passive_services();
 
+    // Should `service` stay armed for as long as the session is locked?
+    bool passive_service_persists(const std::string& service);
+
     // PAM authentication for the lock screen and the polkit agent.
     class Authenticator {
     public:
@@ -38,7 +41,7 @@ namespace fenriz::desktop {
         void submit_password(std::string_view password, Callback done);
 
         // Starts every installed passive service (fingerprint, face) racing the password.
-        void begin_passive(Callback done, Status status = {});
+        void begin_passive(Callback done, Status status = {}, bool persistent_only = false);
 
         // Abandons any in-flight attempt's result, password and passive alike.
         void cancel();
