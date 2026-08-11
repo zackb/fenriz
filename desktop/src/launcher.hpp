@@ -20,6 +20,8 @@ namespace fenriz::desktop {
         Launcher(const Launcher&) = delete;
         Launcher& operator=(const Launcher&) = delete;
 
+        // Build the window and load the entries ahead of the first toggle.
+        void prewarm(GtkApplication* app);
         void toggle(GtkApplication* app);
         void close();
 
@@ -36,6 +38,7 @@ namespace fenriz::desktop {
         void activate_row(GtkListBoxRow* row);
         void move_selection(int delta);
 
+        static void on_apps_changed(GAppInfoMonitor* monitor, gpointer data);
         static void on_search_changed(GtkEditable* editable, gpointer data);
         static void on_row_activated(GtkListBox* box, GtkListBoxRow* row, gpointer data);
         static gboolean on_key(GtkEventControllerKey* c, guint keyval, guint code, GdkModifierType state, gpointer d);
@@ -43,7 +46,9 @@ namespace fenriz::desktop {
         const Config& cfg_;
         UsageStore usage_;
         std::vector<Entry> entries_;
-        std::vector<int> shown_; // indices into entries_, in display order
+        bool entries_stale_ = true;
+        std::vector<int> shown_;
+        GAppInfoMonitor* app_monitor_ = nullptr; // owned
         GtkWindow* window_ = nullptr;
         GtkWidget* search_ = nullptr;
         GtkWidget* list_ = nullptr;

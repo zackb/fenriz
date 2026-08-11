@@ -65,6 +65,14 @@ namespace {
             session->launcher->toggle(app);
     }
 
+    gboolean prewarm_launcher(gpointer data) {
+        auto* app = static_cast<GtkApplication*>(data);
+        auto* session = static_cast<Session*>(g_object_get_data(G_OBJECT(app), "session"));
+        if (session->launcher)
+            session->launcher->prewarm(app);
+        return G_SOURCE_REMOVE;
+    }
+
     void on_wallpaper(GSimpleAction*, GVariant*, gpointer data) {
         auto* app = static_cast<GtkApplication*>(data);
         auto* session = static_cast<Session*>(g_object_get_data(G_OBJECT(app), "session"));
@@ -79,6 +87,11 @@ namespace {
             return;
 
         fenriz::desktop::log::init();
+
+        if (!gtk_layer_is_supported()) {
+            g_printerr("fenriz-desktop: compositor does not support wlr-layer-shell\n");
+            exit(1);
+        }
 
         GtkCssProvider* css = gtk_css_provider_new();
         gtk_css_provider_load_from_string(css, CSS);
@@ -109,8 +122,11 @@ namespace {
         g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(wallpaper_action));
         g_object_unref(wallpaper_action);
 
-        if (session->cfg.launcher)
+        if (session->cfg.launcher) {
             session->launcher = std::make_unique<Launcher>(session->cfg);
+            // Build the window off the critical path so the first keybind press only presents it.
+            g_idle_add(prewarm_launcher, app);
+        }
 
         session->lock = std::make_unique<Lock>(session->cfg);
         session->brightness = std::make_unique<Brightness>();
@@ -201,15 +217,6 @@ namespace {
 } // namespace
 
 int main(int argc, char** argv) {
-    if (!gtk_init_check()) {
-        g_printerr("fenriz-desktop: no display\n");
-        return 1;
-    }
-    if (!gtk_layer_is_supported()) {
-        g_printerr("fenriz-desktop: compositor does not support wlr-layer-shell\n");
-        return 1;
-    }
-
     Session session;
     GtkApplication* app = gtk_application_new("dev.fenriz.Desktop", G_APPLICATION_HANDLES_COMMAND_LINE);
     g_object_set_data(G_OBJECT(app), "session", &session);
