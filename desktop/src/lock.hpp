@@ -35,6 +35,8 @@ namespace fenriz::desktop {
 
         void build_for_monitor(GdkMonitor* monitor);
         void submit(GtkWidget* entry);
+        // Starts fingerprint/face if their PAM services are installed. Safe to call repeatedly.
+        void arm_passive();
         void tick();
         void set_error(const std::string& text);
         void set_status(const std::string& text);
@@ -47,6 +49,17 @@ namespace fenriz::desktop {
         static void on_entry_activate(GtkWidget* entry, gpointer data);
         static void on_entry_changed(GtkEditable* entry, gpointer data);
         static gboolean on_tick(gpointer data);
+        static gboolean
+            on_key_pressed(GtkEventControllerKey* c, guint keyval, guint keycode, GdkModifierType s, gpointer data);
+        static void on_motion(GtkEventControllerMotion* c, double x, double y, gpointer data);
+        static void on_prepare_for_sleep(GDBusConnection* bus,
+                                         const char* sender,
+                                         const char* path,
+                                         const char* iface,
+                                         const char* signal,
+                                         GVariant* params,
+                                         gpointer data);
+        static gboolean on_wake_arm(gpointer data);
 
         const Config& cfg_;
         Authenticator auth_;
@@ -54,6 +67,9 @@ namespace fenriz::desktop {
         GtkCssProvider* css_ = nullptr;
         std::vector<Surface> surfaces_;
         guint tick_id_ = 0;
+        GDBusConnection* system_bus_ = nullptr; // logind, for the resume-from-suspend signal
+        guint sleep_sub_ = 0;
+        guint wake_arm_id_ = 0;
         bool locked_ = false;
     };
 

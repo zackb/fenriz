@@ -24,13 +24,36 @@ namespace fenriz::desktop {
                    ".lock-error.status { color: alpha(white, 0.85); }";
         }
 
+        // A fingerprint reader does not survive a suspend, and the USB side of it needs a moment
+        // to come back before PAM can claim it. TODO: probably needs tuning
+        constexpr int WAKE_ARM_DELAY_SECONDS = 2;
+
     } // namespace
 
-    Lock::Lock(const Config& cfg) : cfg_(cfg) {}
+    Lock::Lock(const Config& cfg) : cfg_(cfg) {
+        system_bus_ = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, nullptr);
+        if (!system_bus_)
+            return;
+        sleep_sub_ = g_dbus_connection_signal_subscribe(system_bus_,
+                                                        "org.freedesktop.login1",
+                                                        "org.freedesktop.login1.Manager",
+                                                        "PrepareForSleep",
+                                                        "/org/freedesktop/login1",
+                                                        nullptr,
+                                                        G_DBUS_SIGNAL_FLAGS_NONE,
+                                                        on_prepare_for_sleep,
+                                                        this,
+                                                        nullptr);
+    }
 
     Lock::~Lock() {
         if (tick_id_)
             g_source_remove(tick_id_);
+        if (wake_arm_id_)
+            g_source_remove(wake_arm_id_);
+        if (sleep_sub_)
+            g_dbus_connection_signal_unsubscribe(system_bus_, sleep_sub_);
+        g_clear_object(&system_bus_);
         g_clear_object(&css_);
         g_clear_object(&instance_);
     }
@@ -78,12 +101,44 @@ namespace fenriz::desktop {
             tick_id_ = g_timeout_add_seconds(1, on_tick, this);
         tick();
 
+        arm_passive();
+    }
+
+    void Lock::arm_passive() {
+        if (!locked_)
+            return;
         auth_.begin_passive(
             [this](bool ok, std::string) {
                 if (ok && instance_)
                     gtk_session_lock_instance_unlock(instance_);
             },
             [this](std::string message) { set_status(message); });
+    }
+
+    void Lock::on_prepare_for_sleep(
+        GDBusConnection*, const char*, const char*, const char*, const char*, GVariant* params, gpointer data) {
+        gboolean sleeping = TRUE;
+        g_variant_get(params, "(b)", &sleeping);
+        auto* self = static_cast<Lock*>(data);
+        if (sleeping || !self->locked_ || self->wake_arm_id_)
+            return;
+        self->wake_arm_id_ = g_timeout_add_seconds(WAKE_ARM_DELAY_SECONDS, on_wake_arm, self);
+    }
+
+    gboolean Lock::on_wake_arm(gpointer data) {
+        auto* self = static_cast<Lock*>(data);
+        self->wake_arm_id_ = 0;
+        self->arm_passive();
+        return G_SOURCE_REMOVE;
+    }
+
+    gboolean Lock::on_key_pressed(GtkEventControllerKey*, guint, guint, GdkModifierType, gpointer data) {
+        static_cast<Lock*>(data)->arm_passive();
+        return FALSE; // observing only; the entry still gets the key
+    }
+
+    void Lock::on_motion(GtkEventControllerMotion*, double, double, gpointer data) {
+        static_cast<Lock*>(data)->arm_passive();
     }
 
     void Lock::on_monitor(GtkSessionLockInstance*, GdkMonitor* monitor, gpointer data) {
@@ -145,6 +200,17 @@ namespace fenriz::desktop {
         gtk_overlay_add_overlay(GTK_OVERLAY(overlay), scrim);
         gtk_window_set_child(window, overlay);
         gtk_window_set_focus(window, s.entry);
+
+        // Someone is at the machine: offer the reader again.
+        GtkEventController* keys = gtk_event_controller_key_new();
+        gtk_event_controller_set_propagation_phase(keys, GTK_PHASE_CAPTURE);
+        g_signal_connect(keys, "key-pressed", G_CALLBACK(on_key_pressed), this);
+        gtk_widget_add_controller(GTK_WIDGET(window), keys);
+
+        GtkEventController* motion = gtk_event_controller_motion_new();
+        gtk_event_controller_set_propagation_phase(motion, GTK_PHASE_CAPTURE);
+        g_signal_connect(motion, "motion", G_CALLBACK(on_motion), this);
+        gtk_widget_add_controller(GTK_WIDGET(window), motion);
 
         surfaces_.push_back(s);
         gtk_session_lock_instance_assign_window_to_monitor(instance_, window, monitor);
@@ -261,6 +327,10 @@ namespace fenriz::desktop {
         if (self->tick_id_) {
             g_source_remove(self->tick_id_);
             self->tick_id_ = 0;
+        }
+        if (self->wake_arm_id_) {
+            g_source_remove(self->wake_arm_id_);
+            self->wake_arm_id_ = 0;
         }
         g_clear_object(&self->instance_);
         g_message("lock: session unlocked");

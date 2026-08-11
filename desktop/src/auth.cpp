@@ -137,10 +137,9 @@ namespace fenriz::desktop {
                 return G_SOURCE_REMOVE;
 
             const bool ok = pam_result_unlocks(attempt.result);
-            // a passive method saying no is not a rejected login
+            // a passive method saying no is not a rejected login pam_strerror.
             if (!ok && attempt.passive) {
-                if (attempt.status && !attempt.message.empty())
-                    attempt.status(attempt.message);
+                g_debug("auth: %s ended: %s", attempt.service.c_str(), attempt.message.c_str());
                 return G_SOURCE_REMOVE;
             }
             if (attempt.done)
