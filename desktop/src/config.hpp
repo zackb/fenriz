@@ -18,6 +18,7 @@ namespace fenriz::desktop {
         bool launcher = true;
 
         int lock_blur = 24;
+        bool lock_on_suspend = true;
         int idle_lock = 0;
         int idle_dim = 0;        // seconds before dimming the backlight; 0 = never
         int dim_brightness = 10; // percent of each backlight's maximum while dimmed

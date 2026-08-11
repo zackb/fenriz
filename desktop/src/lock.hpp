@@ -37,6 +37,7 @@ namespace fenriz::desktop {
         void submit(GtkWidget* entry);
         // Starts fingerprint/face if their PAM services are installed. Safe to call repeatedly.
         void arm_passive();
+        void release_sleep_inhibitor();
         void tick();
         void set_error(const std::string& text);
         void set_status(const std::string& text);
@@ -70,6 +71,8 @@ namespace fenriz::desktop {
         GDBusConnection* system_bus_ = nullptr; // logind, for the resume-from-suspend signal
         guint sleep_sub_ = 0;
         guint wake_arm_id_ = 0;
+        int sleep_fd_ = -1;
+        bool suspend_pending_ = false;
         bool locked_ = false;
     };
 

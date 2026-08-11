@@ -1,5 +1,4 @@
 #include <cassert>
-#include <cstdlib>
 #include <filesystem>
 
 #include "config.hpp"
@@ -112,6 +111,14 @@ namespace {
         assert(Config::parse("").terminal.empty());
     }
 
+    void test_lock_on_suspend() {
+        assert(Config::parse("").lock_on_suspend);
+        assert(Config::parse("idle_lock = 0\n").lock_on_suspend); // not tied to the idle timers
+        assert(!Config::parse("lock_on_suspend = false\n").lock_on_suspend);
+        assert(!Config::parse("lock_on_suspend = off\n").lock_on_suspend);
+        assert(Config::parse("lock_on_suspend = nonsense\n").lock_on_suspend);
+    }
+
     void test_launcher_toggle() {
         assert(Config::parse("").launcher); // on unless asked otherwise
         assert(!Config::parse("launcher = off\n").launcher);
@@ -185,6 +192,7 @@ int main() {
     test_tilde_expansion();
     test_last_wins();
     test_terminal();
+    test_lock_on_suspend();
     test_launcher_toggle();
     test_menu_entries_keep_order();
     test_menu_command_with_comma();

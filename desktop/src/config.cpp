@@ -104,6 +104,8 @@ namespace fenriz::desktop {
                 cfg.terminal = value;
             } else if (key == "lock_blur") {
                 cfg.lock_blur = parse_int(value, cfg.lock_blur, 0, 200);
+            } else if (key == "lock_on_suspend") {
+                cfg.lock_on_suspend = parse_bool(value, cfg.lock_on_suspend);
             } else if (key == "idle_lock") {
                 cfg.idle_lock = parse_int(value, cfg.idle_lock, 0, 86400);
             } else if (key == "idle_dim") {

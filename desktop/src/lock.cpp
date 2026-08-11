@@ -1,5 +1,8 @@
 #include "lock.hpp"
 
+#include <gio/gunixfdlist.h>
+#include <unistd.h>
+
 namespace fenriz::desktop {
 
     namespace {
@@ -28,6 +31,40 @@ namespace fenriz::desktop {
         // to come back before PAM can claim it. TODO: probably needs tuning
         constexpr int WAKE_ARM_DELAY_SECONDS = 2;
 
+        // logind "delay" inhibitor.
+        // so the lock surface is on screen before the display sleeps rather than a moment after
+        // it wakes. logind cuts us off at InhibitDelayMaxSec (5s by default) regardless.
+        int take_sleep_inhibitor(GDBusConnection* bus) {
+            GUnixFDList* fds = nullptr;
+            GError* error = nullptr;
+            GVariant* reply = g_dbus_connection_call_with_unix_fd_list_sync(
+                bus,
+                "org.freedesktop.login1",
+                "/org/freedesktop/login1",
+                "org.freedesktop.login1.Manager",
+                "Inhibit",
+                g_variant_new("(ssss)", "sleep", "fenriz-desktop", "Locking the session", "delay"),
+                G_VARIANT_TYPE("(h)"),
+                G_DBUS_CALL_FLAGS_NONE,
+                -1,
+                nullptr,
+                &fds,
+                nullptr,
+                &error);
+            if (!reply) {
+                g_warning("lock: no sleep inhibitor: %s", error->message);
+                g_error_free(error);
+                return -1;
+            }
+
+            gint index = -1;
+            g_variant_get(reply, "(h)", &index);
+            int fd = fds ? g_unix_fd_list_get(fds, index, nullptr) : -1;
+            g_variant_unref(reply);
+            g_clear_object(&fds);
+            return fd;
+        }
+
     } // namespace
 
     Lock::Lock(const Config& cfg) : cfg_(cfg) {
@@ -44,6 +81,8 @@ namespace fenriz::desktop {
                                                         on_prepare_for_sleep,
                                                         this,
                                                         nullptr);
+        if (cfg_.lock_on_suspend)
+            sleep_fd_ = take_sleep_inhibitor(system_bus_);
     }
 
     Lock::~Lock() {
@@ -53,6 +92,7 @@ namespace fenriz::desktop {
             g_source_remove(wake_arm_id_);
         if (sleep_sub_)
             g_dbus_connection_signal_unsubscribe(system_bus_, sleep_sub_);
+        release_sleep_inhibitor();
         g_clear_object(&system_bus_);
         g_clear_object(&css_);
         g_clear_object(&instance_);
@@ -115,14 +155,40 @@ namespace fenriz::desktop {
             [this](std::string message) { set_status(message); });
     }
 
+    void Lock::release_sleep_inhibitor() {
+        if (sleep_fd_ < 0)
+            return;
+        close(sleep_fd_);
+        sleep_fd_ = -1;
+    }
+
     void Lock::on_prepare_for_sleep(
         GDBusConnection*, const char*, const char*, const char*, const char*, GVariant* params, gpointer data) {
         gboolean sleeping = TRUE;
         g_variant_get(params, "(b)", &sleeping);
         auto* self = static_cast<Lock*>(data);
-        if (sleeping || !self->locked_ || self->wake_arm_id_)
+
+        if (!sleeping) { // resuming
+            if (self->cfg_.lock_on_suspend && self->sleep_fd_ < 0)
+                self->sleep_fd_ = take_sleep_inhibitor(self->system_bus_);
+            if (self->locked_ && !self->wake_arm_id_)
+                self->wake_arm_id_ = g_timeout_add_seconds(WAKE_ARM_DELAY_SECONDS, on_wake_arm, self);
             return;
-        self->wake_arm_id_ = g_timeout_add_seconds(WAKE_ARM_DELAY_SECONDS, on_wake_arm, self);
+        }
+
+        // closing the lid is a request to lock, whatever the idle timers are doing
+        if (!self->cfg_.lock_on_suspend)
+            return;
+        if (self->locked_) {
+            self->release_sleep_inhibitor(); // nothing to wait for
+            return;
+        }
+        self->suspend_pending_ = true;
+        self->engage();
+        if (!self->locked_) { // refused: never stall a suspend over a lock that cannot happen
+            self->suspend_pending_ = false;
+            self->release_sleep_inhibitor();
+        }
     }
 
     gboolean Lock::on_wake_arm(gpointer data) {
@@ -306,7 +372,12 @@ namespace fenriz::desktop {
     }
 
     void Lock::on_locked(GtkSessionLockInstance*, gpointer data) {
-        (void)data;
+        auto* self = static_cast<Lock*>(data);
+        // compositor has the lock surface up, sleep can proceed.
+        if (self->suspend_pending_) {
+            self->suspend_pending_ = false;
+            self->release_sleep_inhibitor();
+        }
         g_message("lock: session locked");
     }
 

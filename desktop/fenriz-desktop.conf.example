@@ -56,6 +56,9 @@
 # Wallpaper blur radius on the lock screen, in pixels.
 # lock_blur = 24
 
+# Lock before the machine sleeps: closing the lid, systemctl suspend, low battery. On by default.
+# lock_on_suspend = true
+
 # The lock screen needs a PAM service. Install the shipped one:
 #   sudo install -m644 /usr/share/fenriz-desktop/pam/fenriz-desktop /etc/pam.d/
 # Without it PAM falls back to /etc/pam.d/other, which denies everything so a
