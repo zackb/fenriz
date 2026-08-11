@@ -66,7 +66,7 @@ install(FILES fenriz-desktop.conf.example
 ### IMPORTANT ###
 # Not installed into /etc/pam.d automatically: a PAM file is a security surface and its
 # contents are distro-specific. Packagers and users copy it deliberately.
-install(FILES pam/fenriz-desktop
+install(FILES pam/fenriz-desktop pam/fenriz-desktop-fprint pam/fenriz-desktop-gaze
         DESTINATION ${CMAKE_INSTALL_DATADIR}/fenriz-desktop/pam)
 
 add_executable(desktop_config_test src/config.cpp src/test_config.cpp)

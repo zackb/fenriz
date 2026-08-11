@@ -10,6 +10,7 @@
 
 using fenriz::desktop::pam_result_unlocks;
 using fenriz::desktop::pam_service_installed;
+using fenriz::desktop::passive_services;
 
 namespace {
 
@@ -58,11 +59,27 @@ namespace {
             assert(pam_service_installed("other"));
     }
 
+    // Fingerprint and face are raced as separate PAM services, picked purely by whether their
+    // file exists. A bad name here either enables a method nobody installed or feeds
+    // pam_service_installed() something that is not a service name.
+    void test_passive_services() {
+        assert(!passive_services().empty());
+        for (const std::string& service : passive_services()) {
+            assert(!service.empty());
+            assert(service.find('/') == std::string::npos); // a path is not a service name
+
+            // The password service must not be in the list: it would run a second time with an
+            // empty secret, and a passive failure is deliberately not reported as a rejection.
+            assert(service != "fenriz-desktop");
+        }
+    }
+
 } // namespace
 
 int main() {
     test_only_success_unlocks();
     test_unknown_codes_deny();
     test_service_detection();
+    test_passive_services();
     return 0;
 }

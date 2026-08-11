@@ -138,10 +138,16 @@ If you do get stuck behind a lock screen, switch to a TTY and force-unlock
 fenrizctl unlock                          # finds the socket on its own
 ```
 
-Fingerprint and face are not wired up yet. They cannot share this PAM stack:
-PAM is serial, so "fingerprint OR face OR password, whichever answers first"
-needs one single-module service per method, raced, first success winning.
-`Authenticator::begin_passive()` is the seam they attach to.
+### Fingerprint and face
+
+Both are optional and both are off until you install their service file. They only start if the service file is present.
+
+```sh
+sudo install -m644 /usr/share/fenriz-desktop/pam/fenriz-desktop-fprint /etc/pam.d/   # pam_fprintd.so
+sudo install -m644 /usr/share/fenriz-desktop/pam/fenriz-desktop-gaze   /etc/pam.d/   # pam_gaze.so
+```
+
+Enroll first: `fprintd-enroll` for the reader, `gaze` for the camera.
 
 ## Polkit agent
 
