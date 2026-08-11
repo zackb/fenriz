@@ -137,6 +137,7 @@ Colors are `0xRRGGBBAA` hex.
 | `sensitivity` | `0.0` | pointer speed, `-1.0` (slow) to `1.0` (fast); `0` = default |
 | `tap_to_click` | `true` | trackpad tap = click (1/2/3 fingers = left/right/middle) |
 | `clickfinger` | `true` | two-finger press = right-click; `false` = bottom-right corner |
+| `disable_while_typing` | `true` | trackpad ignores touches while the internal keyboard types; `false` for touchpad gaming. Applied when a device is attached |
 | `focus_follows_pointer` | `true` | hovering focuses; `false` = click to focus |
 | `repeat_delay` | `250` | ms before a held key repeats |
 | `repeat_rate` | `15` | key repeats per second |

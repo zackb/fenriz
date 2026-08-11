@@ -73,6 +73,7 @@ namespace fenriz {
         float sensitivity = 0.0f;          // libinput pointer accel speed, -1.0 (slow) .. 1.0 (fast); 0 = default
         bool tap_to_click = true;          // trackpad tap = click (1/2/3 fingers = left/right/middle)
         bool clickfinger = true;           // two-finger press = right-click; false = bottom-right corner
+        bool disable_while_typing = true;  // trackpad ignores touches while the internal keyboard is typing
         bool focus_follows_pointer = true; // window under the moving cursor gains focus
         int repeat_delay = 250;            // ms a `binde` key is held before it starts repeating
         int repeat_rate = 15;              // `binde` fires per second while held

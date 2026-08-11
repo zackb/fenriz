@@ -735,20 +735,27 @@ namespace fenriz::cursor {
                 // natural scroll
                 if (libinput_device_config_scroll_has_natural_scroll(dev))
                     libinput_device_config_scroll_set_natural_scroll_enabled(dev, server.config.natural_scroll);
+
                 // Pointer/trackpad speed. Skipped on devices with no accel profile
                 if (libinput_device_config_accel_is_available(dev))
                     libinput_device_config_accel_set_speed(dev, server.config.sensitivity);
+
                 // Tap-to-click, and two-finger press as right-click
                 if (libinput_device_config_tap_get_finger_count(dev) > 0)
                     libinput_device_config_tap_set_enabled(
                         dev, server.config.tap_to_click ? LIBINPUT_CONFIG_TAP_ENABLED : LIBINPUT_CONFIG_TAP_DISABLED);
+
+                // clickfinger
                 if (server.config.clickfinger &&
                     (libinput_device_config_click_get_methods(dev) & LIBINPUT_CONFIG_CLICK_METHOD_CLICKFINGER))
                     libinput_device_config_click_set_method(dev, LIBINPUT_CONFIG_CLICK_METHOD_CLICKFINGER);
 
-                // disable while typing always
+                // disable while typing (DWT) for touchpads
                 if (libinput_device_config_dwt_is_available(dev))
-                    libinput_device_config_dwt_set_enabled(dev, LIBINPUT_CONFIG_DWT_ENABLED);
+                    libinput_device_config_dwt_set_enabled(dev,
+                                                           server.config.disable_while_typing
+                                                               ? LIBINPUT_CONFIG_DWT_ENABLED
+                                                               : LIBINPUT_CONFIG_DWT_DISABLED);
             }
         }
     }
