@@ -391,7 +391,16 @@ namespace fenriz {
             waitpid(pid, nullptr, 0); // reap the intermediate; grandchild is init's now
     }
 
-    Server::Server() { config = Config::load(); }
+    Server::Server() {
+        config = Config::load();
+        if (config.source.empty())
+            wlr_log(WLR_ERROR,
+                    "config: no %s and no shipped defaults found, there are no keybinds! "
+                    "SUPER+SHIFT+CTRL+Q exits.",
+                    Config::config_path().c_str());
+        else
+            wlr_log(WLR_INFO, "config: %s", config.source.c_str());
+    }
 
     Server::~Server() {
         if (config_watch)
@@ -627,14 +636,14 @@ namespace fenriz {
     }
 
     void reload_config(Server& server) {
-        server.config = Config::load(); // built-in defaults if the file was removed
+        server.config = Config::load(); // falls back to the shipped defaults if it was removed
         // Re-apply output mode/scale/position and workspace homes, then re-home + re-arrange.
         // Editing an `output =` line takes effect live, no restart.
         output::apply_config(server);
         cursor::reload(server); // `cursor =` / `cursor_size =` re-theme the pointer live
         for (View* v : server.views)
             place_view_nodes(v); // border width/color/rounding on all views (incl. floating)
-        wlr_log(WLR_INFO, "fenriz: config reloaded");
+        wlr_log(WLR_INFO, "fenriz: config reloaded from %s", server.config.source.c_str());
     }
 
     void Server::run() { wl_display_run(display); }

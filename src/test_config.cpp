@@ -1,8 +1,11 @@
 #include "color.hpp"
 #include "config.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
+#include <fstream>
+#include <sstream>
 
 using namespace fenriz;
 
@@ -261,6 +264,26 @@ int main() {
     assert(!auto_float(0, 0, 0, 0, false));         // no hints at all -> tile it
     // A fixed width alone isn't enough; both axes must be pinned.
     assert(!auto_float(300, 300, 200, 600, false));
+
+    // The shipped defaults
+    {
+        const std::string path = Config::default_config_path();
+        assert(!path.empty()); // FENRIZ_DEFAULT_CONFIG points at defaults/fenriz.conf
+        std::ifstream f(path);
+        std::stringstream buf;
+        buf << f.rdbuf();
+        const Config def = Config::parse(buf.str());
+
+        auto has = [&](Action a) {
+            return std::any_of(def.binds.begin(), def.binds.end(), [&](const Bind& b) { return b.action == a; });
+        };
+        assert(has(Action::Exit)); // or the compositor cannot be quit
+        assert(has(Action::Exec)); // ...and there is no way to open a terminal
+        assert(has(Action::KillActive));
+        assert(has(Action::Workspace) && has(Action::MoveToWorkspace));
+        // Every bind resolved: a dropped one leaves a gap the count catches.
+        assert(def.binds.size() >= 40);
+    }
 
     std::printf("config parser: all assertions passed\n");
     return 0;

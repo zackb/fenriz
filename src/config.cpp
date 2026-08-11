@@ -7,6 +7,11 @@
 #include <fstream>
 #include <regex>
 #include <sstream>
+#include <unistd.h>
+
+#ifndef FENRIZ_DEFAULT_CONFIG
+#define FENRIZ_DEFAULT_CONFIG "/usr/share/fenriz/fenriz.conf"
+#endif
 
 namespace fenriz {
 
@@ -339,14 +344,26 @@ namespace fenriz {
         return "";
     }
 
+    std::string Config::default_config_path() {
+        for (const char* path :
+             {FENRIZ_DEFAULT_CONFIG, "/usr/local/share/fenriz/fenriz.conf", "/usr/share/fenriz/fenriz.conf"})
+            if (access(path, R_OK) == 0)
+                return path;
+        return "";
+    }
+
     Config Config::load() {
-        std::string path = config_path();
-        std::ifstream f(path);
-        if (!f)
-            return Config{}; // built-in defaults
-        std::stringstream buf;
-        buf << f.rdbuf();
-        return parse(buf.str());
+        for (const std::string& path : {config_path(), default_config_path()}) {
+            std::ifstream f(path);
+            if (!f)
+                continue;
+            std::stringstream buf;
+            buf << f.rdbuf();
+            Config cfg = parse(buf.str());
+            cfg.source = path;
+            return cfg;
+        }
+        return Config{}; // struct defaults, so no binds at all
     }
 
 } // namespace fenriz

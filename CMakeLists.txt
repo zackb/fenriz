@@ -113,13 +113,17 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/fenriz.desktop
 install(FILES fenriz-portals.conf
         DESTINATION ${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal)
 
-# A starting config for packaged installs; users copy it to ~/.config/fenriz/fenriz.conf.
-install(FILES fenriz.conf.example
+# The defaults fenriz falls back to when the user has no ~/.config/fenriz/fenriz.conf.
+install(FILES defaults/fenriz.conf
         DESTINATION ${CMAKE_INSTALL_DATADIR}/fenriz)
+target_compile_definitions(fenriz PRIVATE
+        FENRIZ_DEFAULT_CONFIG="${CMAKE_INSTALL_FULL_DATADIR}/fenriz/fenriz.conf")
 
 add_executable(fenriz_config_test src/config.cpp src/test_config.cpp)
 target_include_directories(fenriz_config_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(fenriz_config_test PRIVATE PkgConfig::XKBCOMMON)
+target_compile_definitions(fenriz_config_test PRIVATE
+        FENRIZ_DEFAULT_CONFIG="${CMAKE_CURRENT_SOURCE_DIR}/defaults/fenriz.conf")
 
 add_executable(fenriz_tiling_test src/test_tiling.cpp)
 target_include_directories(fenriz_tiling_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

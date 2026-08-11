@@ -60,18 +60,29 @@ target_link_libraries(fenriz-desktop PRIVATE PkgConfig::GTK4 PkgConfig::LAYER_SH
 
 include(GNUInstallDirs)
 install(TARGETS fenriz-desktop RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES fenriz-desktop.conf.example
+
+# The defaults fenriz-desktop falls back to when the user has no ~/.config/fenriz/fenriz-desktop.conf
+set(FENRIZ_DESKTOP_DATADIR ${CMAKE_INSTALL_FULL_DATADIR}/fenriz-desktop)
+configure_file(defaults/fenriz-desktop.conf.in fenriz-desktop.conf @ONLY)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/fenriz-desktop.conf
         DESTINATION ${CMAKE_INSTALL_DATADIR}/fenriz-desktop)
+install(FILES docs/img/fenriz-desktop-wallpaper.png
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/fenriz-desktop RENAME wallpaper.png)
+target_compile_definitions(fenriz-desktop PRIVATE
+        FENRIZ_DESKTOP_DATADIR="${FENRIZ_DESKTOP_DATADIR}"
+        FENRIZ_DESKTOP_DEFAULT_CONFIG="${FENRIZ_DESKTOP_DATADIR}/fenriz-desktop.conf")
 
 ### IMPORTANT ###
-# Not installed into /etc/pam.d automatically: a PAM file is a security surface and its
-# contents are distro-specific. Packagers and users copy it deliberately.
-install(FILES pam/fenriz-desktop pam/fenriz-desktop-fprint pam/fenriz-desktop-gaze
+# Only the password service is installed. Fingerprint and face hard-require pam_fprintd.so / pam_gaze.so, which may not exist
+install(FILES pam/fenriz-desktop DESTINATION /etc/pam.d)
+install(FILES pam/fenriz-desktop-fprint pam/fenriz-desktop-gaze
         DESTINATION ${CMAKE_INSTALL_DATADIR}/fenriz-desktop/pam)
 
 add_executable(desktop_config_test src/config.cpp src/test_config.cpp)
 target_include_directories(desktop_config_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_options(desktop_config_test PRIVATE -UNDEBUG)
+target_compile_definitions(desktop_config_test PRIVATE
+        FENRIZ_DESKTOP_DEFAULT_CONFIG="${CMAKE_CURRENT_BINARY_DIR}/fenriz-desktop.conf")
 
 add_executable(desktop_menu_test src/menu.cpp src/config.cpp src/spawn.cpp src/test_menu.cpp)
 target_include_directories(desktop_menu_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

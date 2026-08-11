@@ -99,14 +99,18 @@ namespace fenriz {
         // makes windows come back to the laptop panel when the lid opens.
         std::string ws_home[10];
 
+        // The file this config came from, empty if neither existed.
+        std::string source;
+
         // Parse from a config string. Unknown/malformed lines are ignored.
         static Config parse(const std::string& text);
-        // Load from $XDG_CONFIG_HOME/fenriz/fenriz.conf (or ~/.config/...),
-        // falling back to built-in defaults if absent.
+        // Load the user's config, else the shipped defaults, else struct defaults.
         static Config load();
-        // Full path to the config file (empty if neither XDG_CONFIG_HOME nor HOME is set).
-        // Used by load() and by the hot-reload directory watcher.
+        // Full path to the user's config: $XDG_CONFIG_HOME/fenriz/fenriz.conf, else
+        // ~/.config/fenriz/fenriz.conf (empty if neither var is set).
         static std::string config_path();
+        // The shipped defaults (/usr/share/fenriz/fenriz.conf), empty if not installed.
+        static std::string default_config_path();
     };
 
     Action action_from_string(const std::string& s);

@@ -40,8 +40,6 @@ namespace fenriz {
                 return;
             sw->server->lid_closed = event->switch_state == WLR_SWITCH_STATE_ON;
             wlr_log(WLR_INFO, "fenriz: lid %s", sw->server->lid_closed ? "closed" : "opened");
-            // Only ever disables/restores the internal panel when docked; suspend is logind's
-            // job (its HandleLidSwitch default), so there's deliberately no suspend here.
             output::refresh(*sw->server);
         }
 
@@ -157,14 +155,26 @@ namespace fenriz {
                         return;
                     }
                 }
+
+                // panic quit
+                constexpr uint32_t kMods = WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT | WLR_MODIFIER_CTRL;
+                if (!server.locked && (mods & (kMods | WLR_MODIFIER_ALT)) == kMods) {
+                    const xkb_layout_index_t layout = xkb_state_key_get_layout(kb->xkb_state, keycode);
+                    const xkb_keysym_t* base;
+                    const int nbase = xkb_keymap_key_get_syms_by_level(kb->keymap, keycode, layout, 0, &base);
+                    for (int i = 0; i < nbase; i++) {
+                        if (base[i] == XKB_KEY_q) {
+                            wlr_log(WLR_INFO, "fenriz: SUPER+SHIFT+CTRL+Q, exiting");
+                            stop_repeat(server);
+                            server.stop();
+                            return;
+                        }
+                    }
+                }
             }
 
             bool handled = false;
-            // While locked, compositor keybinds are disabled — every key goes to the lock
-            // surface so the user can type their password (and can't switch workspace etc.).
             if (!server.locked && !shortcuts_inhibited(server) && event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-                // Match binds against base-level (unshifted) keysyms so a bind like
-                // "SUPER SHIFT, E" resolves to XKB_KEY_e, matching the config parser.
                 xkb_layout_index_t layout = xkb_state_key_get_layout(kb->xkb_state, keycode);
                 const xkb_keysym_t* syms;
                 int nsyms = xkb_keymap_key_get_syms_by_level(kb->keymap, keycode, layout, 0, &syms);

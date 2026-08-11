@@ -176,10 +176,19 @@ namespace {
         assert(c.menu[0].second == "echo hello");
     }
 
-    void test_missing_file_yields_defaults() {
+    // No user config falls back to the shipped defaults, so a fresh install still gets a
+    // wallpaper and the idle stages rather than a transparent desktop that never sleeps.
+    void test_missing_file_falls_back_to_shipped() {
         setenv("XDG_CONFIG_HOME", "/nonexistent-fenriz-desktop-test", 1);
+        setenv("XDG_STATE_HOME", "/nonexistent-fenriz-desktop-test", 1);
         Config c = Config::load();
-        assert(c.wallpaper.empty());
+        assert(c.source == Config::default_config_path());
+        assert(c.wallpaper.front() == '/');
+        assert(c.wallpaper.find('@') == std::string::npos);
+        // The three stages must stay in order or the screens go dark while unlocked.
+        assert(c.idle_dim > 0 && c.idle_dim < c.idle_lock);
+        assert(c.idle_lock > 0 && c.idle_lock < c.idle_dpms);
+        unsetenv("XDG_STATE_HOME");
     }
 
     // Config sits next to fenriz.conf rather than in a directory of its own.
@@ -216,7 +225,7 @@ int main() {
     test_menu_command_with_comma();
     test_menu_garbage_is_ignored();
     test_hash_in_command_is_a_comment();
-    test_missing_file_yields_defaults();
+    test_missing_file_falls_back_to_shipped();
     test_config_path();
     return 0;
 }

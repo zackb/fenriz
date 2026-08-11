@@ -52,10 +52,9 @@ Or from the fenriz root: `make desktop`, `make run-desktop`,
 
 ## Config
 
-`~/.config/fenriz/fenriz-desktop.conf`, next to `fenriz.conf` and in the same
-`key = value` shape. See [fenriz-desktop.conf.example](fenriz-desktop.conf.example).
-Every setting is optional with no config file at all, fenriz-desktop draws
-nothing.
+`~/.config/fenriz/fenriz-desktop.conf`, next to `fenriz.conf` and in the same `key = value`. 
+With no config file, fenriz-desktop falls back to the defaults it ships at `/usr/share/fenriz-desktop/fenriz-desktop.conf`
+[defaults/fenriz-desktop.conf.in](defaults/fenriz-desktop.conf.in).
 
 ```ini
 wallpaper = ~/Pictures/wall.png
@@ -113,7 +112,8 @@ to reset the ranking. `launcher = off` removes the launcher and its menu entry.
 
 Blurred wallpaper, clock, password field.
 
-Three stages, each independent and each off by default:
+Three stages, each independent. The shipped defaults enable all three at the values
+below; set any of them to `0` in your own config to disable that stage:
 
 ```ini
 idle_dim = 300    # dim the backlight after 5 minutes
@@ -136,17 +136,15 @@ client holding an idle inhibitor (a video player) suppresses it.
 
 ### PAM
 
-The lock needs a PAM service at `/etc/pam.d/fenriz-desktop`. One is shipped:
+The lock needs a PAM service at `/etc/pam.d/fenriz-desktop`. Installing fenriz-desktop
+puts one there for password only, via `pam_unix`.
+
+Fingerprint and face are **not** installed for you. Each needs its own single-module service and PAM module that may not be present. Install `gaze` and /or `fprintd` and enroll first, then:
 
 ```sh
-sudo install -m644 /usr/share/fenriz-desktop/pam/fenriz-desktop /etc/pam.d/
+sudo install -m644 /usr/share/fenriz-desktop/pam/fenriz-desktop-fprint /etc/pam.d/
+sudo install -m644 /usr/share/fenriz-desktop/pam/fenriz-desktop-gaze   /etc/pam.d/
 ```
-
-It is deliberately not installed for you! A PAM file is a security surface and
-its contents are distro-specific. Setting these up by hand I found cumbersome and error prone.
-This project attempts to simplify that process, but will not mess with the security
-settings on your system without you. Without these modules PAM falls back to
-`/etc/pam.d/other`, which denies everything: a missing install fails closed.
 
 If you do get stuck behind a lock screen, switch to a TTY and force-unlock
 

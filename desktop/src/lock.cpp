@@ -3,6 +3,10 @@
 #include <gio/gunixfdlist.h>
 #include <unistd.h>
 
+#ifndef FENRIZ_DESKTOP_DATADIR
+#define FENRIZ_DESKTOP_DATADIR "/usr/share/fenriz-desktop"
+#endif
+
 namespace fenriz::desktop {
 
     namespace {
@@ -111,8 +115,9 @@ namespace fenriz::desktop {
         if (!pam_service_installed(auth_.service())) {
             g_warning("lock: refusing to lock, no PAM service '%s' installed — nothing could "
                       "unlock it. Install it with:\n"
-                      "  sudo install -m644 /usr/share/fenriz-desktop/pam/%s /etc/pam.d/",
+                      "  sudo install -m644 %s/pam/%s /etc/pam.d/",
                       auth_.service().c_str(),
+                      FENRIZ_DESKTOP_DATADIR,
                       auth_.service().c_str());
             return;
         }

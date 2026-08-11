@@ -7,6 +7,10 @@
 #include <sstream>
 #include <vector>
 
+#ifndef FENRIZ_DESKTOP_DEFAULT_CONFIG
+#define FENRIZ_DESKTOP_DEFAULT_CONFIG "/usr/share/fenriz-desktop/fenriz-desktop.conf"
+#endif
+
 namespace fenriz::desktop {
 
     namespace {
@@ -139,13 +143,26 @@ namespace fenriz::desktop {
         return "";
     }
 
+    std::string Config::default_config_path() {
+        for (const char* path : {FENRIZ_DESKTOP_DEFAULT_CONFIG,
+                                 "/usr/local/share/fenriz-desktop/fenriz-desktop.conf",
+                                 "/usr/share/fenriz-desktop/fenriz-desktop.conf"})
+            if (std::filesystem::exists(path))
+                return path;
+        return "";
+    }
+
     Config Config::load() {
         Config cfg;
-        std::ifstream f(config_path());
-        if (f) {
+        for (const std::string& path : {config_path(), default_config_path()}) {
+            std::ifstream f(path);
+            if (!f)
+                continue;
             std::stringstream buf;
             buf << f.rdbuf();
             cfg = parse(buf.str());
+            cfg.source = path;
+            break;
         }
         cfg.selected_wallpaper = load_selected_wallpaper();
         return cfg;

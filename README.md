@@ -34,6 +34,18 @@ yay -S fenriz
 #### Other distros
 Build from source (see [Build](#build)).
 
+### First run
+
+There is nothing to configure to get started. With no `~/.config/fenriz/fenriz.conf`,
+fenriz uses the defaults it ships at `/usr/share/fenriz/fenriz.conf`: `SUPER+Return`
+opens a terminal, `SUPER+Q` closes a window, `SUPER+1`…`0` switch workspaces,
+`SUPER SHIFT+Q` quits. Copy that file to `~/.config/fenriz/` to change any of it.
+
+If you want to install [fenriz-desktop](desktop) with it, then it will also work out of the box with sane defauls.
+Launcher (`SUPER+Space`), lock screen (`SUPER SHIFT+L`) and idle handling. No presh, it's completely optional.
+
+**`SUPER SHIFT CTRL+Q` always quits** so you don't get stuck.
+
 ## User guide
 
 Full setup, config, and screen-sharing walkthrough: [docs/USER_GUIDE.md](docs/USER_GUIDE.md).

@@ -19,7 +19,7 @@ A fast, stable tiling Wayland compositor.
 - [Screen sharing](#screen-sharing)
 - [Status bars and scripting](#status-bars-and-scripting)
 - [Protocol and tool support](#protocol-and-tool-support)
-- [A starter config](#a-starter-config)
+- [The defaults](#the-defaults)
 
 ## Requirements
 
@@ -106,7 +106,7 @@ Config path, first match wins:
 
 1. `$XDG_CONFIG_HOME/fenriz/fenriz.conf`
 2. `~/.config/fenriz/fenriz.conf`
-3. built-in defaults (no file needed)
+3. `/usr/share/fenriz/fenriz.conf` (see [The defaults](#the-defaults))
 
 Syntax is one `key = value` per line. `#` starts a comment. Blank lines and lines without
 `=` are ignored, as are unknown keys. Booleans accept `true/1/on/yes` and `false/0/off/no`.
@@ -318,28 +318,35 @@ fenrizctl reload                # re-read fenriz.conf
 fenriz speaks the common wlroots protocols, so tools like grim, wl-clipboard, wlr-randr,
 kanshi, wlsunset, and hypridle work out of the box. The full matrix is in [PROTOCOLS.md](PROTOCOLS.md).
 
-## A starter config
+## The defaults
 
-Copy the shipped example and edit from there:
+fenriz reads `~/.config/fenriz/fenriz.conf` (or `$XDG_CONFIG_HOME/fenriz/fenriz.conf`).
+Without one it falls back to the defaults at `/usr/share/fenriz/fenriz.conf`.
+
+The defaults give you:
+
+| Bind | Action |
+| --- | --- |
+| `SUPER` + `Return` | terminal — first of foot, ghostty, kitty, alacritty, wezterm, xterm that's installed |
+| `SUPER` + `Q` | close the focused window |
+| `SUPER SHIFT` + `Q` | quit fenriz |
+| `SUPER` + `H` `J` `K` `L` (or the arrows) | move focus |
+| `SUPER` + `F` / `V` / `P` / `T` | fullscreen / float / pin / toggle layout |
+| `SUPER` + `1`…`0` | switch workspace (`SUPER SHIFT` sends the window there) |
+| `SUPER` + `Space` / `SUPER SHIFT` + `L` / `SUPER` + `W` | fenriz-desktop launcher / lock / wallpaper |
+| `Print` / `SUPER` + `Print` | screenshot a region: annotate and save / copy |
+| **`SUPER SHIFT CTRL` + `Q`** | **quit, always** — see below |
+
+
+To change any of it, copy the defaults and edit:
 
 ```
 mkdir -p ~/.config/fenriz
-cp fenriz.conf.example ~/.config/fenriz/fenriz.conf
+cp /usr/share/fenriz/fenriz.conf ~/.config/fenriz/
 ```
 
-A minimal config to get moving:
+### If you get stuck
 
-```
-exec-once = kitty
-
-bind = SUPER,       Return, exec, kitty
-bind = SUPER,       Q,      killactive
-bind = SUPER SHIFT, E,      exit
-bind = SUPER,       F,      fullscreen
-bind = SUPER,       V,      togglefloating
-bind = SUPER,       1,      workspace, 1
-bind = SUPER,       2,      workspace, 2
-bind = SUPER SHIFT, 1,      movetoworkspace, 1
-```
-
-See [`fenriz.conf.example`](../fenriz.conf.example) for the full annotated set.
+`SUPER SHIFT CTRL + Q` exits the compositor always.
+`fenrizctl unlock` from a TTY to unlock the screen if you locked it.
+`Ctrl+Alt+F2` to a TTY and `fenrizctl exit` also work.
