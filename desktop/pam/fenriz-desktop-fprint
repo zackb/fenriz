@@ -1,0 +1,13 @@
+# Fingerprint for fenriz-desktop's lock screen.
+# Install to /etc/pam.d/fenriz-desktop-fprint. Requires fprintd and an enrolled
+# finger (`fprintd-enroll`). Not installing this file disables fingerprint: the
+# lock screen only races a method whose service file exists.
+#
+# One module, on purpose. PAM is serial, so racing fingerprint against the
+# password needs its own service — see pam/fenriz-desktop.
+
+auth    required pam_fprintd.so
+
+# Not optional: fenriz-desktop runs pam_acct_mgmt after a successful
+# pam_authenticate, and an empty account stack answers PAM_PERM_DENIED.
+account required pam_unix.so

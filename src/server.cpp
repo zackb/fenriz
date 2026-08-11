@@ -493,7 +493,8 @@ namespace fenriz {
 
         output::register_handlers(*this);
 
-        xdg_shell = wlr_xdg_shell_create(display, 3);
+        // v4 for configure_bounds
+        xdg_shell = wlr_xdg_shell_create(display, 4);
         l_new_toplevel.server = this;
         add_listener(l_new_toplevel.listener, xdg_shell->events.new_toplevel, on_new_toplevel);
         l_new_popup.server = this;

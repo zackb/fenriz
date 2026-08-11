@@ -1,5 +1,6 @@
 #include "launcher.hpp"
 
+#include <gio/gdesktopappinfo.h>
 #include <gtk4-layer-shell.h>
 
 #include <algorithm>
@@ -11,7 +12,8 @@ namespace fenriz::desktop {
     namespace {
         constexpr int WIDTH = 620;
         constexpr int HEIGHT = 420;
-        constexpr size_t MAX_ROWS = 50;
+
+        std::string str_or_empty(const char* s) { return s ? std::string(s) : std::string(); }
     } // namespace
 
     Launcher::Launcher(const Config& cfg) : cfg_(cfg) { usage_.load(); }
@@ -40,7 +42,19 @@ namespace fenriz::desktop {
             const char* name = g_app_info_get_display_name(info);
             if (!id || !name)
                 continue;
-            entries_.push_back(Entry{G_APP_INFO(g_object_ref(info)), id, name});
+
+            MatchFields f;
+            f.name = name;
+            f.comment = str_or_empty(g_app_info_get_description(info));
+            f.exec = str_or_empty(g_app_info_get_commandline(info));
+            if (G_IS_DESKTOP_APP_INFO(info)) {
+                auto* dinfo = G_DESKTOP_APP_INFO(info);
+                f.generic_name = str_or_empty(g_desktop_app_info_get_generic_name(dinfo));
+                // Borrowed, NULL-terminated, owned by the info.
+                for (const char* const* k = g_desktop_app_info_get_keywords(dinfo); k && *k; k++)
+                    f.keywords.emplace_back(*k);
+            }
+            entries_.push_back(Entry{G_APP_INFO(g_object_ref(info)), id, std::move(f)});
         }
         g_list_free_full(all, g_object_unref);
     }
@@ -50,22 +64,28 @@ namespace fenriz::desktop {
         const std::string query = raw ? raw : "";
         const int64_t now = now_ms();
 
+        // An empty query scores everything alike, leaving frecency to order the whole list.
+        std::vector<int> scores(entries_.size(), 0);
         shown_.clear();
         for (size_t i = 0; i < entries_.size(); i++) {
-            if (!query.empty() && !g_str_match_string(query.c_str(), entries_[i].name.c_str(), TRUE))
-                continue;
+            if (!query.empty()) {
+                const int s = match_score(entries_[i].fields, query);
+                if (s < 0)
+                    continue;
+                scores[i] = s;
+            }
             shown_.push_back(static_cast<int>(i));
         }
 
         std::stable_sort(shown_.begin(), shown_.end(), [&](int a, int b) {
+            if (scores[a] != scores[b])
+                return scores[a] > scores[b];
             const double fa = usage_.score_of(entries_[a].id, now);
             const double fb = usage_.score_of(entries_[b].id, now);
             if (fa != fb)
                 return fa > fb;
-            return entries_[a].name < entries_[b].name;
+            return g_utf8_collate(entries_[a].fields.name.c_str(), entries_[b].fields.name.c_str()) < 0;
         });
-        if (shown_.size() > MAX_ROWS)
-            shown_.resize(MAX_ROWS);
 
         gtk_list_box_remove_all(GTK_LIST_BOX(list_));
         for (int idx : shown_) {
@@ -80,7 +100,7 @@ namespace fenriz::desktop {
             gtk_image_set_pixel_size(GTK_IMAGE(icon), 28);
             gtk_box_append(GTK_BOX(box), icon);
 
-            GtkWidget* label = gtk_label_new(entries_[idx].name.c_str());
+            GtkWidget* label = gtk_label_new(entries_[idx].fields.name.c_str());
             gtk_label_set_xalign(GTK_LABEL(label), 0.0);
             gtk_widget_set_hexpand(label, TRUE);
             gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_END);

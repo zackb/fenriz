@@ -1,0 +1,15 @@
+# Face recognition for fenriz-desktop's lock screen.
+# Install to /etc/pam.d/fenriz-desktop-gaze. Requires gaze and an enrolled face
+# (`gaze`). Not installing this file disables face auth: the lock screen only
+# races a method whose service file exists.
+#
+# One module, on purpose. PAM is serial, so racing face against the password
+# needs its own service — see pam/fenriz-desktop.
+#
+# Swap pam_gaze.so for whichever face module you use (howdy ships pam_howdy.so).
+
+auth    required pam_gaze.so
+
+# Not optional: fenriz-desktop runs pam_acct_mgmt after a successful
+# pam_authenticate, and an empty account stack answers PAM_PERM_DENIED.
+account required pam_unix.so

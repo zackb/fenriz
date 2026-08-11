@@ -37,6 +37,7 @@ namespace fenriz::desktop {
         void submit(GtkWidget* entry);
         void tick();
         void set_error(const std::string& text);
+        void set_status(const std::string& text);
         void set_busy(bool busy);
 
         static void on_monitor(GtkSessionLockInstance* self, GdkMonitor* monitor, gpointer data);

@@ -20,7 +20,8 @@ namespace fenriz::desktop {
                    " transition: border-color 150ms; }"
                    ".lock-entry:focus-within { border-color: #cba6f7; }"
                    ".lock-entry.error { border-color: #f38ba8; }"
-                   ".lock-error { font-size: 14px; color: #ff8080; }";
+                   ".lock-error { font-size: 14px; color: #ff8080; }"
+                   ".lock-error.status { color: alpha(white, 0.85); }";
         }
 
     } // namespace
@@ -76,6 +77,13 @@ namespace fenriz::desktop {
         if (!tick_id_)
             tick_id_ = g_timeout_add_seconds(1, on_tick, this);
         tick();
+
+        auth_.begin_passive(
+            [this](bool ok, std::string) {
+                if (ok && instance_)
+                    gtk_session_lock_instance_unlock(instance_);
+            },
+            [this](std::string message) { set_status(message); });
     }
 
     void Lock::on_monitor(GtkSessionLockInstance*, GdkMonitor* monitor, gpointer data) {
@@ -186,14 +194,26 @@ namespace fenriz::desktop {
 
     void Lock::set_error(const std::string& text) {
         for (Surface& s : surfaces_) {
-            if (s.error)
+            if (s.error) {
                 gtk_label_set_text(GTK_LABEL(s.error), text.c_str());
+                gtk_widget_remove_css_class(s.error, "status");
+            }
             if (!s.entry)
                 continue;
             if (text.empty())
                 gtk_widget_remove_css_class(s.entry, "error");
             else
                 gtk_widget_add_css_class(s.entry, "error");
+        }
+    }
+
+    // What a passive method has to say ("Place your finger on the reader").
+    void Lock::set_status(const std::string& text) {
+        for (Surface& s : surfaces_) {
+            if (!s.error)
+                continue;
+            gtk_label_set_text(GTK_LABEL(s.error), text.c_str());
+            gtk_widget_add_css_class(s.error, "status");
         }
     }
 

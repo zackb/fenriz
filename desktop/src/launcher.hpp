@@ -7,10 +7,11 @@
 
 #include "config.hpp"
 #include "frecency.hpp"
+#include "search.hpp"
 
 namespace fenriz::desktop {
 
-    // Application launcher: desktop entries, matched by name and ranked by frecency.
+    // Application launcher: desktop entries, ranked by match quality then frecency.
     class Launcher {
     public:
         explicit Launcher(const Config& cfg);
@@ -26,7 +27,7 @@ namespace fenriz::desktop {
         struct Entry {
             GAppInfo* info = nullptr; // owned
             std::string id;
-            std::string name;
+            MatchFields fields;
         };
 
         void build(GtkApplication* app);

@@ -147,6 +147,18 @@ namespace fenriz {
             }
         }
 
+        // recommend the biggest window geometry that fits
+        void send_bounds(View* view) {
+            if (view->kind != View::Kind::Xdg || wl_resource_get_version(view->toplevel->resource) < 4)
+                return; // configure_bounds since v4
+            Server& server = *view->server;
+            const output::Area a = output::usable(server, output::focused(server));
+            if (a.width <= 0)
+                return;
+            const int bw = server.config.border_width;
+            wlr_xdg_toplevel_set_bounds(view->toplevel, a.width - 2 * bw, a.height - 2 * bw);
+        }
+
         // Single owner of a view's scene-tree parent
         void restack_view(Server& server, View* view) {
             if (!view->scene_tree)
@@ -314,6 +326,7 @@ namespace fenriz {
                 // Advertise tiled in the initial configure, before the client has drawn
                 // anything. (Chromium bug)
                 set_tiled(view, true);
+                send_bounds(view);
             }
 
             // the client has responded to our last size request, so its committed geometry can be trusted
@@ -763,8 +776,10 @@ namespace fenriz {
         const wlr_box a = view_area(server, view);
         if (a.width <= 0)
             return;
-        view->box.x = a.x + (a.width - view->box.width) / 2;
-        view->box.y = a.y + (a.height - view->box.height) / 2;
+        view->box.x =
+            std::clamp(a.x + (a.width - view->box.width) / 2, a.x, std::max(a.x, a.x + a.width - view->box.width));
+        view->box.y =
+            std::clamp(a.y + (a.height - view->box.height) / 2, a.y, std::max(a.y, a.y + a.height - view->box.height));
         place_view_nodes(view);
     }
 
@@ -882,9 +897,27 @@ namespace fenriz {
         const wlr_box geo = xdg ? view->toplevel->base->geometry
                                 : wlr_box{0, 0, view->xwl->surface->current.width, view->xwl->surface->current.height};
         if (view->floating && !view->fullscreen && geo.width > 0 && geo.height > 0 && cursor::grabbed_view() != view) {
-            const int bw = view->server->config.border_width;
+            Server& server = *view->server;
+            const int bw = server.config.border_width;
             view->box.width = geo.width + 2 * bw;
             view->box.height = geo.height + 2 * bw;
+            // client that asks for more than the screen holds would be too big
+            const wlr_box a = view_area(server, view);
+            if (a.width > 0 && (view->box.width > a.width || view->box.height > a.height)) {
+                int min_w, min_h, max_w, max_h;
+                view_min_size(view, min_w, min_h);
+                view_max_size(view, max_w, max_h);
+                const int fit_w = tiling::clamp_size(std::min(geo.width, a.width - 2 * bw), min_w, max_w);
+                const int fit_h = tiling::clamp_size(std::min(geo.height, a.height - 2 * bw), min_h, max_h);
+                if (fit_w < geo.width || fit_h < geo.height) {
+                    view->box.width = fit_w + 2 * bw;
+                    view->box.height = fit_h + 2 * bw;
+                    view->box.x = std::clamp(view->box.x, a.x, std::max(a.x, a.x + a.width - view->box.width));
+                    view->box.y = std::clamp(view->box.y, a.y, std::max(a.y, a.y + a.height - view->box.height));
+                    view->float_self_sized = false;
+                    view_configure(view);
+                }
+            }
             // A window-rule center can only run once the float has its real size (now).
             if (view->want_center) {
                 center_view(*view->server, view);
