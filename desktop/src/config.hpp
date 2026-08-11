@@ -11,6 +11,7 @@ namespace fenriz::desktop {
         std::string wallpaper;
         std::map<std::string, std::string> output_wallpaper; // connector name (eDP-1, DP-1) -> image path
         std::string wallpaper_dir;
+        std::string wallpaper_hook;
         std::string selected_wallpaper;
 
         std::string terminal;

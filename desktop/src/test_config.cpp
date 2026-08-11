@@ -43,6 +43,13 @@ namespace {
         assert(c.wallpaper_for("eDP-1").empty());
     }
 
+    void test_wallpaper_hook() {
+        setenv("HOME", "/home/nobody", 1);
+        Config c = Config::parse("wallpaper_hook = ~/bin/wall.sh \"$1\" | tee /tmp/log\n");
+        assert(c.wallpaper_hook == "~/bin/wall.sh \"$1\" | tee /tmp/log");
+        assert(Config::parse("").wallpaper_hook.empty());
+    }
+
     // A runtime pick is session state and outranks every config key, so that editing
     // the config after picking cannot silently half-apply.
     void test_selected_outranks_config() {
@@ -184,6 +191,7 @@ int main() {
     test_per_output_overrides_global();
     test_per_output_without_global();
     test_wallpaper_dir();
+    test_wallpaper_hook();
     test_selected_outranks_config();
     test_wallpaper_state_round_trip();
     test_comments_and_blanks();

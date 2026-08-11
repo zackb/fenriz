@@ -60,4 +60,25 @@ namespace fenriz::desktop::spawn {
         return true;
     }
 
+    bool hook(const std::string& cmd, const std::string& arg) {
+        if (cmd.empty())
+            return false;
+        char* argv[] = {const_cast<char*>("/bin/sh"),
+                        const_cast<char*>("-c"),
+                        const_cast<char*>(cmd.c_str()),
+                        const_cast<char*>("fenriz-desktop"),
+                        const_cast<char*>(arg.c_str()),
+                        nullptr};
+        char** env = g_environ_setenv(g_get_environ(), "FENRIZ_WALLPAPER", arg.c_str(), TRUE);
+        GError* err = nullptr;
+        const gboolean ok =
+            g_spawn_async(nullptr, argv, env, G_SPAWN_SEARCH_PATH, detach_child, nullptr, nullptr, &err);
+        g_strfreev(env);
+        if (!ok) {
+            g_warning("spawn: %s: %s", cmd.c_str(), err->message);
+            g_error_free(err);
+        }
+        return ok;
+    }
+
 } // namespace fenriz::desktop::spawn

@@ -4,6 +4,7 @@
 
 #include <filesystem>
 
+#include "spawn.hpp"
 #include "wallpaper.hpp"
 
 namespace fenriz::desktop {
@@ -166,6 +167,8 @@ namespace fenriz::desktop {
         cfg_.selected_wallpaper = path;
         save_selected_wallpaper(cfg_.selected_wallpaper);
         background_.reload();
+        if (!cfg_.wallpaper_hook.empty())
+            spawn::hook(cfg_.wallpaper_hook, cfg_.selected_wallpaper);
         close();
     }
 

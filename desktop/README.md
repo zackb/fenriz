@@ -61,6 +61,7 @@ nothing.
 wallpaper = ~/Pictures/wall.png
 output_wallpaper = DP-1, ~/Pictures/desk.png
 wallpaper_dir = ~/Pictures/wallpapers
+wallpaper_hook = matugen image "$1"
 
 terminal = kitty
 menu = Files,      nautilus

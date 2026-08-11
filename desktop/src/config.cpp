@@ -100,6 +100,8 @@ namespace fenriz::desktop {
                 std::vector<std::string> f = split_n(value, ',', 2);
                 if (f.size() == 2 && !f[0].empty() && !f[1].empty())
                     cfg.output_wallpaper[f[0]] = expand(f[1]);
+            } else if (key == "wallpaper_hook") {
+                cfg.wallpaper_hook = value;
             } else if (key == "terminal") {
                 cfg.terminal = value;
             } else if (key == "lock_blur") {

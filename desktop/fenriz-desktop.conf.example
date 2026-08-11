@@ -25,6 +25,9 @@
 #   rm ~/.local/state/fenriz/wallpaper
 # Thumbnails are cached under ~/.cache/fenriz/thumbnails and are safe to delete.
 
+# Run after every wallpaper pick. The new image path is $1 (also in $FENRIZ_WALLPAPER).
+# wallpaper_hook = ~/bin/wallpaper-changed.sh "$1"
+
 # --- Launcher --------------------------------------------------------------
 # Applications only, ranked by frecency. Bind it from fenriz.conf with
 #   bind = SUPER, D, exec, fenriz-desktop launcher
