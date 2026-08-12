@@ -19,12 +19,15 @@ This is extremely early alpha. It is not yet usable.
 
 ## Scope
 
-Wallpaper, launcher, desktop context menu, idle, lock screen, polkit agent.
+Wallpaper, launcher, desktop context menu, idle, lock screen, polkit agent, brightness keys.
 
 ### Non-goals
 
-Bar, system tray, notifications, dock, OSD, mpris/media controls, clipboard
+Bar, system tray, notifications, dock, mpris/media controls, clipboard
 manager, network or bluetooth UI, lock-screen widgets.
+
+The brightness OSD is the one exception, and only because fenriz-desktop already
+had to talk to the backlight for `idle_dim`. It is not the start of a general OSD.
 
 Every one of those has a good existing tool that fenriz will always work with: 
 waybar, mako, wlogout, lxqt-policykit. This is not meant to be a worse version 
@@ -134,6 +137,17 @@ bind = SUPER SHIFT, L, exec, fenriz-desktop lock
 Idle locking uses `ext-idle-notify-v1`'s inhibitor-aware notification, so a
 client holding an idle inhibitor (a video player) suppresses it.
 
+## Brightness
+
+```ini
+binde = , XF86MonBrightnessUp,   exec, fenriz-desktop brightness +5
+binde = , XF86MonBrightnessDown, exec, fenriz-desktop brightness -5
+```
+
+## Volume
+
+Volume keys are bound to `wpctl` in the default config and are not handled here (yet?).
+
 ### PAM
 
 The lock needs a PAM service at `/etc/pam.d/fenriz-desktop`. Installing fenriz-desktop
@@ -209,3 +223,4 @@ bind = SUPER, D, exec, fenriz-desktop launcher
 | `fenriz-desktop launcher` | toggle the launcher on the running desktop |
 | `fenriz-desktop wallpaper` | toggle the wallpaper picker (needs `wallpaper_dir`) |
 | `fenriz-desktop lock` | locks the session |
+| `fenriz-desktop brightness ±N` | steps the backlight by N percent and shows the level |

@@ -36,13 +36,22 @@ Build from source (see [Build](#build)).
 
 ### First run
 
-There is nothing to configure to get started. With no `~/.config/fenriz/fenriz.conf`,
-fenriz uses the defaults it ships at `/usr/share/fenriz/fenriz.conf`: `SUPER+Return`
-opens a terminal, `SUPER+Q` closes a window, `SUPER+1`…`0` switch workspaces,
-`SUPER SHIFT+Q` quits. Copy that file to `~/.config/fenriz/` to change any of it.
+There is nothing to configure to get started.
+Config lives at: `~/.config/fenriz/fenriz.conf`, otherwise the defaults are used at `/usr/share/fenriz/fenriz.conf`:
+
+| Key| Action |
+|----|--------|
+|`SUPER+Return` | opens a terminal |
+|`SUPER+Q` | closes a window |
+|`SUPER+1`…`0` | switch workspaces |
+|`SUPER SHIFT+Q` | quits |
+| `SUPER+Space`| open launcher |
+|`SUPER SHIFT+L` | lock screen |
+
+
+Copy that file to `~/.config/fenriz/` to change any of it.
 
 If you want to install [fenriz-desktop](desktop) with it, then it will also work out of the box with sane defauls.
-Launcher (`SUPER+Space`), lock screen (`SUPER SHIFT+L`) and idle handling. No presh, it's completely optional.
 
 **`SUPER SHIFT CTRL+Q` always quits** so you don't get stuck.
 
@@ -57,9 +66,9 @@ On Arch:
 
 ```
 sudo pacman -S wlroots wayland xkbcommon pixman libinput mesa
+yay -S scenefx0.5
 ```
 
-scenefx (`scenefx-0.5`) is not in the official repos; install from the AUR or build it.
 Also needs `cmake` (>= 3.19) and `ninja`.
 
 ## Build
@@ -68,7 +77,7 @@ Also needs `cmake` (>= 3.19) and `ninja`.
 make debug      # configure + build into build/debug
 make release
 make test       # run the config/tiling/keybind/output self-checks
-make test-wl    # drive real Wayland clients against a throwaway compositor
+make test-wl    # run real Wayland test clients against a throwaway compositor
 make run        # build debug and launch
 ```
 
@@ -79,8 +88,8 @@ make install      # install to /usr/local/bin/fenriz
 fenriz            # launch the compositor (from a greeter, TTY, or inside an existing Wayland session)
 ```
 
-Logs go to stderr and to `$XDG_STATE_HOME/fenriz/fenriz.log` (default `~/.local/state/fenriz/fenriz.log`).
-Override the path with `FENRIZ_LOG=<path>`, raise the level with `FENRIZ_DEBUG=1`.
+Logs go to stderr and to `$XDG_STATE_HOME/fenriz/fenriz.log` (`~/.local/state/fenriz/fenriz.log`).
+Override with `FENRIZ_LOG=<path>`, raise the level with `FENRIZ_DEBUG=1`.
 
 ## Desktop
 If you are new to tilers, or just don't want to configure the typical wayland tools (quickshell, waybar, rofi, wlogout, hypridle, etc.), and just want a working minimal desktop, try the [fenriz-desktop](desktop). If you already have the stack you like, don't use it. It's for people that don't want to bring all their own tools.
@@ -91,6 +100,7 @@ If you are new to tilers, or just don't want to configure the typical wayland to
 - Launcher - launch apps with a menu (like rofi, spotlight)
 - Desktop context menu - right click on the desktop to get a menu with a bunch of stuff
 - Idle managment - dim, lock, sleep on a configurable timer
+- OSD - On screen display for volume, brightness
 
 ## Multi-monitor and clamshell
 

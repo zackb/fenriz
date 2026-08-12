@@ -55,6 +55,34 @@ namespace fenriz::desktop::theme {
 .lock-error { font-size: 14px; color: #ff8080; }
 .lock-error.status { color: alpha(white, 0.85); }
 
+window.fenriz-osd { background: transparent; }
+
+/* duration MUST match FADE_MS in osd.cpp */
+.fenriz-osd .osd-pill { opacity: 1; transition: opacity 250ms ease-out; }
+.fenriz-osd .osd-pill.fading { opacity: 0; }
+
+.fenriz-osd .osd-pill {
+  --fenriz-fill: @popover_bg_color;
+  padding: 14px 20px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-image: linear-gradient(var(--fenriz-fill), var(--fenriz-fill)),
+                    linear-gradient(135deg, @fenriz_accent, @fenriz_accent2);
+}
+.fenriz-osd levelbar trough {
+  min-height: 6px;
+  border: none;
+  border-radius: 3px;
+  background-color: alpha(currentColor, 0.2);
+}
+.fenriz-osd levelbar block.filled {
+  border: none;
+  border-radius: 3px;
+  background-image: linear-gradient(135deg, @fenriz_accent, @fenriz_accent2);
+}
+
 .fenriz-background popover.menu > contents {
   --fenriz-fill: @popover_bg_color;
   min-width: 200px;

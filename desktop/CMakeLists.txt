@@ -43,6 +43,7 @@ add_executable(fenriz-desktop
     src/wallpaper.cpp
     src/wallpaper_picker.cpp
     src/brightness.cpp
+    src/osd.cpp
     src/menu.cpp
     src/launcher.cpp
     src/frecency.cpp

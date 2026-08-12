@@ -13,6 +13,7 @@
 #include "lock.hpp"
 #include "log.hpp"
 #include "menu.hpp"
+#include "osd.hpp"
 #include "polkit.hpp"
 #include "power.hpp"
 #include "screensaver.hpp"
@@ -27,6 +28,7 @@ namespace {
     using fenriz::desktop::Idle;
     using fenriz::desktop::Launcher;
     using fenriz::desktop::Lock;
+    using fenriz::desktop::Osd;
     using fenriz::desktop::OutputPower;
     using fenriz::desktop::Polkit;
     using fenriz::desktop::Screensaver;
@@ -43,6 +45,7 @@ namespace {
         std::unique_ptr<Brightness> brightness;
         std::unique_ptr<OutputPower> power;
         std::unique_ptr<Polkit> polkit;
+        std::unique_ptr<Osd> osd;
     };
 
     gboolean on_terminate(gpointer data) {
@@ -125,6 +128,7 @@ namespace {
 
         session->lock = std::make_unique<Lock>(session->cfg);
         session->brightness = std::make_unique<Brightness>();
+        session->osd = std::make_unique<Osd>();
         if (session->cfg.idle_dim > 0 && !session->brightness->available())
             g_message("idle: no backlight to dim (external monitors need DDC/CI)");
 
@@ -205,6 +209,16 @@ namespace {
                     session->wallpaper->toggle(app);
                 else
                     g_warning("wallpaper_dir is not set in the config");
+            } else if (arg == "brightness") {
+                if (i + 1 >= argc) {
+                    g_application_command_line_printerr(cmdline, "brightness needs a step, e.g. +5 or -5\n");
+                    continue;
+                }
+                const int percent = session->brightness->adjust(atoi(argv[++i]));
+                if (percent < 0)
+                    g_warning("brightness: no backlight to adjust (external monitors need DDC/CI)");
+                else
+                    session->osd->show(app, "display-brightness-symbolic", percent);
             } else {
                 g_application_command_line_printerr(cmdline, "unknown command: %s\n", argv[i]);
             }
@@ -240,6 +254,7 @@ int main(int argc, char** argv) {
 
     int status = g_application_run(G_APPLICATION(app), argc, argv);
     session.polkit.reset(); // tear surfaces down while GTK is still alive
+    session.osd.reset();
     session.screensaver.reset();
     session.idle.reset();
     session.brightness.reset(); // undims if we are exiting while dimmed
