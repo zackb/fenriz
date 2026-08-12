@@ -13,10 +13,12 @@
 #include "lock.hpp"
 #include "log.hpp"
 #include "menu.hpp"
+#include "osd.hpp"
 #include "polkit.hpp"
 #include "power.hpp"
 #include "screensaver.hpp"
 #include "theme.hpp"
+#include "volume.hpp"
 #include "wallpaper_picker.hpp"
 
 namespace {
@@ -27,9 +29,11 @@ namespace {
     using fenriz::desktop::Idle;
     using fenriz::desktop::Launcher;
     using fenriz::desktop::Lock;
+    using fenriz::desktop::Osd;
     using fenriz::desktop::OutputPower;
     using fenriz::desktop::Polkit;
     using fenriz::desktop::Screensaver;
+    using fenriz::desktop::Volume;
     using fenriz::desktop::WallpaperPicker;
 
     struct Session {
@@ -43,7 +47,20 @@ namespace {
         std::unique_ptr<Brightness> brightness;
         std::unique_ptr<OutputPower> power;
         std::unique_ptr<Polkit> polkit;
+        std::unique_ptr<Osd> osd;
+        std::unique_ptr<Volume> volume;
     };
+
+    // Icons come from the theme's standard audio set, picked to match the level.
+    const char* volume_icon(int percent, bool muted) {
+        if (muted || percent == 0)
+            return "audio-volume-muted-symbolic";
+        if (percent < 34)
+            return "audio-volume-low-symbolic";
+        if (percent < 67)
+            return "audio-volume-medium-symbolic";
+        return "audio-volume-high-symbolic";
+    }
 
     gboolean on_terminate(gpointer data) {
         g_application_quit(G_APPLICATION(data));
@@ -125,6 +142,10 @@ namespace {
 
         session->lock = std::make_unique<Lock>(session->cfg);
         session->brightness = std::make_unique<Brightness>();
+        session->osd = std::make_unique<Osd>();
+        session->volume = std::make_unique<Volume>();
+        if (!session->volume->start())
+            g_message("volume: no PipeWire; the media keys fall back to whatever the config runs");
         if (session->cfg.idle_dim > 0 && !session->brightness->available())
             g_message("idle: no backlight to dim (external monitors need DDC/CI)");
 
@@ -190,6 +211,7 @@ namespace {
         ensure_started(app, session);
 
         int argc = 0;
+        int status = 0; // client's exit code
         char** argv = g_application_command_line_get_arguments(cmdline, &argc);
         for (int i = 1; i < argc; i++) {
             const std::string arg = argv[i];
@@ -205,12 +227,53 @@ namespace {
                     session->wallpaper->toggle(app);
                 else
                     g_warning("wallpaper_dir is not set in the config");
+            } else if (arg == "brightness") {
+                if (i + 1 >= argc) {
+                    g_application_command_line_printerr(cmdline, "brightness needs a step, e.g. +5 or -5\n");
+                    status = 1;
+                    continue;
+                }
+                const int percent = session->brightness->adjust(atoi(argv[++i]));
+                if (percent < 0) {
+                    g_warning("brightness: no backlight to adjust (external monitors need DDC/CI)");
+                    status = 1;
+                } else {
+                    session->osd->show(app, "display-brightness-symbolic", percent);
+                }
+            } else if (arg == "volume") {
+                if (i + 1 >= argc) {
+                    g_application_command_line_printerr(cmdline, "volume needs +N, -N, mute or micmute\n");
+                    status = 1;
+                    continue;
+                }
+                const std::string what = argv[++i];
+                const bool mic = what == "micmute";
+                int percent = -1;
+                if (mic)
+                    percent = session->volume->toggle_mic_mute();
+                else if (what == "mute")
+                    percent = session->volume->toggle_mute();
+                else
+                    percent = session->volume->adjust(atoi(what.c_str()));
+
+                if (percent < 0) {
+                    g_warning("volume: no audio to adjust");
+                    status = 1;
+                } else if (mic) {
+                    session->osd->show(app,
+                                       session->volume->mic_muted() ? "microphone-disabled-symbolic"
+                                                                    : "audio-input-microphone-symbolic",
+                                       percent);
+                } else {
+                    session->osd->show(app, volume_icon(percent, session->volume->muted()), percent);
+                }
             } else {
                 g_application_command_line_printerr(cmdline, "unknown command: %s\n", argv[i]);
+                status = 1;
             }
         }
         g_strfreev(argv);
-        return 0;
+        return status;
     }
 
 } // namespace
@@ -240,6 +303,8 @@ int main(int argc, char** argv) {
 
     int status = g_application_run(G_APPLICATION(app), argc, argv);
     session.polkit.reset(); // tear surfaces down while GTK is still alive
+    session.osd.reset();
+    session.volume.reset();
     session.screensaver.reset();
     session.idle.reset();
     session.brightness.reset(); // undims if we are exiting while dimmed

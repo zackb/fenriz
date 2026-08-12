@@ -19,22 +19,23 @@ This is extremely early alpha. It is not yet usable.
 
 ## Scope
 
-Wallpaper, launcher, desktop context menu, idle, lock screen, polkit agent.
+Wallpaper, launcher, desktop context menu, idle, lock screen, polkit agent, media keys (brightness, volume, mute, mic mute) with an OSD.
 
 ### Non-goals
 
-Bar, system tray, notifications, dock, OSD, mpris/media controls, clipboard
-manager, network or bluetooth UI, lock-screen widgets.
+Bar, system tray, notifications, dock, mpris/media controls, clipboard manager, network or bluetooth UI, lock-screen widgets, audio device switching.
 
 Every one of those has a good existing tool that fenriz will always work with: 
-waybar, mako, wlogout, lxqt-policykit. This is not meant to be a worse version 
-of [quickshell](https://quickshell.org), which is the right tool if you want to build a shell of your own.
+waybar, mako, wlogout, lxqt-policykit. 
+This is not meant to be a worse version of [quickshell](https://quickshell.org), which is the right tool if you want to build a shell of your own.
 
 ## Portability
 
 Requires only `wlr-layer-shell`, `ext-session-lock-v1`, `ext-idle-notify-v1`, and
 `wlr-output-power-management-unstable-v1` (only for `idle_dpms`; without it
 everything else still runs)
+
+WirePlumber has to be running for the volume OSD to work.
 
 fenriz's own IPC (`FENRIZ_SOCKET`) is used as an optional enhancement when
 present, never a dependency.
@@ -134,6 +135,24 @@ bind = SUPER SHIFT, L, exec, fenriz-desktop lock
 Idle locking uses `ext-idle-notify-v1`'s inhibitor-aware notification, so a
 client holding an idle inhibitor (a video player) suppresses it.
 
+## Brightness
+
+```ini
+binde = , XF86MonBrightnessUp,   exec, fenriz-desktop brightness +5 || brightnessctl set 5%+
+binde = , XF86MonBrightnessDown, exec, fenriz-desktop brightness -5 || brightnessctl set 5%-
+```
+
+## Volume
+
+Volume, mute and mic mute require Pipewire
+
+```ini
+binde = , XF86AudioRaiseVolume,  exec, fenriz-desktop volume +5 || wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+
+binde = , XF86AudioLowerVolume,  exec, fenriz-desktop volume -5 || wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-
+bind  = , XF86AudioMute,         exec, fenriz-desktop volume mute || wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+bind  = , XF86AudioMicMute,      exec, fenriz-desktop volume micmute || wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle
+```
+
 ### PAM
 
 The lock needs a PAM service at `/etc/pam.d/fenriz-desktop`. Installing fenriz-desktop
@@ -209,3 +228,9 @@ bind = SUPER, D, exec, fenriz-desktop launcher
 | `fenriz-desktop launcher` | toggle the launcher on the running desktop |
 | `fenriz-desktop wallpaper` | toggle the wallpaper picker (needs `wallpaper_dir`) |
 | `fenriz-desktop lock` | locks the session |
+| `fenriz-desktop brightness ±N` | steps the backlight by N percent and shows the level |
+| `fenriz-desktop volume ±N` | steps the default sink by N percent and shows the level |
+| `fenriz-desktop volume mute` | toggles mute on the default sink |
+| `fenriz-desktop volume micmute` | toggles mute on the default source |
+
+A media-key command exits non-zero when it cannot do the job (no pipewire)

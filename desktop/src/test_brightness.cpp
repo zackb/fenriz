@@ -3,6 +3,28 @@
 #include "brightness.hpp"
 
 using fenriz::desktop::dim_target;
+using fenriz::desktop::step_target;
+
+static void steps() {
+    // 5% of a typical 8-bit panel is 12 raw levels, up and down.
+    assert(step_target(255, 100, 5) == 112);
+    assert(step_target(255, 100, -5) == 88);
+
+    // Never off, never past the top, however hard the key is held.
+    assert(step_target(255, 5, -5) == 1);
+    assert(step_target(255, 250, 5) == 255);
+    assert(step_target(255, 1, -5) == 1);
+    assert(step_target(255, 255, 5) == 255);
+
+    // A step that rounds to zero still moves, or a small panel would be stuck.
+    assert(step_target(10, 5, 5) == 6);
+    assert(step_target(10, 5, -5) == 4);
+    assert(step_target(255, 100, 0) == 100);
+
+    // Same "no maximum means not adjustable" contract as dim_target.
+    assert(step_target(0, 50, 5) == 0);
+    assert(step_target(-1, 50, 5) == 0);
+}
 
 int main() {
     // Ordinary percentages of a typical 8-bit and a 16-bit panel.
@@ -24,5 +46,6 @@ int main() {
     assert(dim_target(0, 50) == 0);
     assert(dim_target(-1, 50) == 0);
 
+    steps();
     return 0;
 }

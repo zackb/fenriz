@@ -8,6 +8,9 @@ namespace fenriz::desktop {
 
         constexpr const char* SYSFS = "/sys/class/backlight";
 
+        // how long adjust() trusts its own cache over sysfs
+        constexpr gint64 STALE_AFTER_US = 1000000;
+
         // -1 when the attribute is missing or unreadable; sysfs values are plain integers.
         int read_int(const std::string& path) {
             char* text = nullptr;
@@ -40,6 +43,15 @@ namespace fenriz::desktop {
         if (max <= 0)
             return 0;
         return std::clamp(max * std::clamp(percent, 1, 100) / 100, 1, max);
+    }
+
+    int step_target(int max, int current, int delta) {
+        if (max <= 0)
+            return 0;
+        int step = max * delta / 100;
+        if (step == 0)
+            step = (delta > 0) - (delta < 0);
+        return std::clamp(current + step, 1, max);
     }
 
     Brightness::Brightness() {
@@ -103,6 +115,29 @@ namespace fenriz::desktop {
             write(dev, target);
         }
         dimmed_ = true;
+    }
+
+    int Brightness::adjust(int delta) {
+        const gint64 now = g_get_monotonic_time();
+        const bool stale = now - adjusted_us_ > STALE_AFTER_US;
+        adjusted_us_ = now;
+
+        int percent = -1;
+        for (Device& dev : devices_) {
+            if (stale || dev.level < 0)
+                dev.level = read_int(attr(dev.name, "brightness"));
+            if (dev.level < 0)
+                continue;
+
+            dev.level = step_target(dev.max, dev.level, delta);
+            dev.saved = -1;
+            dev.applied = -1;
+            write(dev, dev.level);
+
+            if (percent < 0)
+                percent = dev.level * 100 / dev.max;
+        }
+        return percent;
     }
 
     void Brightness::restore() {
