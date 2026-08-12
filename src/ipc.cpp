@@ -224,7 +224,7 @@ namespace fenriz::ipc {
                 if (p == std::string::npos)
                     return;
                 int n = std::atoi(line.c_str() + p + 4);
-                if (n >= 1 && n <= 10)
+                if (n >= 1 && n <= server.config.workspaces)
                     set_workspace(server, n - 1);
                 return;
             }

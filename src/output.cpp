@@ -614,9 +614,11 @@ namespace fenriz::output {
             if (o->enabled)
                 live.push_back(name_of(o));
 
-        std::string home[WS_COUNT], current[WS_COUNT], origin[WS_COUNT];
-        bool needed[WS_COUNT];
-        for (int i = 0; i < WS_COUNT; i++) {
+        const int count = server.config.workspaces;
+
+        std::string home[WS_MAX], current[WS_MAX], origin[WS_MAX];
+        bool needed[WS_MAX];
+        for (int i = 0; i < count; i++) {
             const Workspace& ws = server.workspaces[i];
             home[i] = ws.home;
             current[i] = name_of(ws.output);
@@ -626,9 +628,9 @@ namespace fenriz::output {
             needed[i] = ws.root != nullptr || (ws.output && ws.output->active_ws == i);
         }
 
-        assign_workspaces(home, needed, live, current, origin);
+        assign_workspaces(home, needed, live, current, origin, count);
 
-        for (int i = 0; i < WS_COUNT; i++) {
+        for (int i = 0; i < count; i++) {
             server.workspaces[i].output = current[i].empty() ? nullptr : by_name(server, current[i]);
             server.workspaces[i].origin = origin[i];
         }
@@ -639,14 +641,14 @@ namespace fenriz::output {
         for (Output* o : server.outputs)
             slots.push_back({name_of(o), o->enabled, o->active_ws});
 
-        WsSlot wss[WS_COUNT];
-        for (int i = 0; i < WS_COUNT; i++) {
+        WsSlot wss[WS_MAX];
+        for (int i = 0; i < count; i++) {
             const Workspace& ws = server.workspaces[i];
             wss[i] = {ws.home, name_of(ws.output), ws.root != nullptr};
         }
 
         View* f = server.focused_view;
-        assign_active(slots, wss, f && f->mapped ? f->workspace : -1);
+        assign_active(slots, wss, f && f->mapped ? f->workspace : -1, count);
 
         {
             size_t n = 0;
@@ -655,7 +657,7 @@ namespace fenriz::output {
         }
         // assign_active's claim step can hand a free workspace to an output, so ws.output
         // is an output of the policy too, not just an input.
-        for (int i = 0; i < WS_COUNT; i++)
+        for (int i = 0; i < count; i++)
             server.workspaces[i].output = wss[i].output.empty() ? nullptr : by_name(server, wss[i].output);
 
         for (Output* o : server.outputs)
@@ -769,7 +771,7 @@ namespace fenriz::output {
     }
 
     void apply_config(Server& server) {
-        for (int i = 0; i < WS_COUNT; i++)
+        for (int i = 0; i < WS_MAX; i++)
             server.workspaces[i].home = server.config.ws_home[i];
         // set_enabled re-applies mode/scale/position whether or not the enable state changed,
         // so an edited `output = ...` line lands live.

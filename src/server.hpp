@@ -134,7 +134,7 @@ namespace fenriz {
         bool layout_dirty = false;
 
         // The workspaces (see Workspace above). Tree nodes leak at shutdown.
-        Workspace workspaces[WS_COUNT];
+        Workspace workspaces[WS_MAX];
 
         // Watches the config dir for hot-reload.
         wl_event_source* config_watch = nullptr;

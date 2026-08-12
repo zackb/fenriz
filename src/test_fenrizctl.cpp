@@ -91,7 +91,7 @@ int main() {
     // Usage errors, caught before anything touches the socket.
     assert(run({}).mode == Mode::None);
     assert(run({"workspace", "0"}).mode == Mode::None);
-    assert(run({"workspace", "11"}).mode == Mode::None);
+    assert(run({"workspace", "33"}).mode == Mode::None); // past the cap
     assert(run({"workspace"}).mode == Mode::None);
     assert(run({"dpms", "maybe"}).mode == Mode::None);
     assert(run({"output", "eDP-1"}).mode == Mode::None);

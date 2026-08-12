@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "config.hpp" // WS_MAX
+
 namespace fenrizctl {
 
     // Where to reach the compositor. Args are the environment.
@@ -113,11 +115,12 @@ namespace fenrizctl {
             return send("{\"cmd\":\"exit\"}");
 
         if (cmd == "workspace") {
+            const std::string range = "1-" + std::to_string(fenriz::WS_MAX);
             if (n != 2)
-                return usage_error("workspace takes a number 1-10");
+                return usage_error("workspace takes a number " + range);
             int ws = std::atoi(args[1].c_str());
-            if (ws < 1 || ws > 10)
-                return usage_error("workspace must be 1-10, got '" + args[1] + "'");
+            if (ws < 1 || ws > fenriz::WS_MAX)
+                return usage_error("workspace must be " + range + ", got '" + args[1] + "'");
             return send("{\"cmd\":\"workspace\",\"n\":" + std::to_string(ws) + "}");
         }
 

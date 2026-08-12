@@ -19,7 +19,7 @@ namespace {
                         "  state                 print the current state as one JSON line\n"
                         "  watch                 stream state changes as newline-delimited JSON\n"
                         "\n"
-                        "  workspace N           show workspace N (1-10)\n"
+                        "  workspace N           show workspace N (1-32)\n"
                         "  dpms on|off [OUTPUT]  power displays on/off (all, or one connector)\n"
                         "  output NAME on|off    enable/disable an output\n"
                         "  lid open|closed       set the lid state and run the clamshell policy\n"

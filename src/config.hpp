@@ -8,6 +8,8 @@
 
 namespace fenriz {
 
+    constexpr int WS_MAX = 32;
+
     enum class Action {
         None,
         Exec,
@@ -22,8 +24,8 @@ namespace fenriz {
         ToggleSplit,
         Fullscreen,
         ToggleFloat,
-        Workspace,       // arg = workspace number 1..10
-        MoveToWorkspace, // arg = workspace number 1..10
+        Workspace,       // arg = workspace number, 1..Config::workspaces
+        MoveToWorkspace, // arg = workspace number, 1..Config::workspaces
         Pin,             // toggle pin (float shown on all workspaces) on focused view
     };
 
@@ -95,10 +97,10 @@ namespace fenriz {
         // or to point the lid at a different screen. Also how clamshell is exercised in a
         // nested session, where outputs are named WL-1.
         std::string lid_output;
-        // Each workspace's preferred output name (`workspace = 1, eDP-1`); empty = no
-        // preference. A workspace returns home whenever that output is live — this is what
-        // makes windows come back to the laptop panel when the lid opens.
-        std::string ws_home[10];
+        // How many workspaces exist. 1..WS_MAX.
+        int workspaces = 10;
+        // Each workspace's preferred output name (`workspace = 1, eDP-1`); empty = no preference.
+        std::string ws_home[WS_MAX];
 
         // The file this config came from, empty if neither existed.
         std::string source;

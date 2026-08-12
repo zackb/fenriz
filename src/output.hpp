@@ -5,6 +5,8 @@
 #include <vector>
 #include <wayland-server-core.h>
 
+#include "config.hpp" // WS_MAX
+
 struct wlr_output;
 struct wlr_scene_rect;
 struct wlr_swapchain;
@@ -12,10 +14,6 @@ struct wlr_swapchain;
 namespace fenriz {
 
     class Server;
-
-    // Number of workspaces. Fixed set, shared across all outputs (each workspace lives on
-    // exactly one output at a time). ponytail: 10 is plenty; dynamic workspaces if asked.
-    constexpr int WS_COUNT = 10;
 
     namespace output {
 
@@ -89,13 +87,14 @@ namespace fenriz {
 
         // Pure workspace-assignment policy, deliberately free of wlroots types so it can be
         // tested without a compositor (see test_output.cpp). Decides which output each of the
-        // WS_COUNT workspaces should live on, in place:
+        // first `count` workspaces should live on, in place:
         //
         //   home[i]     the output workspace i is configured to prefer ("" = none)
         //   needed[i]   workspace i must be on a screen: it has windows, or it's being shown
         //   live        names of currently enabled outputs, in preference order
         //   current[i]  where workspace i lives now ("" = unassigned); updated in place
         //   origin[i]   the output it was evacuated off ("" = none); updated in place
+        //   count       workspaces in use (Config::workspaces)
         //
         // Rules, first match wins:
         //   1. home is live             -> go home (an explicit config always wins)
@@ -116,11 +115,12 @@ namespace fenriz {
         // This never touches window or tree state — a workspace's BSP tree and its views'
         // workspace index are invariant across every output event. That invariance IS the
         // clamshell guarantee: geometry is recomputed, layout is never rebuilt.
-        void assign_workspaces(const std::string home[WS_COUNT],
-                               const bool needed[WS_COUNT],
+        void assign_workspaces(const std::string home[WS_MAX],
+                               const bool needed[WS_MAX],
                                const std::vector<std::string>& live,
-                               std::string current[WS_COUNT],
-                               std::string origin[WS_COUNT]);
+                               std::string current[WS_MAX],
+                               std::string origin[WS_MAX],
+                               int count);
 
         // The other half of the policy
         struct OutSlot {
@@ -148,8 +148,8 @@ namespace fenriz {
         // monitor renders nothing and no keybind can fix it, because assign_workspaces has
         // already given every workspace to the first screen. That bug shipped once.
         //
-        // `focused_ws` is the focused window's workspace, or -1 if nothing is focused.
-        void assign_active(std::vector<OutSlot>& outs, WsSlot ws[WS_COUNT], int focused_ws);
+        // `focused_ws` is the focused window's workspace, or -1 if nothing is focused, `count` is the bounds.
+        void assign_active(std::vector<OutSlot>& outs, WsSlot ws[WS_MAX], int focused_ws, int count);
 
         // Enable/disable an output. Disabling evacuates its workspaces, closes its layer
         // surfaces and removes it from the output layout — which destroys its wl_output global,

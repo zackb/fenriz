@@ -364,7 +364,7 @@ namespace fenriz {
             } catch (...) {
                 n = 0;
             }
-            if (n >= 1 && n <= 10) {
+            if (n >= 1 && n <= server.config.workspaces) {
                 if (b.action == Action::Workspace)
                     set_workspace(server, n - 1);
                 else

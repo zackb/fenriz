@@ -16,17 +16,19 @@ namespace {
 
     // The four parallel arrays the policy works on, plus enough sugar to keep the cases legible.
     struct WS {
-        std::string home[WS_COUNT];
-        bool needed[WS_COUNT] = {};
-        std::string current[WS_COUNT];
-        std::string origin[WS_COUNT];
+        std::string home[WS_MAX];
+        bool needed[WS_MAX] = {};
+        std::string current[WS_MAX];
+        std::string origin[WS_MAX];
 
         // Workspace n (0-indexed) has windows and currently lives on `output`.
         void live_on(int n, const std::string& output) {
             current[n] = output;
             needed[n] = true;
         }
-        void run(const std::vector<std::string>& live) { assign_workspaces(home, needed, live, current, origin); }
+        void run(const std::vector<std::string>& live, int count = WS_MAX) {
+            assign_workspaces(home, needed, live, current, origin, count);
+        }
     };
 
     const std::vector<std::string> BOTH = {"eDP-1", "DP-1"};
@@ -36,7 +38,7 @@ namespace {
     // The same shape for the other half of the policy: which workspace each output shows.
     struct Active {
         std::vector<OutSlot> outs;
-        WsSlot ws[WS_COUNT];
+        WsSlot ws[WS_MAX];
 
         void output(const std::string& name, bool enabled = true, int active_ws = -1) {
             outs.push_back({name, enabled, active_ws});
@@ -46,7 +48,7 @@ namespace {
             ws[n].output = on;
             ws[n].has_windows = true;
         }
-        void run(int focused_ws = -1) { assign_active(outs, ws, focused_ws); }
+        void run(int focused_ws = -1, int count = WS_MAX) { assign_active(outs, ws, focused_ws, count); }
 
         int shown(const std::string& name) const {
             for (const OutSlot& o : outs)
@@ -124,7 +126,7 @@ int main() {
         s.live_on(0, "eDP-1"); // only ws1 is in use
         s.run(BOTH);
         assert(s.current[0] == "eDP-1");
-        for (int i = 1; i < WS_COUNT; i++)
+        for (int i = 1; i < WS_MAX; i++)
             assert(s.current[i].empty()); // ws2-10 free for any output to claim
     }
 
@@ -170,7 +172,7 @@ int main() {
         s.live_on(0, "eDP-1");
         s.live_on(2, "DP-1");
         s.run({});
-        for (int i = 0; i < WS_COUNT; i++)
+        for (int i = 0; i < WS_MAX; i++)
             assert(s.current[i].empty());
         s.run(BOTH);
         assert(s.current[0] == "eDP-1"); // origin honored
@@ -285,10 +287,40 @@ int main() {
         Active a;
         a.output("eDP-1", true, 0);
         a.output("DP-1");
-        for (int i = 0; i < WS_COUNT; i++)
+        for (int i = 0; i < WS_MAX; i++)
             a.live_on(i, "eDP-1");
         a.run();
         assert(a.shown("DP-1") == -1);
+    }
+
+    {
+        Active a;
+        a.output("eDP-1", true, 0);
+        a.output("DP-1");
+        a.live_on(0, "eDP-1");
+        a.live_on(1, "eDP-1");
+        a.run(-1, 2);
+        assert(a.shown("DP-1") == -1);
+        assert(a.ws[2].output.empty()); // untouched, not claimed
+    }
+
+    // whoever smelt it, dealt it
+    {
+        Active a;
+        a.output("eDP-1", true, 0);
+        a.output("DP-1");
+        a.live_on(0, "eDP-1");
+        a.run(-1, 2);
+        assert(a.shown("DP-1") == 1);
+    }
+
+    {
+        WS s;
+        s.live_on(0, "eDP-1");
+        s.live_on(5, "eDP-1"); // beyond `count`; stale state from a shrunken config
+        s.run(PANEL_ONLY, 2);
+        assert(s.current[0] == "eDP-1");
+        assert(s.current[5] == "eDP-1"); // left exactly as it was, not re-homed
     }
 
     // The internal-panel rule the lid policy keys off.
