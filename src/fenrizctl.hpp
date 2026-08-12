@@ -66,7 +66,7 @@ namespace fenrizctl {
                                         "focusright",
                                         "focusup",
                                         "focusdown",
-                                        "togglelayout",
+                                        "togglesplit",
                                         "fullscreen",
                                         "togglefloating",
                                         "workspace",

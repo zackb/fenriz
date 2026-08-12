@@ -152,8 +152,8 @@ namespace fenriz {
             return Action::FocusUp;
         if (s == "focusdown")
             return Action::FocusDown;
-        if (s == "togglelayout")
-            return Action::ToggleLayout;
+        if (s == "togglesplit")
+            return Action::ToggleSplit;
         if (s == "fullscreen")
             return Action::Fullscreen;
         if (s == "togglefloating")

@@ -150,13 +150,13 @@ Runs a keybind action by name using the same names the config's `bind =` lines t
 | `fullscreen` | Toggle fullscreen on the focused window. |
 | `togglefloating` | Toggle floating on the focused window. |
 | `pin` | Toggle pin (a float shown on every workspace of its output). |
+| `togglesplit` | Flip the focused window's split between side-by-side and stacked. |
 | `focusnext` / `focusprev` | Cycle focus through the workspace's windows. |
 | `focusleft` / `focusright` / `focusup` / `focusdown` | Move focus geometrically. |
 | `workspace` | `arg` = 1–10. Same as `{"cmd":"workspace"}`. |
 | `movetoworkspace` | `arg` = 1–10. Send the focused window there. |
 | `exec` | `arg` = a shell command, run detached. |
 | `exit` | Quit the compositor. Same as `{"cmd":"exit"}`. |
-| `togglelayout` | Accepted, currently a no-op (only master-stack exists). |
 
 
 ```json
