@@ -11,7 +11,11 @@ namespace fenriz::desktop {
 
     namespace {
         constexpr int WIDTH = 620;
-        constexpr int HEIGHT = 420;
+        constexpr int MAX_LIST_HEIGHT = 420;
+        constexpr int TOP_MARGIN = 160;
+
+        constexpr size_t EMPTY_ROWS = 5;
+        constexpr size_t MAX_ROWS = 20;
 
         std::string str_or_empty(const char* s) { return s ? std::string(s) : std::string(); }
     } // namespace
@@ -19,6 +23,10 @@ namespace fenriz::desktop {
     Launcher::Launcher(const Config& cfg) : cfg_(cfg) { usage_.load(); }
 
     Launcher::~Launcher() {
+        if (app_monitor_) {
+            g_signal_handlers_disconnect_by_data(app_monitor_, this);
+            g_object_unref(app_monitor_);
+        }
         for (Entry& e : entries_)
             if (e.info)
                 g_object_unref(e.info);
@@ -57,6 +65,11 @@ namespace fenriz::desktop {
             entries_.push_back(Entry{G_APP_INFO(g_object_ref(info)), id, std::move(f)});
         }
         g_list_free_full(all, g_object_unref);
+        entries_stale_ = false;
+    }
+
+    void Launcher::on_apps_changed(GAppInfoMonitor*, gpointer data) {
+        static_cast<Launcher*>(data)->entries_stale_ = true;
     }
 
     void Launcher::refilter() {
@@ -86,6 +99,10 @@ namespace fenriz::desktop {
                 return fa > fb;
             return g_utf8_collate(entries_[a].fields.name.c_str(), entries_[b].fields.name.c_str()) < 0;
         });
+
+        const size_t cap = query.empty() ? EMPTY_ROWS : MAX_ROWS;
+        if (shown_.size() > cap)
+            shown_.resize(cap);
 
         gtk_list_box_remove_all(GTK_LIST_BOX(list_));
         for (int idx : shown_) {
@@ -177,12 +194,18 @@ namespace fenriz::desktop {
         gtk_layer_set_namespace(window_, "fenriz-launcher");
         gtk_layer_set_layer(window_, GTK_LAYER_SHELL_LAYER_OVERLAY);
         gtk_layer_set_keyboard_mode(window_, GTK_LAYER_SHELL_KEYBOARD_MODE_EXCLUSIVE);
-        gtk_window_set_default_size(window_, WIDTH, HEIGHT);
+        gtk_window_set_default_size(window_, WIDTH, -1);
+        gtk_layer_set_anchor(window_, GTK_LAYER_SHELL_EDGE_TOP, TRUE);
+        gtk_layer_set_margin(window_, GTK_LAYER_SHELL_EDGE_TOP, TOP_MARGIN);
+
+        app_monitor_ = g_app_info_monitor_get();
+        g_signal_connect(app_monitor_, "changed", G_CALLBACK(on_apps_changed), this);
 
         GtkWidget* root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
         gtk_widget_add_css_class(root, "fenriz-launcher");
 
         search_ = gtk_search_entry_new();
+        gtk_widget_add_css_class(search_, "fenriz-field");
         gtk_widget_set_margin_start(search_, 10);
         gtk_widget_set_margin_end(search_, 10);
         gtk_widget_set_margin_top(search_, 10);
@@ -197,7 +220,8 @@ namespace fenriz::desktop {
         GtkWidget* scroll = gtk_scrolled_window_new();
         gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
         gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), list_);
-        gtk_widget_set_vexpand(scroll, TRUE);
+        gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(scroll), TRUE);
+        gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(scroll), MAX_LIST_HEIGHT);
         gtk_box_append(GTK_BOX(root), scroll);
 
         GtkEventController* keys = gtk_event_controller_key_new();
@@ -209,6 +233,14 @@ namespace fenriz::desktop {
         gtk_window_set_focus(window_, search_);
     }
 
+    void Launcher::prewarm(GtkApplication* app) {
+        if (window_)
+            return;
+        build(app);
+        load_entries();
+        gtk_widget_realize(GTK_WIDGET(window_));
+    }
+
     void Launcher::toggle(GtkApplication* app) {
         if (window_ && gtk_widget_get_visible(GTK_WIDGET(window_))) {
             close();
@@ -216,7 +248,8 @@ namespace fenriz::desktop {
         }
         if (!window_)
             build(app);
-        load_entries();
+        if (entries_stale_)
+            load_entries();
         usage_.load();
         gtk_editable_set_text(GTK_EDITABLE(search_), "");
         refilter();

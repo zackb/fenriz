@@ -201,6 +201,35 @@ namespace {
         assert(Config::config_path() == "/home/nobody/.config/fenriz/fenriz-desktop.conf");
     }
 
+    // shell accent follows the compositor's border colors.
+    void test_accents_from_compositor_config() {
+        Config cfg;
+        cfg.parse_accents("border_width = 2\nborder_active = 0x16b8f3ff\nborder_gradient = 0xff2090ff\n");
+        assert(cfg.accent == "#16b8f3");
+        assert(cfg.accent_gradient == "#ff2090");
+
+        // Alpha survives, so a translucent border gives a softer ring.
+        Config translucent;
+        translucent.parse_accents("border_active = 0x16b8f3CC");
+        assert(translucent.accent == "rgba(22,184,243,0.800)");
+
+        // A flat border config means a flat accent: both stops the same.
+        Config flat;
+        flat.parse_accents("border_active = 0xff0000ff\nborder_gradient = 0\n");
+        assert(flat.accent == "#ff0000");
+        assert(flat.accent_gradient == flat.accent);
+
+        // No border_gradient at all is flat too.
+        Config missing;
+        missing.parse_accents("border_active = 0xff0000ff\n");
+        assert(missing.accent_gradient == "#ff0000");
+
+        // Garbage leaves the brand defaults alone.
+        Config garbage;
+        garbage.parse_accents("border_active = magenta\n# border_gradient = 0x00ff00ff\n");
+        assert(garbage.accent == "#16b8f3");
+    }
+
 } // namespace
 
 int main() {
@@ -227,5 +256,6 @@ int main() {
     test_hash_in_command_is_a_comment();
     test_missing_file_falls_back_to_shipped();
     test_config_path();
+    test_accents_from_compositor_config();
     return 0;
 }

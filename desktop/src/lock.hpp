@@ -69,7 +69,6 @@ namespace fenriz::desktop {
         Authenticator auth_;
         std::function<void()> wake_screens_;
         GtkSessionLockInstance* instance_ = nullptr;
-        GtkCssProvider* css_ = nullptr;
         std::vector<Surface> surfaces_;
         guint tick_id_ = 0;
         GDBusConnection* system_bus_ = nullptr; // logind, for the resume-from-suspend signal

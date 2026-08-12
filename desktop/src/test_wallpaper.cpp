@@ -66,9 +66,11 @@ namespace {
         assert(wp::cache_path(image.string()) != first);
     }
 
-    void test_ensure_thumbnail_scales_and_caches() {
-        const fs::path image = ROOT / "big.png";
-        write_png(image, 1600, 900);
+    // The picker's grid and its selection ring only stay even if every thumbnail is
+    // the same size, whatever the source aspect.
+    void test_ensure_thumbnail_covers_the_box(const char* name, int src_width, int src_height) {
+        const fs::path image = ROOT / name;
+        write_png(image, src_width, src_height);
 
         const std::string thumb = wp::ensure_thumbnail(image.string());
         assert(!thumb.empty());
@@ -80,8 +82,6 @@ namespace {
         const int height = gdk_pixbuf_get_height(pixbuf);
         g_object_unref(pixbuf);
 
-        assert(width <= wp::THUMB_WIDTH && height <= wp::THUMB_HEIGHT);
-        // Aspect preserved: a 16:9 source fills the 16:9 box exactly.
         assert(width == wp::THUMB_WIDTH && height == wp::THUMB_HEIGHT);
 
         // Second call is a cache hit, not a second decode.
@@ -102,7 +102,10 @@ int main() {
     test_is_image();
     test_scan_is_recursive_and_skips_non_images();
     test_cache_path_tracks_the_file();
-    test_ensure_thumbnail_scales_and_caches();
+    test_ensure_thumbnail_covers_the_box("wide-16-9.png", 1600, 900);
+    test_ensure_thumbnail_covers_the_box("ultrawide.png", 2560, 1080);
+    test_ensure_thumbnail_covers_the_box("portrait.png", 1080, 1920);
+    test_ensure_thumbnail_covers_the_box("tiny.png", 40, 40);
     test_undecodable_file_is_reported();
 
     fs::remove_all(ROOT);

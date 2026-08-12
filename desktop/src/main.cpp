@@ -16,6 +16,7 @@
 #include "polkit.hpp"
 #include "power.hpp"
 #include "screensaver.hpp"
+#include "theme.hpp"
 #include "wallpaper_picker.hpp"
 
 namespace {
@@ -44,8 +45,6 @@ namespace {
         std::unique_ptr<Polkit> polkit;
     };
 
-    const char* CSS = ".fenriz-background { background: transparent; }";
-
     gboolean on_terminate(gpointer data) {
         g_application_quit(G_APPLICATION(data));
         return G_SOURCE_REMOVE;
@@ -65,6 +64,14 @@ namespace {
             session->launcher->toggle(app);
     }
 
+    gboolean prewarm_launcher(gpointer data) {
+        auto* app = static_cast<GtkApplication*>(data);
+        auto* session = static_cast<Session*>(g_object_get_data(G_OBJECT(app), "session"));
+        if (session->launcher)
+            session->launcher->prewarm(app);
+        return G_SOURCE_REMOVE;
+    }
+
     void on_wallpaper(GSimpleAction*, GVariant*, gpointer data) {
         auto* app = static_cast<GtkApplication*>(data);
         auto* session = static_cast<Session*>(g_object_get_data(G_OBJECT(app), "session"));
@@ -80,13 +87,14 @@ namespace {
 
         fenriz::desktop::log::init();
 
-        GtkCssProvider* css = gtk_css_provider_new();
-        gtk_css_provider_load_from_string(css, CSS);
-        gtk_style_context_add_provider_for_display(
-            gdk_display_get_default(), GTK_STYLE_PROVIDER(css), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-        g_object_unref(css);
+        if (!gtk_layer_is_supported()) {
+            g_printerr("fenriz-desktop: compositor does not support wlr-layer-shell\n");
+            exit(1);
+        }
 
         session->cfg = Config::load();
+        fenriz::desktop::theme::install(session->cfg);
+
         if (!session->cfg.selected_wallpaper.empty() &&
             (!session->cfg.wallpaper.empty() || !session->cfg.output_wallpaper.empty()))
             g_message("wallpaper: using the picked %s; delete %s to fall back to the config",
@@ -109,8 +117,11 @@ namespace {
         g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(wallpaper_action));
         g_object_unref(wallpaper_action);
 
-        if (session->cfg.launcher)
+        if (session->cfg.launcher) {
             session->launcher = std::make_unique<Launcher>(session->cfg);
+            // Build the window off the critical path so the first keybind press only presents it.
+            g_idle_add(prewarm_launcher, app);
+        }
 
         session->lock = std::make_unique<Lock>(session->cfg);
         session->brightness = std::make_unique<Brightness>();
@@ -118,10 +129,14 @@ namespace {
             g_message("idle: no backlight to dim (external monitors need DDC/CI)");
 
         session->power = std::make_unique<OutputPower>();
-        if (session->cfg.idle_dpms > 0) {
+        if (session->cfg.idle_dpms > 0)
             session->power->start();
-            session->lock->set_wake_screens([session] { session->power->set_all(true); });
-        }
+
+        session->lock->set_wake_screens([session] {
+            session->brightness->restore();
+            session->power->set_all(true); // no-op unless idle_dpms armed the manager
+        });
+
         if (session->cfg.idle_dpms > 0 && session->cfg.idle_lock > 0 && session->cfg.idle_dpms < session->cfg.idle_lock)
             g_warning("idle: idle_dpms (%ds) is before idle_lock (%ds), so the screens go dark "
                       "while the session is still unlocked",
@@ -201,15 +216,6 @@ namespace {
 } // namespace
 
 int main(int argc, char** argv) {
-    if (!gtk_init_check()) {
-        g_printerr("fenriz-desktop: no display\n");
-        return 1;
-    }
-    if (!gtk_layer_is_supported()) {
-        g_printerr("fenriz-desktop: compositor does not support wlr-layer-shell\n");
-        return 1;
-    }
-
     Session session;
     GtkApplication* app = gtk_application_new("dev.fenriz.Desktop", G_APPLICATION_HANDLES_COMMAND_LINE);
     g_object_set_data(G_OBJECT(app), "session", &session);
