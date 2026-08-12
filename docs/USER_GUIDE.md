@@ -194,9 +194,11 @@ output = DP-1,  3840x2160@144, auto, 1.0
 
 ### Workspaces and clamshell
 
-There are 10 workspaces, each living on one output. Pinning is optional:
+There are 10 workspaces, each living on one output. `workspaces` changes how many exist (up
+to 32); the default binds cover 1–10, so add your own for the rest. Pinning is optional:
 
 ```
+workspaces = 12
 workspace = 3, DP-1
 ```
 
@@ -242,8 +244,8 @@ things you hold, like volume.
 | `fullscreen` | toggle fullscreen |
 | `togglefloating` | toggle floating |
 | `pin` | pin a floating window to all workspaces |
-| `workspace` | switch to workspace `arg` (1–10) |
-| `movetoworkspace` | send the focused window to workspace `arg` (1–10) |
+| `workspace` | switch to workspace `arg` (1–`workspaces`) |
+| `movetoworkspace` | send the focused window to workspace `arg` (1–`workspaces`) |
 
 ### Mouse
 

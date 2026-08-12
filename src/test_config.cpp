@@ -165,11 +165,19 @@ int main() {
     // Workspace homes are 1-indexed in the config, 0-indexed in the array. Out-of-range is
     // ignored rather than writing past the end.
     Config ws = Config::parse("workspace = 1, eDP-1\nworkspace = 10, DP-1\n"
-                              "workspace = 0, X\nworkspace = 11, Y\nworkspace = 3\n");
+                              "workspace = 0, X\nworkspace = 33, Y\nworkspace = 3\n");
     assert(ws.ws_home[0] == "eDP-1");
     assert(ws.ws_home[9] == "DP-1");
     assert(ws.ws_home[1].empty()); // never set
     assert(ws.ws_home[2].empty()); // `workspace = 3` with no output is ignored
+
+    assert(Config().workspaces == 10);
+    assert(Config::parse("workspaces = 12\n").workspaces == 12);
+    assert(Config::parse("workspaces = 99\n").workspaces == WS_MAX);
+    assert(Config::parse("workspaces = 0\n").workspaces == 1);
+    assert(Config::parse("workspaces = nope\n").workspaces == 10); // malformed keeps the default
+    Config late = Config::parse("workspace = 12, DP-1\nworkspaces = 12\n");
+    assert(late.ws_home[11] == "DP-1");
 
     // A shell command is taken verbatim: it keeps its commas (only the first three
     // separate mods/key/action) and its `#` (which is a hex color or a URL fragment far

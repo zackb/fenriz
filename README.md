@@ -104,7 +104,7 @@ If you are new to tilers, or just don't want to configure the typical wayland to
 
 ## Multi-monitor and clamshell
 
-***[None](https://github.com/Kore29/hyprland-clamshell) [of](https://adamhollister.com/hyprland-clamshell-mode) [this](https://github.com/chris4540/hyprland-clamshell) [needs](https://www.reddit.com/r/hyprland/comments/1bzc05s/monitor_not_detected_on_docking_station/) [configuring](https://github.com/zackb/dots/blob/main/.config/hypr/clamshell.lua)***. Each of the 10 workspaces lives on one output. When a
+***[None](https://github.com/Kore29/hyprland-clamshell) [of](https://adamhollister.com/hyprland-clamshell-mode) [this](https://github.com/chris4540/hyprland-clamshell) [needs](https://www.reddit.com/r/hyprland/comments/1bzc05s/monitor_not_detected_on_docking_station/) [configuring](https://github.com/zackb/dots/blob/main/.config/hypr/clamshell.lua)***. Each workspace lives on one output. When a
 screen goes away — lid shut, cable pulled, suspend — its workspaces move to a surviving
 screen with layouts and focus intact, and return exactly where they were when it comes
 back. The internal panel turns off when the lid shuts with an external connected, and back

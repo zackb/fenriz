@@ -1106,7 +1106,7 @@ namespace fenriz {
     }
 
     void set_workspace(Server& server, int n) {
-        n = std::clamp(n, 0, WS_COUNT - 1);
+        n = std::clamp(n, 0, server.config.workspaces - 1);
         Workspace& ws = server.workspaces[n];
 
         // Homeless (no output has ever shown it, or every screen went away): pull it onto the
@@ -1154,7 +1154,7 @@ namespace fenriz {
     }
 
     void move_focused_to_workspace(Server& server, int n) {
-        n = std::clamp(n, 0, WS_COUNT - 1);
+        n = std::clamp(n, 0, server.config.workspaces - 1);
         View* v = server.focused_view;
         if (!v || v->workspace == n)
             return;

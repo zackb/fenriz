@@ -531,7 +531,7 @@ namespace fenriz {
 
         // Seed workspace homes before any output shows up, so the first monitor to appear
         // already claims the workspaces configured for it.
-        for (int i = 0; i < WS_COUNT; i++)
+        for (int i = 0; i < WS_MAX; i++)
             workspaces[i].home = config.ws_home[i];
 
         output::register_handlers(*this);
@@ -671,8 +671,10 @@ namespace fenriz {
 
     void reload_config(Server& server) {
         server.config = Config::load(); // falls back to the shipped defaults if it was removed
+        for (View* v : server.views)
+            if (v->mapped)
+                server.config.workspaces = std::max(server.config.workspaces, v->workspace + 1);
         // Re-apply output mode/scale/position and workspace homes, then re-home + re-arrange.
-        // Editing an `output =` line takes effect live, no restart.
         output::apply_config(server);
         cursor::reload(server); // `cursor =` / `cursor_size =` re-theme the pointer live
         for (View* v : server.views)

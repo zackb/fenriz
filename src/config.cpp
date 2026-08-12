@@ -262,7 +262,7 @@ namespace fenriz {
                 if (parts.size() < 2)
                     continue;
                 const int n = parse_int(parts[0], 0);
-                if (n >= 1 && n <= 10)
+                if (n >= 1 && n <= WS_MAX)
                     cfg.ws_home[n - 1] = parts[1];
                 continue;
             }
@@ -279,7 +279,9 @@ namespace fenriz {
                 continue;
             }
 
-            if (key == "border_width")
+            if (key == "workspaces")
+                cfg.workspaces = parse_int(val, cfg.workspaces, 1, WS_MAX);
+            else if (key == "border_width")
                 cfg.border_width = parse_int(val, cfg.border_width, 0, 100);
             else if (key == "border_active")
                 cfg.border_active = parse_color(val, cfg.border_active);
