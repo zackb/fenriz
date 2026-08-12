@@ -57,6 +57,7 @@ namespace fenriz::desktop::theme {
 
 .fenriz-background popover.menu > contents {
   --fenriz-fill: @popover_bg_color;
+  min-width: 200px;
   border: 1px solid transparent;
   border-radius: 12px;
   background-origin: border-box;
