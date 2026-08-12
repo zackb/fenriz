@@ -12,6 +12,7 @@ pkg_check_modules(LAYER_SHELL REQUIRED IMPORTED_TARGET gtk4-layer-shell-0)
 pkg_check_modules(GIO_UNIX   REQUIRED IMPORTED_TARGET gio-unix-2.0)
 pkg_check_modules(WAYLAND    REQUIRED IMPORTED_TARGET wayland-client)
 pkg_check_modules(POLKIT     REQUIRED IMPORTED_TARGET polkit-agent-1)
+pkg_check_modules(WIREPLUMBER REQUIRED IMPORTED_TARGET wireplumber-0.5)
 
 find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
 pkg_get_variable(WL_PROTO_DIR wayland-protocols pkgdatadir)
@@ -43,6 +44,7 @@ add_executable(fenriz-desktop
     src/wallpaper.cpp
     src/wallpaper_picker.cpp
     src/brightness.cpp
+    src/volume.cpp
     src/osd.cpp
     src/menu.cpp
     src/launcher.cpp
@@ -58,7 +60,7 @@ add_executable(fenriz-desktop
     ${PROTO_SRC}
 )
 target_include_directories(fenriz-desktop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_BINARY_DIR})
-target_link_libraries(fenriz-desktop PRIVATE PkgConfig::GTK4 PkgConfig::LAYER_SHELL PkgConfig::GIO_UNIX PkgConfig::WAYLAND PkgConfig::POLKIT pam)
+target_link_libraries(fenriz-desktop PRIVATE PkgConfig::GTK4 PkgConfig::LAYER_SHELL PkgConfig::GIO_UNIX PkgConfig::WAYLAND PkgConfig::POLKIT PkgConfig::WIREPLUMBER pam)
 
 include(GNUInstallDirs)
 install(TARGETS fenriz-desktop RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -116,6 +118,11 @@ target_include_directories(desktop_brightness_test PRIVATE ${CMAKE_CURRENT_SOURC
 target_link_libraries(desktop_brightness_test PRIVATE PkgConfig::GIO_UNIX)
 target_compile_options(desktop_brightness_test PRIVATE -UNDEBUG)
 
+add_executable(desktop_volume_test src/volume.cpp src/test_volume.cpp)
+target_include_directories(desktop_volume_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(desktop_volume_test PRIVATE PkgConfig::WIREPLUMBER)
+target_compile_options(desktop_volume_test PRIVATE -UNDEBUG)
+
 add_executable(desktop_screensaver_test src/screensaver.cpp src/test_screensaver.cpp)
 target_include_directories(desktop_screensaver_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(desktop_screensaver_test PRIVATE PkgConfig::GIO_UNIX)
@@ -128,5 +135,6 @@ add_test(NAME frecency COMMAND desktop_frecency_test)
 add_test(NAME search   COMMAND desktop_search_test)
 add_test(NAME auth     COMMAND desktop_auth_test)
 add_test(NAME brightness COMMAND desktop_brightness_test)
+add_test(NAME volume   COMMAND desktop_volume_test)
 add_test(NAME wallpaper COMMAND desktop_wallpaper_test)
 add_test(NAME screensaver COMMAND desktop_screensaver_test)
