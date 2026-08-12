@@ -238,7 +238,7 @@ things you hold, like volume.
 | `exit` | quit the compositor |
 | `focusnext` / `focusprev` | cycle focus |
 | `focusleft` / `focusright` / `focusup` / `focusdown` | directional focus |
-| `togglelayout` | toggle the layout |
+| `togglesplit` | flip the focused window's split: side-by-side ↔ stacked |
 | `fullscreen` | toggle fullscreen |
 | `togglefloating` | toggle floating |
 | `pin` | pin a floating window to all workspaces |
@@ -332,7 +332,7 @@ The defaults give you:
 | `SUPER` + `Q` | close the focused window |
 | `SUPER SHIFT` + `Q` | quit fenriz |
 | `SUPER` + `H` `J` `K` `L` (or the arrows) | move focus |
-| `SUPER` + `F` / `V` / `P` / `T` | fullscreen / float / pin / toggle layout |
+| `SUPER` + `F` / `V` / `P` / `T` | fullscreen / float / pin / toggle split |
 | `SUPER` + `1`…`0` | switch workspace (`SUPER SHIFT` sends the window there) |
 | `SUPER` + `Space` / `SUPER SHIFT` + `L` / `SUPER` + `W` | fenriz-desktop launcher / lock / wallpaper |
 | `Print` / `SUPER` + `Print` | screenshot a region: annotate and save / copy |

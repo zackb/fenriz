@@ -218,6 +218,55 @@ int main() {
         assert(root->ratio == v0); // and leaves the side-by-side split alone
     }
 
+    // togglesplit: the insert-time orientation is a guess from the tile's aspect, and this is
+    // the user's override. Flipping a pair swaps which axis it divides, and flipping twice is
+    // the identity — a key you press to fix a layout must also undo itself.
+    {
+        Node* root = nullptr;
+        add(root, tag(1), nullptr);
+        add(root, tag(2), tag(1)); // wide area -> side-by-side
+        assert(box(root, tag(1)).x == 10 && box(root, tag(2)).x == 505);
+
+        flip_split(find_leaf(root, tag(2)));
+        place(root, {10, 10, 980, 980}, 10);
+        // Now stacked: both span the full width, one above the other.
+        assert(box(root, tag(1)).x == 10 && box(root, tag(1)).w == 980 && box(root, tag(1)).y == 10);
+        assert(box(root, tag(2)).x == 10 && box(root, tag(2)).w == 980 && box(root, tag(2)).y == 505);
+
+        flip_split(find_leaf(root, tag(1))); // either leaf of the pair reaches the same split
+        place(root, {10, 10, 980, 980}, 10);
+        assert(box(root, tag(1)).x == 10 && box(root, tag(1)).w == 485);
+        assert(box(root, tag(2)).x == 505 && box(root, tag(2)).w == 485);
+    }
+
+    // The flip hits the focused leaf's *immediate* parent, not the root: flipping deep in the
+    // tree must not reshuffle the whole workspace.
+    {
+        Node* root = nullptr;
+        add(root, tag(1), nullptr);
+        add(root, tag(2), tag(1));
+        add(root, tag(3), tag(2)); // right column splits top / bottom
+
+        flip_split(find_leaf(root, tag(3)));
+        place(root, {10, 10, 980, 980}, 10);
+
+        assert(box(root, tag(1)).x == 10 && box(root, tag(1)).w == 485 && box(root, tag(1)).h == 980);
+        // 2 and 3 now divide the right column side-by-side instead of stacked.
+        assert(box(root, tag(2)).x == 505 && box(root, tag(2)).h == 980);
+        assert(box(root, tag(3)).x == 752 && box(root, tag(3)).h == 980);
+    }
+
+    // A lone window is the root leaf: no split to flip, and no null deref on the way to
+    // finding that out.
+    {
+        Node* root = nullptr;
+        add(root, tag(1), nullptr);
+        flip_split(find_leaf(root, tag(1)));
+        flip_split(nullptr); // and a view that isn't in this tree at all
+        place(root, {10, 10, 980, 980}, 10);
+        assert(box(root, tag(1)).x == 10 && box(root, tag(1)).w == 980 && box(root, tag(1)).h == 980);
+    }
+
     // fit_content: a client that won't fill its tile gets drawn centered in it, with the
     // frame hugging the content. This is what keeps the border and the glow off empty space.
     {

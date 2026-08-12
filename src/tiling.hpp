@@ -159,6 +159,12 @@ namespace fenriz {
             return nullptr;
         }
 
+        // Flip the split holding `leaf`
+        inline void flip_split(Node* leaf) {
+            if (leaf && leaf->parent)
+                leaf->parent->vertical = !leaf->parent->vertical;
+        }
+
         // Drag the splits around `leaf` by a cursor delta in px.
         inline void resize_node(Node* leaf, double dx, double dy) {
             if (Node* h = enclosing_split(leaf, true); h && h->rect.w > 0)
@@ -174,6 +180,9 @@ namespace fenriz {
         // Trade two tiled views' positions in place (swaps the leaves' view pointers),
         // then re-arrange. No-op if either view isn't a leaf on the active workspace.
         void swap(Server& server, View* a, View* b);
+
+        // Flip the orientation of the split holding `v` then re-arrange.
+        void toggle_split(Server& server, View* v);
 
         // resize_node() for the leaf holding `v`, then flag the layout dirty so the frame
         // handler re-arranges once per frame rather than once per motion event.

@@ -8,6 +8,7 @@
 #include "lock.hpp"
 #include "output.hpp"
 #include "server.hpp"
+#include "tiling.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
 
@@ -343,8 +344,8 @@ namespace fenriz {
         case Action::FocusDown:
             focus_direction(server, 0, 1);
             break;
-        case Action::ToggleLayout:
-            // TODO: alternate layouts once more than master-stack exists.
+        case Action::ToggleSplit:
+            tiling::toggle_split(server, server.focused_view);
             break;
         case Action::Fullscreen:
             toggle_fullscreen(server);

@@ -31,6 +31,16 @@ namespace fenriz::tiling {
         arrange(server);
     }
 
+    void toggle_split(Server& server, View* v) {
+        if (!v || v->floating)
+            return;
+        Node* leaf = find_leaf(server.workspaces[v->workspace].root, v);
+        if (!leaf)
+            return;
+        flip_split(leaf);
+        arrange(server);
+    }
+
     void resize_split(Server& server, View* v, double dx, double dy) {
         Node* leaf = find_leaf(server.workspaces[v->workspace].root, v);
         if (!leaf)
