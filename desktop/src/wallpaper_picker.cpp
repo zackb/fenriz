@@ -11,7 +11,7 @@ namespace fenriz::desktop {
 
     namespace {
         constexpr int COLUMNS = 3;
-        constexpr int WIDTH = 1040;
+        constexpr int WIDTH = 1080;
         constexpr int HEIGHT = 700;
         constexpr int TILE_WIDTH = wallpaper::THUMB_WIDTH;
         constexpr int TILE_HEIGHT = wallpaper::THUMB_HEIGHT;
@@ -66,14 +66,17 @@ namespace fenriz::desktop {
         for (size_t i = 0; i < paths_.size(); i++) {
             const std::string& path = paths_[i];
             GtkWidget* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
-            // Tiles keep their size instead of stretching to whatever the line has spare
             gtk_widget_set_halign(box, GTK_ALIGN_CENTER);
+            gtk_widget_set_valign(box, GTK_ALIGN_CENTER);
+            gtk_widget_add_css_class(box, "wallpaper-tile");
 
             GtkWidget* picture = gtk_picture_new();
             gtk_picture_set_content_fit(GTK_PICTURE(picture), GTK_CONTENT_FIT_COVER);
             gtk_widget_set_size_request(picture, TILE_WIDTH, TILE_HEIGHT);
             gtk_widget_set_halign(picture, GTK_ALIGN_CENTER);
             gtk_widget_set_valign(picture, GTK_ALIGN_CENTER);
+            // lets the css border-radius actually clip the thumbnail
+            gtk_widget_set_overflow(picture, GTK_OVERFLOW_HIDDEN);
             gtk_box_append(GTK_BOX(box), picture);
             pictures_.push_back(picture);
 
@@ -267,7 +270,7 @@ namespace fenriz::desktop {
         }
 
         scroll_ = gtk_scrolled_window_new();
-        gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll_), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+        gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll_), GTK_POLICY_NEVER, GTK_POLICY_EXTERNAL);
         gtk_widget_set_vexpand(scroll_, TRUE);
         gtk_box_append(GTK_BOX(root), scroll_);
 

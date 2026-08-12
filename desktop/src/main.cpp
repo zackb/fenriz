@@ -44,7 +44,16 @@ namespace {
         std::unique_ptr<Polkit> polkit;
     };
 
-    const char* CSS = ".fenriz-background { background: transparent; }";
+    const char* CSS = ".fenriz-background { background: transparent; }"
+                      ".fenriz-wallpaper flowbox > flowboxchild,"
+                      ".fenriz-wallpaper flowbox > flowboxchild:selected {"
+                      " background-color: transparent; background-image: none;"
+                      " outline: none; box-shadow: none; }"
+                      ".fenriz-wallpaper .wallpaper-tile { padding: 4px; border-radius: 7px; }"
+                      ".fenriz-wallpaper .wallpaper-tile picture { border-radius: 3px; }"
+                      // zima blue -> magenta, top-left to bottom-right, matching the compositor border
+                      ".fenriz-wallpaper flowbox > flowboxchild:selected .wallpaper-tile {"
+                      " background-image: linear-gradient(135deg, #16b8f3, #ff2090); }";
 
     gboolean on_terminate(gpointer data) {
         g_application_quit(G_APPLICATION(data));
@@ -96,7 +105,7 @@ namespace {
         GtkCssProvider* css = gtk_css_provider_new();
         gtk_css_provider_load_from_string(css, CSS);
         gtk_style_context_add_provider_for_display(
-            gdk_display_get_default(), GTK_STYLE_PROVIDER(css), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+            gdk_display_get_default(), GTK_STYLE_PROVIDER(css), GTK_STYLE_PROVIDER_PRIORITY_USER + 1);
         g_object_unref(css);
 
         session->cfg = Config::load();

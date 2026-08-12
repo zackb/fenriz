@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <filesystem>
 #include <utility>
 
@@ -72,7 +73,7 @@ namespace fenriz::desktop::wallpaper {
         g_free(sum);
 
         return cache_dir() + "/" + name + "-" + std::to_string(THUMB_WIDTH) + "x" + std::to_string(THUMB_HEIGHT) +
-               ".png";
+               "-cover.png";
     }
 
     std::string ensure_thumbnail(const std::string& image) {
@@ -80,14 +81,28 @@ namespace fenriz::desktop::wallpaper {
         if (g_file_test(thumb.c_str(), G_FILE_TEST_EXISTS))
             return thumb;
 
+        // Every thumbnail is exactly THUMB_WIDTH x THUMB_HEIGHT.
+        int src_width = 0, src_height = 0;
+        if (!gdk_pixbuf_get_file_info(image.c_str(), &src_width, &src_height) || src_width <= 0 || src_height <= 0) {
+            g_warning("wallpaper: %s: cannot read image dimensions", image.c_str());
+            return "";
+        }
+        const double scale =
+            std::max(static_cast<double>(THUMB_WIDTH) / src_width, static_cast<double>(THUMB_HEIGHT) / src_height);
+        // The rounded-up cover size can still land a pixel short, so never go below the box.
+        const int width = std::max(THUMB_WIDTH, static_cast<int>(std::lround(src_width * scale)));
+        const int height = std::max(THUMB_HEIGHT, static_cast<int>(std::lround(src_height * scale)));
+
         GError* err = nullptr;
-        // Decodes straight to the target size
-        GdkPixbuf* pixbuf = gdk_pixbuf_new_from_file_at_scale(image.c_str(), THUMB_WIDTH, THUMB_HEIGHT, TRUE, &err);
-        if (!pixbuf) {
+        GdkPixbuf* scaled = gdk_pixbuf_new_from_file_at_scale(image.c_str(), width, height, FALSE, &err);
+        if (!scaled) {
             g_warning("wallpaper: %s: %s", image.c_str(), err->message);
             g_error_free(err);
             return "";
         }
+        GdkPixbuf* pixbuf = gdk_pixbuf_new_subpixbuf(
+            scaled, (width - THUMB_WIDTH) / 2, (height - THUMB_HEIGHT) / 2, THUMB_WIDTH, THUMB_HEIGHT);
+        g_object_unref(scaled);
 
         char* dir = g_path_get_dirname(thumb.c_str());
         g_mkdir_with_parents(dir, 0700);
