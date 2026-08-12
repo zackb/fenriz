@@ -11,26 +11,6 @@ namespace fenriz::desktop {
 
     namespace {
 
-        // blur for wallpaper / lockscreen
-        std::string css_for(const Config& cfg) {
-            return ".lock-wallpaper { filter: blur(" + std::to_string(cfg.lock_blur) +
-                   "px); }"
-                   ".lock-scrim { background-color: rgba(0,0,0,0.45); }"
-                   ".lock-clock { font-size: 76px; font-weight: 300; color: white; }"
-                   ".lock-date  { font-size: 18px; color: alpha(white, 0.85); }"
-                   ".lock-entry, .lock-entry text { caret-color: transparent;"
-                   " -gtk-secondary-caret-color: transparent; }"
-                   ".lock-entry { color: white;"
-                   " background-image: none; background-color: #52516a;"
-                   " border: 2px solid alpha(#6c7086, 0.35); border-radius: 9999px;"
-                   " padding: 12px 16px; box-shadow: none; outline: none;"
-                   " transition: border-color 150ms; }"
-                   ".lock-entry:focus-within { border-color: #cba6f7; }"
-                   ".lock-entry.error { border-color: #f38ba8; }"
-                   ".lock-error { font-size: 14px; color: #ff8080; }"
-                   ".lock-error.status { color: alpha(white, 0.85); }";
-        }
-
         // A fingerprint reader does not survive a suspend, and the USB side of it needs a moment
         // to come back before PAM can claim it. TODO: probably needs tuning
         constexpr int WAKE_ARM_DELAY_SECONDS = 2;
@@ -98,7 +78,6 @@ namespace fenriz::desktop {
             g_dbus_connection_signal_unsubscribe(system_bus_, sleep_sub_);
         release_sleep_inhibitor();
         g_clear_object(&system_bus_);
-        g_clear_object(&css_);
         g_clear_object(&instance_);
     }
 
@@ -120,13 +99,6 @@ namespace fenriz::desktop {
                       FENRIZ_DESKTOP_DATADIR,
                       auth_.service().c_str());
             return;
-        }
-
-        if (!css_) {
-            css_ = gtk_css_provider_new();
-            gtk_css_provider_load_from_string(css_, css_for(cfg_).c_str());
-            gtk_style_context_add_provider_for_display(
-                gdk_display_get_default(), GTK_STYLE_PROVIDER(css_), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
         }
 
         surfaces_.clear();
@@ -256,6 +228,7 @@ namespace fenriz::desktop {
         s.entry = gtk_password_entry_new();
         gtk_password_entry_set_show_peek_icon(GTK_PASSWORD_ENTRY(s.entry), FALSE);
         g_object_set(s.entry, "placeholder-text", "Password", nullptr);
+        gtk_widget_add_css_class(s.entry, "fenriz-field");
         gtk_widget_add_css_class(s.entry, "lock-entry");
         gtk_editable_set_alignment(GTK_EDITABLE(s.entry), 0.5f);
         gtk_widget_set_size_request(s.entry, 280, -1);

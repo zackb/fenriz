@@ -1,6 +1,8 @@
 #include "config.hpp"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -57,6 +59,18 @@ namespace fenriz::desktop {
             if (s == "false" || s == "0" || s == "off" || s == "no")
                 return false;
             return fallback;
+        }
+
+        // 0xRRGGBBAA -> css color
+        std::string css_color(uint32_t rgba) {
+            char buf[40];
+            const unsigned r = (rgba >> 24) & 0xff, g = (rgba >> 16) & 0xff, b = (rgba >> 8) & 0xff;
+            const unsigned a = rgba & 0xff;
+            if (a == 0xff)
+                std::snprintf(buf, sizeof buf, "#%02x%02x%02x", r, g, b);
+            else
+                std::snprintf(buf, sizeof buf, "rgba(%u,%u,%u,%.3f)", r, g, b, a / 255.0);
+            return buf;
         }
 
         std::string expand(const std::string& path) {
@@ -134,6 +148,37 @@ namespace fenriz::desktop {
         return cfg;
     }
 
+    // border_active/border_gradient only
+    void Config::parse_accents(const std::string& text) {
+        std::stringstream in(text);
+        std::string line;
+        bool gradient_set = false;
+        while (std::getline(in, line)) {
+            line = trim(strip_comment(line));
+            std::vector<std::string> kv = split_n(line, '=', 2);
+            if (kv.size() != 2)
+                continue;
+
+            uint32_t rgba = 0;
+            try {
+                rgba = static_cast<uint32_t>(std::stoul(kv[1], nullptr, 16));
+            } catch (...) {
+                continue;
+            }
+
+            if (kv[0] == "border_active") {
+                accent = css_color(rgba);
+            } else if (kv[0] == "border_gradient") {
+                gradient_set = rgba != 0;
+                if (gradient_set)
+                    accent_gradient = css_color(rgba);
+            }
+        }
+
+        if (!gradient_set)
+            accent_gradient = accent;
+    }
+
     // Alongside fenriz.conf in ~/.config/fenriz
     std::string Config::config_path() {
         if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg)
@@ -152,6 +197,22 @@ namespace fenriz::desktop {
         return "";
     }
 
+    std::string Config::compositor_config_path() {
+        if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg) {
+            std::string path = std::string(xdg) + "/fenriz/fenriz.conf";
+            if (std::filesystem::exists(path))
+                return path;
+        } else if (const char* home = std::getenv("HOME"); home && *home) {
+            std::string path = std::string(home) + "/.config/fenriz/fenriz.conf";
+            if (std::filesystem::exists(path))
+                return path;
+        }
+        for (const char* path : {"/usr/local/share/fenriz/fenriz.conf", "/usr/share/fenriz/fenriz.conf"})
+            if (std::filesystem::exists(path))
+                return path;
+        return "";
+    }
+
     Config Config::load() {
         Config cfg;
         for (const std::string& path : {config_path(), default_config_path()}) {
@@ -163,6 +224,11 @@ namespace fenriz::desktop {
             cfg = parse(buf.str());
             cfg.source = path;
             break;
+        }
+        if (std::ifstream f(compositor_config_path()); f) {
+            std::stringstream buf;
+            buf << f.rdbuf();
+            cfg.parse_accents(buf.str());
         }
         cfg.selected_wallpaper = load_selected_wallpaper();
         return cfg;

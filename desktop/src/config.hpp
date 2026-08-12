@@ -26,17 +26,23 @@ namespace fenriz::desktop {
         int dim_brightness = 10; // percent of each backlight's maximum while dimmed
         int idle_dpms = 0;       // seconds before switching the screens off; 0 = never
 
+        std::string accent = "#16b8f3";
+        std::string accent_gradient = "#ff2090";
+
         std::string source;
 
         // A runtime pick if there is one, else the image for `output`, else the global one.
         const std::string& wallpaper_for(const std::string& output) const;
 
         static Config parse(const std::string& text);
+        // The compositor's fenriz.conf for the keys the desktop cares about.
+        void parse_accents(const std::string& text);
         // The user's config, else the shipped defaults, else struct defaults.
         static Config load();
         // $XDG_CONFIG_HOME/fenriz/fenriz-desktop.conf, else ~/.config/fenriz/...
         static std::string config_path();
         static std::string default_config_path();
+        static std::string compositor_config_path();
     };
 
     std::string wallpaper_state_path();

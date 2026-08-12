@@ -125,6 +125,7 @@ namespace {
         gtk_box_append(GTK_BOX(box), req->prompt);
 
         req->entry = gtk_password_entry_new();
+        gtk_widget_add_css_class(req->entry, "fenriz-field");
         gtk_password_entry_set_show_peek_icon(GTK_PASSWORD_ENTRY(req->entry), FALSE);
         g_signal_connect(req->entry, "activate", G_CALLBACK(on_entry_activate), req);
         gtk_box_append(GTK_BOX(box), req->entry);

@@ -259,6 +259,7 @@ namespace fenriz::desktop {
 
         if (cfg_.wallpaper_search) {
             search_ = gtk_search_entry_new();
+            gtk_widget_add_css_class(search_, "fenriz-field");
             gtk_widget_set_margin_start(search_, 10);
             gtk_widget_set_margin_end(search_, 10);
             gtk_widget_set_margin_top(search_, 10);
