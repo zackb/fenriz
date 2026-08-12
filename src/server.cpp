@@ -63,13 +63,47 @@ namespace fenriz {
             return nullptr;
         }
 
-        // The box a popup must stay inside, in the root toplevel's window-geometry coordinate
-        // space (what wlr_xdg_popup_unconstrain_from_box wants). False when the popup isn't
-        // owned by a mapped View (layer-shell root), or a window that's unmapped/homeless
+        // The constrained box for a popup chain owned by a layer surface in that surface's coordinate space.
+        bool layer_popup_constraint_box(Server& server, wlr_xdg_popup* popup, wlr_box* out) {
+            // walk it up
+            wlr_surface* surface = popup->parent;
+            while (surface) {
+                wlr_xdg_surface* xs = wlr_xdg_surface_try_from_wlr_surface(surface);
+                if (!xs)
+                    break; // non-xdg parent: this is the root
+                if (xs->role != WLR_XDG_SURFACE_ROLE_POPUP)
+                    return false; // toplevel root: popup_constraint_box's job
+                surface = xs->popup->parent;
+            }
+            wlr_layer_surface_v1* handle = surface ? wlr_layer_surface_v1_try_from_wlr_surface(surface) : nullptr;
+            if (!handle || !handle->output || !server.output_layout)
+                return false;
+
+            LayerSurface* ls = nullptr;
+            for (LayerSurface* s : server.layer_surfaces)
+                if (s->handle == handle)
+                    ls = s;
+            if (!ls)
+                return false;
+
+            wlr_box full;
+            wlr_output_layout_get_box(server.output_layout, handle->output, &full);
+            if (wlr_box_empty(&full))
+                return false;
+
+            // wlroots stops accumulating popup offsets at a non-xdg parent, so the box is in the layer surface's own
+            // surface coords.
+            int lx = 0, ly = 0;
+            wlr_scene_node_coords(&ls->scene->tree->node, &lx, &ly);
+            *out = {full.x - lx, full.y - ly, full.width, full.height};
+            return true;
+        }
+
+        // The box a popup must stay inside
         bool popup_constraint_box(Server& server, wlr_xdg_popup* popup, wlr_box* out) {
             wlr_xdg_surface* root = popup_root(popup->base);
             if (!root || root->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL)
-                return false; // layer-shell root: not a coordinate space we can work out
+                return layer_popup_constraint_box(server, popup, out);
 
             View* view = view_for_toplevel(server, root);
             output::Output* o = view ? view_output(server, view) : nullptr;

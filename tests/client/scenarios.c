@@ -140,6 +140,59 @@ static void s_popup(struct wlc* c) {
     wlc_roundtrip(c);
 }
 
+// --- layer-popup ----------------------------------------------------------------------
+
+// A popup must land entirely inside its root layer surface, which here is the whole
+// output. x/y are the popup's own configured position already translated into the
+// root's coordinate space by the caller.
+static void expect_on_screen(struct win* p, int x, int y, struct win* root, const char* what) {
+    wlc_log("%s configured at %d,%d %dx%d inside %dx%d", what, x, y, p->width, p->height, root->width, root->height);
+    if (x < 0 || y < 0 || x + p->width > root->width || y + p->height > root->height)
+        wlc_die("%s not unconstrained: %d,%d %dx%d spills out of %dx%d",
+                what,
+                x,
+                y,
+                p->width,
+                p->height,
+                root->width,
+                root->height);
+}
+
+static void s_layer_popup(struct wlc* c) {
+    if (!c->layer_shell)
+        wlc_die("compositor has no zwlr_layer_shell_v1");
+
+    wlc_phase("mapping full-output layer surface");
+    struct win* l = wlc_layer(c, "fenriz-test-layer", ZWLR_LAYER_SHELL_V1_LAYER_TOP);
+    wlc_map(l, BLUE);
+    if (l->width <= 0 || l->height <= 0)
+        wlc_die("layer surface never got an output-sized configure"); // 0x0 + all anchors owes us one
+
+    // The desktop's right-click menu: a popup on a layer surface, anchored where the
+    // pointer was. Anchored near the bottom-right corner it does not fit, and the
+    // compositor has to slide/flip it back on screen — layer-shell roots are a
+    // different coordinate space from toplevel ones and were once skipped entirely.
+    wlc_phase("mapping corner-anchored layer popup");
+    struct win* p1 = wlc_popup(l, l->width - 10, l->height - 10, 220, 160, false);
+    wlc_map(p1, GREEN);
+    expect_on_screen(p1, p1->cfg_x, p1->cfg_y, l, "layer popup");
+
+    // A submenu off that popup comes back through the xdg-shell new_popup path and has
+    // to resolve to the same layer-surface root. Its configure is relative to its parent
+    // popup, so add the parent's position to get back into root coords.
+    wlc_phase("mapping nested layer popup");
+    struct win* p2 = wlc_popup(p1, 200, 140, 180, 200, false);
+    wlc_map(p2, RED);
+    expect_on_screen(p2, p1->cfg_x + p2->cfg_x, p1->cfg_y + p2->cfg_y, l, "nested layer popup");
+
+    wlc_hold_point(c);
+
+    wlc_destroy(p2);
+    wlc_destroy(p1);
+    wlc_destroy(l);
+    wlc_roundtrip(c);
+}
+
 // --- resize ---------------------------------------------------------------------------
 
 static void s_resize(struct wlc* c) {
@@ -972,6 +1025,7 @@ static void s_evil(struct wlc* c) {
 
 const struct scenario scenarios[] = {
     {"popup", s_popup, "toplevel -> popup -> nested popup, grab, reposition, off-screen anchor"},
+    {"layer-popup", s_layer_popup, "corner-anchored popup and submenu on a full-output layer surface"},
     {"resize", s_resize, "resize storm at illegal-looking-but-legal sizes, interactive resize"},
     {"fullscreen", s_fullscreen, "fullscreen toggling, per-output, with popups, before first map"},
     {"dnd", s_dnd, "start_drag with an icon; source and icon destroyed mid-drag"},

@@ -10,6 +10,7 @@
 
 #include "fractional-scale-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
+#include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
@@ -33,6 +34,7 @@ struct wlc {
     struct zxdg_decoration_manager_v1* decoration;
     struct wp_viewporter* viewporter;
     struct wp_fractional_scale_manager_v1* frac_scale;
+    struct zwlr_layer_shell_v1* layer_shell;
 
     // Last serial seen on any input event; xdg_popup grabs and start_drag need a real one.
     uint32_t last_serial;
@@ -48,9 +50,11 @@ struct win {
     struct xdg_popup* popup;
     struct xdg_positioner* positioner; // kept alive for reposition()
     struct zxdg_toplevel_decoration_v1* deco;
+    struct zwlr_layer_surface_v1* layer; // set instead of toplevel for a layer surface
 
     int width, height;         // what we paint
     int cfg_width, cfg_height; // what the last configure asked for (0 = free choice)
+    int cfg_x, cfg_y;          // where xdg_popup.configure placed us, in parent surface coords
     uint32_t last_configure_serial;
     uint32_t prev_configure_serial; // for acking a stale serial on purpose
     int configures;                 // xdg_surface.configure count
@@ -76,7 +80,11 @@ void wlc_until(struct wlc* c, bool (*pred)(void*), void* arg);
 void wlc_pump(struct wlc* c, int ms);
 
 struct win* wlc_toplevel(struct wlc* c, int w, int h, const char* title);
+// A layer surface anchored to all four edges of the first output, so its configured
+// size is the output size. Null if the compositor has no layer shell.
+struct win* wlc_layer(struct wlc* c, const char* ns, uint32_t layer);
 // x/y are relative to the parent's window geometry; grab uses the last input serial.
+// The parent may be a toplevel or a layer surface.
 struct win* wlc_popup(struct win* parent, int x, int y, int w, int h, bool grab);
 void wlc_destroy(struct win* w);
 

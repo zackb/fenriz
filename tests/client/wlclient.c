@@ -229,6 +229,8 @@ static const struct xdg_toplevel_listener toplevel_listener = {
 static void popup_configure(void* data, struct xdg_popup* p, int32_t x, int32_t y, int32_t width, int32_t height) {
     (void)p;
     struct win* w = data;
+    w->cfg_x = x;
+    w->cfg_y = y;
     w->cfg_width = width;
     w->cfg_height = height;
     wlc_log("popup configure at %d,%d %dx%d", x, y, width, height);
@@ -401,6 +403,8 @@ static void registry_global(void* data, struct wl_registry* reg, uint32_t name, 
         c->viewporter = wl_registry_bind(reg, name, &wp_viewporter_interface, 1);
     else if (!strcmp(iface, wp_fractional_scale_manager_v1_interface.name))
         c->frac_scale = wl_registry_bind(reg, name, &wp_fractional_scale_manager_v1_interface, 1);
+    else if (!strcmp(iface, zwlr_layer_shell_v1_interface.name))
+        c->layer_shell = wl_registry_bind(reg, name, &zwlr_layer_shell_v1_interface, cap(version, 4));
     else if (!strcmp(iface, wl_output_interface.name) && c->n_outputs < 8)
         c->outputs[c->n_outputs++] = wl_registry_bind(reg, name, &wl_output_interface, cap(version, 4));
 }
@@ -462,6 +466,52 @@ struct win* wlc_toplevel(struct wlc* c, int w, int h, const char* title) {
     return t;
 }
 
+// A layer surface acks its own configures: it has no xdg_surface for wlc_ack to use,
+// and marking it acked+configured is what lets wlc_paint/wlc_map treat it like any
+// other window.
+static void
+    layer_configure(void* data, struct zwlr_layer_surface_v1* l, uint32_t serial, uint32_t width, uint32_t height) {
+    struct win* w = data;
+    zwlr_layer_surface_v1_ack_configure(l, serial);
+    if (width > 0)
+        w->width = (int)width;
+    if (height > 0)
+        w->height = (int)height;
+    w->configured = true;
+    w->acked = true;
+    wlc_log("layer configure %ux%u", width, height);
+}
+static void layer_closed(void* data, struct zwlr_layer_surface_v1* l) {
+    (void)l;
+    ((struct win*)data)->closed = true;
+    wlc_log("layer closed");
+}
+static const struct zwlr_layer_surface_v1_listener layer_listener = {
+    .configure = layer_configure,
+    .closed = layer_closed,
+};
+
+struct win* wlc_layer(struct wlc* c, const char* ns, uint32_t layer) {
+    if (!c->layer_shell)
+        return NULL;
+    struct win* l = calloc(1, sizeof *l);
+    l->c = c;
+    l->surface = wl_compositor_create_surface(c->compositor);
+    wl_surface_add_listener(l->surface, &surface_listener, l);
+    l->layer = zwlr_layer_shell_v1_get_layer_surface(
+        c->layer_shell, l->surface, c->n_outputs > 0 ? c->outputs[0] : NULL, layer, ns);
+    zwlr_layer_surface_v1_add_listener(l->layer, &layer_listener, l);
+    // Anchored to all four edges with size 0x0, so the compositor hands back the
+    // output size and the tests never hardcode a resolution.
+    zwlr_layer_surface_v1_set_anchor(l->layer,
+                                     ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
+                                         ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
+    zwlr_layer_surface_v1_set_size(l->layer, 0, 0);
+    zwlr_layer_surface_v1_set_exclusive_zone(l->layer, -1);
+    wl_surface_commit(l->surface); // initial commit: no buffer
+    return l;
+}
+
 struct win* wlc_popup(struct win* parent, int x, int y, int w, int h, bool grab) {
     struct wlc* c = parent->c;
     struct win* p = calloc(1, sizeof *p);
@@ -482,8 +532,12 @@ struct win* wlc_popup(struct win* parent, int x, int y, int w, int h, bool grab)
     wl_surface_add_listener(p->surface, &surface_listener, p);
     p->xdg_surface = xdg_wm_base_get_xdg_surface(c->wm_base, p->surface);
     xdg_surface_add_listener(p->xdg_surface, &xdg_surface_listener, p);
-    p->popup = xdg_surface_get_popup(p->xdg_surface, parent->xdg_surface, p->positioner);
+    // A layer-shell parent has no xdg_surface: the popup is created parentless and
+    // adopted by the layer surface, per wlr-layer-shell.
+    p->popup = xdg_surface_get_popup(p->xdg_surface, parent->layer ? NULL : parent->xdg_surface, p->positioner);
     xdg_popup_add_listener(p->popup, &popup_listener, p);
+    if (parent->layer)
+        zwlr_layer_surface_v1_get_popup(parent->layer, p->popup);
     if (grab && c->seat)
         xdg_popup_grab(p->popup, c->seat, c->last_serial);
     wl_surface_commit(p->surface);
@@ -499,6 +553,8 @@ void wlc_destroy(struct win* w) {
         xdg_popup_destroy(w->popup);
     if (w->toplevel)
         xdg_toplevel_destroy(w->toplevel);
+    if (w->layer)
+        zwlr_layer_surface_v1_destroy(w->layer);
     if (w->positioner)
         xdg_positioner_destroy(w->positioner);
     if (w->xdg_surface)
