@@ -55,6 +55,16 @@ namespace fenriz::desktop::theme {
 .lock-error { font-size: 14px; color: #ff8080; }
 .lock-error.status { color: alpha(white, 0.85); }
 
+.fenriz-background popover.menu > contents {
+  --fenriz-fill: @popover_bg_color;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-image: linear-gradient(var(--fenriz-fill), var(--fenriz-fill)),
+                    linear-gradient(135deg, @fenriz_accent, @fenriz_accent2);
+}
+
 .fenriz-wallpaper flowbox > flowboxchild,
 .fenriz-wallpaper flowbox > flowboxchild:selected {
   background-color: transparent;
