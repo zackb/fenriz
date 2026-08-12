@@ -69,6 +69,12 @@ menu = Files,      nautilus
 menu = Screenshot, grim -g "$(slurp)" - | wl-copy
 ```
 
+## Theming
+`fenriz-desktop` will use the system GTK4 theme if one is set (nwg-look), or fall back to Adwaita.
+`border_active` and `border_gradient` are used from `fenriz.conf` if it exists, otherwise defaults are used.
+
+```ini
+
 ## Desktop menu
 
 Right-click the desktop. Every installed application, grouped into submenus by
