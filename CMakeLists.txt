@@ -164,6 +164,9 @@ add_test(NAME keybind COMMAND fenriz_keybind_test)
 add_test(NAME output  COMMAND fenriz_output_test)
 add_test(NAME ctl     COMMAND fenrizctl_test)
 
+# fails when wlroots or wayland-protocols offers a protocol that is in neither src/ nor docs/PROTOCOLS.md.
+add_test(NAME protocols COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/protocol-audit.sh)
+
 foreach(s popup layer-popup resize fullscreen dnd grab subsurface scale destroy-parent hotplug workspace evil)
     add_test(NAME wl-${s}
              COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/wltest.sh
