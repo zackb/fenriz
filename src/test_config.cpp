@@ -211,6 +211,20 @@ int main() {
     assert(neg.shadow_blur >= 0);
     assert(neg.animation_ms >= 0);
 
+    // `margin` takes CSS shorthand: 1 value = all sides, 2 = vertical horizontal,
+    // 4 = top right bottom left. Runs of spaces between fields are fine.
+    auto margin_is = [](const Config& c, int t, int r, int b, int l) {
+        return c.margin.top == t && c.margin.right == r && c.margin.bottom == b && c.margin.left == l;
+    };
+    assert(margin_is(Config::parse("margin = 10\n"), 10, 10, 10, 10));
+    assert(margin_is(Config::parse("margin = 10   4\n"), 10, 4, 10, 4));
+    assert(margin_is(Config::parse("margin = 1 2 3 4 # top right bottom left\n"), 1, 2, 3, 4));
+    // A count the shorthand doesn't define is a typo, not a partial margin: keep the default.
+    assert(margin_is(Config::parse("margin = 10 4 3\n"), 0, 0, 0, 0));
+    assert(margin_is(Config::parse("margin = nope\n"), 0, 0, 0, 0));
+    assert(margin_is(Config::parse("margin = -5 -5 -5 -5\n"), 0, 0, 0, 0));
+    assert(margin_is(Config{}, 0, 0, 0, 0)); // off unless asked for
+
     // Window rules: name=value fields, any order; `name` is a label and ignored; a rule
     // with neither class nor title is dropped.
     Config wr = Config::parse("windowrule = class=^(org\\.pulseaudio\\.pavucontrol)$, float=true, center=true\n"

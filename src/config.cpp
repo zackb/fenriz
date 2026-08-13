@@ -300,7 +300,18 @@ namespace fenriz {
             else if (key == "gaps")
                 // The ceiling is generous on purpose: tiling::arrange clamps the gap again
                 cfg.gaps = parse_int(val, cfg.gaps, 0, 500);
-            else if (key == "rounding")
+            else if (key == "margin") {
+                std::vector<int> m;
+                std::stringstream ms(val);
+                for (int n; ms >> n;)
+                    m.push_back(std::clamp(n, 0, 500));
+                if (m.size() == 1)
+                    cfg.margin = {m[0], m[0], m[0], m[0]};
+                else if (m.size() == 2)
+                    cfg.margin = {m[0], m[1], m[0], m[1]};
+                else if (m.size() == 4)
+                    cfg.margin = {m[0], m[1], m[2], m[3]};
+            } else if (key == "rounding")
                 cfg.rounding = parse_int(val, cfg.rounding, 0, 200);
             else if (key == "animation")
                 cfg.animation_ms = parse_int(val, cfg.animation_ms, 0, 5000);

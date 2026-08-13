@@ -110,14 +110,14 @@ namespace fenriz {
             if (!o)
                 return false;
 
-            // usable_area is layout coords with the bars' exclusive zones removed, so menus stay clear of them.
+            const output::Area ua = output::usable(server, o);
             const int bw = view->fullscreen ? 0 : server.config.border_width;
             // `frame`, not `box`: a client that refuses its tile size is drawn centered in it,
             // and popups anchor to where the window actually is.
-            *out = {o->usable_area.x - (view->frame.x + bw) + root->geometry.x,
-                    o->usable_area.y - (view->frame.y + bw) + root->geometry.y,
-                    o->usable_area.width,
-                    o->usable_area.height};
+            *out = {ua.x - (view->frame.x + bw) + root->geometry.x,
+                    ua.y - (view->frame.y + bw) + root->geometry.y,
+                    ua.width,
+                    ua.height};
             return true;
         }
 

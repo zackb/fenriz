@@ -729,14 +729,20 @@ namespace fenriz::output {
         if (!o)
             return {0, 0, 0, 0};
 
-        if (o->usable_area.width > 0 && o->usable_area.height > 0)
-            return o->usable_area;
+        Area a;
+        if (o->usable_area.width > 0 && o->usable_area.height > 0) {
+            a = o->usable_area;
+        } else {
+            wlr_box full = {0, 0, 0, 0};
+            if (server.output_layout)
+                wlr_output_layout_get_box(server.output_layout, o->handle, &full);
+            a = {full.x, full.y, full.width, full.height};
+        }
 
-        wlr_box full = {0, 0, 0, 0};
-        if (server.output_layout)
-            wlr_output_layout_get_box(server.output_layout, o->handle, &full);
-
-        return {full.x, full.y, full.width, full.height};
+        const Margin& m = server.config.margin;
+        if (a.width > m.left + m.right && a.height > m.top + m.bottom)
+            a = {a.x + m.left, a.y + m.top, a.width - m.left - m.right, a.height - m.top - m.bottom};
+        return a;
     }
 
     bool lid_controls(Server& server, const Output* o) {

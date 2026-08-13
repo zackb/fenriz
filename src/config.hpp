@@ -57,6 +57,11 @@ namespace fenriz {
         float scale = 0;                // 0 = fall back to Config::scale, -1 = guess from DPI
     };
 
+    // Inset from each screen edge, px.
+    struct Margin {
+        int top = 0, right = 0, bottom = 0, left = 0;
+    };
+
     struct Config {
         int border_width = 2;
         uint32_t border_active = 0x16b8f3cc;   // RGBA — translucent so the edge isn't a hard stroke
@@ -67,6 +72,7 @@ namespace fenriz {
         uint32_t shadow_color = 0x00000055;    // RGBA — alpha = glow intensity; hue tracks border_active
         int shadow_blur = 28;                  // blur sigma (px) — wider halo = softer falloff
         int gaps = 8;
+        Margin margin{};
         int rounding = 10;
         int animation_ms = 150; // slide-into-place duration; 0 = instant (no animation)
         float opacity = 1.0f;
