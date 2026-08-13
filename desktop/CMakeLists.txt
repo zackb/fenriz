@@ -46,6 +46,8 @@ add_executable(fenriz-desktop
     src/brightness.cpp
     src/volume.cpp
     src/osd.cpp
+    src/notify.cpp
+    src/toast.cpp
     src/menu.cpp
     src/launcher.cpp
     src/frecency.cpp
@@ -74,6 +76,7 @@ install(FILES docs/img/fenriz-desktop-wallpaper.png
         DESTINATION ${CMAKE_INSTALL_DATADIR}/fenriz-desktop RENAME wallpaper.png)
 target_compile_definitions(fenriz-desktop PRIVATE
         FENRIZ_DESKTOP_DATADIR="${FENRIZ_DESKTOP_DATADIR}"
+        FENRIZ_DESKTOP_VERSION="${PROJECT_VERSION}"
         FENRIZ_DESKTOP_DEFAULT_CONFIG="${FENRIZ_DESKTOP_DATADIR}/fenriz-desktop.conf")
 
 ### IMPORTANT ###
@@ -128,6 +131,12 @@ target_include_directories(desktop_screensaver_test PRIVATE ${CMAKE_CURRENT_SOUR
 target_link_libraries(desktop_screensaver_test PRIVATE PkgConfig::GIO_UNIX)
 target_compile_options(desktop_screensaver_test PRIVATE -UNDEBUG)
 
+add_executable(desktop_notify_test src/notify.cpp src/toast.cpp src/config.cpp src/test_notify.cpp)
+target_include_directories(desktop_notify_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(desktop_notify_test PRIVATE PkgConfig::GTK4 PkgConfig::LAYER_SHELL PkgConfig::GIO_UNIX)
+target_compile_options(desktop_notify_test PRIVATE -UNDEBUG)
+target_compile_definitions(desktop_notify_test PRIVATE FENRIZ_DESKTOP_VERSION="${PROJECT_VERSION}")
+
 enable_testing()
 add_test(NAME config   COMMAND desktop_config_test)
 add_test(NAME menu     COMMAND desktop_menu_test)
@@ -138,3 +147,4 @@ add_test(NAME brightness COMMAND desktop_brightness_test)
 add_test(NAME volume   COMMAND desktop_volume_test)
 add_test(NAME wallpaper COMMAND desktop_wallpaper_test)
 add_test(NAME screensaver COMMAND desktop_screensaver_test)
+add_test(NAME notify   COMMAND desktop_notify_test)

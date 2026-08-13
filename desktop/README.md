@@ -19,14 +19,14 @@ This is extremely early alpha. It is not yet usable.
 
 ## Scope
 
-Wallpaper, launcher, desktop context menu, idle, lock screen, polkit agent, media keys (brightness, volume, mute, mic mute) with an OSD.
+Wallpaper, launcher, desktop context menu, idle, lock screen, polkit agent, notifications, media keys (brightness, volume, mute, mic mute) with an OSD.
 
 ### Non-goals
 
-Bar, system tray, notifications, dock, mpris/media controls, clipboard manager, network or bluetooth UI, lock-screen widgets, audio device switching.
+Bar, system tray, dock, mpris/media controls, clipboard manager, network or bluetooth UI, lock-screen widgets, audio device switching.
 
 Every one of those has a good existing tool that fenriz will always work with: 
-waybar, mako, wlogout, lxqt-policykit. 
+waybar, swaync, wlogout, lxqt-policykit. 
 This is not meant to be a worse version of [quickshell](https://quickshell.org), which is the right tool if you want to build a shell of your own.
 
 ## Portability
@@ -187,6 +187,16 @@ sudo install -m644 /usr/share/fenriz-desktop/pam/fenriz-desktop-gaze   /etc/pam.
 ```
 
 Enroll first: `fprintd-enroll` for the reader, `gaze` for the camera.
+
+## Notifications
+
+The session's `org.freedesktop.Notifications` daemon, so `notify-send` and every app that uses it works. Nothing to set up.
+
+```ini
+notifications = on          # off if you would rather run mako/dunst/swaync
+notify_timeout = 5000       # ms, for senders that don't set their own
+notify_position = top-right # {top,bottom}-{left,center,right}
+```
 
 ## Polkit agent
 

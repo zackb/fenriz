@@ -44,6 +44,19 @@ wallpaper = @FENRIZ_DESKTOP_DATADIR@/wallpaper.png
 # `off` removes it and drops its entry from the desktop menu.
 # launcher = on
 
+# --- Notifications ---------------------------------------------------------
+# The org.freedesktop.Notifications daemon every app expects the session to provide.
+# notify-send and everything that uses it (low-battery) warning, no "screenshot saved", chat messages.
+#
+# `off` if you would rather run mako, dunst or swaync.
+# notifications = on
+
+# How long a notification lingers, in milliseconds.
+# notify_timeout = 5000
+
+# Which corner they stack in: top-left, top-center, top-right, bottom-left, bottom-center, bottom-right.
+# notify_position = top-right
+
 # --- Idle and lock ------------------------------------------------------------
 # The three stages fire in order: dim as a warning, then lock, then screens off.
 # Set any of them to 0 to disable that stage.

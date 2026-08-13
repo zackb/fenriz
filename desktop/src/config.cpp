@@ -139,6 +139,12 @@ namespace fenriz::desktop {
                 cfg.dim_brightness = parse_int(value, cfg.dim_brightness, 1, 100);
             } else if (key == "launcher") {
                 cfg.launcher = parse_bool(value, cfg.launcher);
+            } else if (key == "notifications") {
+                cfg.notifications = parse_bool(value, cfg.notifications);
+            } else if (key == "notify_timeout") {
+                cfg.notify_timeout = parse_int(value, cfg.notify_timeout, 1000, 60000);
+            } else if (key == "notify_position") {
+                cfg.notify_position = value;
             } else if (key == "menu") {
                 std::vector<std::string> f = split_n(value, ',', 2);
                 if (f.size() == 2 && !f[0].empty() && !f[1].empty())

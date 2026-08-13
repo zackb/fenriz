@@ -83,6 +83,31 @@ window.fenriz-osd { background: transparent; }
   background-image: linear-gradient(135deg, @fenriz_accent, @fenriz_accent2);
 }
 
+window.fenriz-notify { background: transparent; }
+
+/* duration MUST match FADE_MS in toast.cpp */
+.fenriz-notify .fenriz-toast { opacity: 1; transition: opacity 200ms ease-out; }
+.fenriz-notify .fenriz-toast.fading { opacity: 0; }
+
+.fenriz-notify .fenriz-toast {
+  --fenriz-fill: @theme_base_color;
+  padding: 14px 16px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-image: linear-gradient(var(--fenriz-fill), var(--fenriz-fill)),
+                    linear-gradient(135deg, @fenriz_accent, @fenriz_accent2);
+}
+.fenriz-notify .fenriz-toast.critical {
+  background-image: linear-gradient(var(--fenriz-fill), var(--fenriz-fill)),
+                    linear-gradient(135deg, @fenriz_error, @fenriz_error);
+}
+.fenriz-notify .toast-summary { font-weight: bold; }
+.fenriz-notify .toast-body { color: alpha(currentColor, 0.8); }
+.fenriz-notify .toast-icon { border-radius: 6px; }
+.fenriz-notify .toast-action { padding: 4px 12px; border-radius: 8px; }
+
 .fenriz-background popover.menu > contents {
   --fenriz-fill: @popover_bg_color;
   min-width: 200px;

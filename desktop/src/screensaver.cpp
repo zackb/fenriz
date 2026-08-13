@@ -140,7 +140,7 @@ namespace fenriz::desktop {
         for (const char* name : {FREEDESKTOP_NAME, GNOME_NAME})
             owner_ids_.push_back(g_bus_own_name(G_BUS_TYPE_SESSION,
                                                 name,
-                                                G_BUS_NAME_OWNER_FLAGS_NONE,
+                                                G_BUS_NAME_OWNER_FLAGS_DO_NOT_QUEUE,
                                                 bus_acquired_cb,
                                                 name_acquired_cb,
                                                 name_lost_cb,

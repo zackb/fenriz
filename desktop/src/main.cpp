@@ -13,6 +13,7 @@
 #include "lock.hpp"
 #include "log.hpp"
 #include "menu.hpp"
+#include "notify.hpp"
 #include "osd.hpp"
 #include "polkit.hpp"
 #include "power.hpp"
@@ -29,6 +30,7 @@ namespace {
     using fenriz::desktop::Idle;
     using fenriz::desktop::Launcher;
     using fenriz::desktop::Lock;
+    using fenriz::desktop::Notifications;
     using fenriz::desktop::Osd;
     using fenriz::desktop::OutputPower;
     using fenriz::desktop::Polkit;
@@ -49,6 +51,7 @@ namespace {
         std::unique_ptr<Polkit> polkit;
         std::unique_ptr<Osd> osd;
         std::unique_ptr<Volume> volume;
+        std::unique_ptr<Notifications> notify;
     };
 
     // Icons come from the theme's standard audio set, picked to match the level.
@@ -195,6 +198,10 @@ namespace {
                 session->screensaver->start();
             }
         }
+        if (session->cfg.notifications) {
+            session->notify = std::make_unique<Notifications>(app, session->cfg);
+            session->notify->start();
+        }
         session->polkit = std::make_unique<Polkit>(session->cfg);
         session->polkit->start();
         session->background = std::make_unique<Background>(session->cfg);
@@ -303,6 +310,7 @@ int main(int argc, char** argv) {
 
     int status = g_application_run(G_APPLICATION(app), argc, argv);
     session.polkit.reset(); // tear surfaces down while GTK is still alive
+    session.notify.reset();
     session.osd.reset();
     session.volume.reset();
     session.screensaver.reset();

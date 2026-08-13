@@ -26,6 +26,10 @@ namespace fenriz::desktop {
         int dim_brightness = 10; // percent of each backlight's maximum while dimmed
         int idle_dpms = 0;       // seconds before switching the screens off; 0 = never
 
+        bool notifications = true;
+        int notify_timeout = 5000;                 // milliseconds a notification lingers by default
+        std::string notify_position = "top-right"; // {top,bottom}-{left,center,right}
+
         std::string accent = "#16b8f3";
         std::string accent_gradient = "#ff2090";
 
