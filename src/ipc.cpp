@@ -141,6 +141,8 @@ namespace fenriz::ipc {
                 json_escape(s, view_app_id(v));
                 s += "\",\"title\":\"";
                 json_escape(s, view_title(v));
+                s += "\",\"icon\":\"";
+                json_escape(s, v->icon.c_str());
                 s += "\",\"workspace\":" + std::to_string(v->workspace + 1);
                 s += ",\"floating\":" + std::string(v->floating ? "true" : "false");
                 s += ",\"fullscreen\":" + std::string(v->fullscreen ? "true" : "false");
@@ -155,6 +157,8 @@ namespace fenriz::ipc {
                 json_escape(s, view_app_id(f)); // xdg app_id or X11 WM_CLASS
                 s += "\",\"title\":\"";
                 json_escape(s, view_title(f));
+                s += "\",\"icon\":\"";
+                json_escape(s, f->icon.c_str());
                 s += "\"}";
             } else {
                 s += "null";

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <wayland-server-core.h>
 
 struct wlr_xdg_toplevel;
@@ -56,6 +57,9 @@ namespace fenriz {
         bool want_center = false; // window-rule center: applied once the float has real size
         bool float_self_sized = true;
         bool urgent = false; // asked to be activated while unfocused; cleared on focus
+
+        // xdg-toplevel-icon-v1: the XDG icon-theme name the client asked for, empty if none.
+        std::string icon;
 
         int req_w = 0, req_h = 0;
         bool acked = false;

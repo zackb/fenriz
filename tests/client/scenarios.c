@@ -13,6 +13,7 @@
 #include "xdg-dialog-v1-client-protocol.h"
 #include "xdg-foreign-unstable-v1-client-protocol.h"
 #include "xdg-foreign-unstable-v2-client-protocol.h"
+#include "xdg-toplevel-icon-v1-client-protocol.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1547,6 +1548,112 @@ static void s_dialog(struct wlc* c) {
     wlc_roundtrip(c);
 }
 
+// --- icon -------------------------------------------------------------------------------
+//
+// xdg-toplevel-icon-v1. fenriz keeps the icon *name* — an XDG icon-theme name, the thing a
+// bar can actually resolve — and publishes it on the control socket. Pixel buffers are
+// dropped, so this checks the name round-trips, that a buffer-only icon reports no name
+// rather than a stale one, and that unsetting clears it.
+
+static struct xdg_toplevel_icon_manager_v1* fi_manager;
+
+static void fi_registry_global(void* d, struct wl_registry* reg, uint32_t name, const char* iface, uint32_t ver) {
+    (void)d;
+    (void)ver;
+    if (!strcmp(iface, xdg_toplevel_icon_manager_v1_interface.name))
+        fi_manager = wl_registry_bind(reg, name, &xdg_toplevel_icon_manager_v1_interface, 1);
+}
+static void fi_registry_remove(void* d, struct wl_registry* reg, uint32_t name) {
+    (void)d;
+    (void)reg;
+    (void)name;
+}
+static const struct wl_registry_listener fi_registry_listener = {
+    .global = fi_registry_global,
+    .global_remove = fi_registry_remove,
+};
+
+// The `icon` the compositor publishes for the window with this title.
+static void fi_icon_of(const char* title, char* out, size_t n) {
+    char snap[16384];
+    out[0] = 0;
+    if (!ipc_snapshot(snap, sizeof snap))
+        wlc_die("no control socket; cannot read the published icon");
+    const char* p = strstr(snap, title);
+    if (!p)
+        wlc_die("window \"%s\" is not in the state snapshot", title);
+    const char* i = strstr(p, "\"icon\":\"");
+    if (!i)
+        wlc_die("no icon field in the snapshot; the feed never grew one");
+    i += 8;
+    const char* end = strchr(i, '"');
+    if (!end || (size_t)(end - i) >= n)
+        return;
+    snprintf(out, n, "%.*s", (int)(end - i), i);
+}
+
+static void s_icon(struct wlc* c) {
+    fi_manager = NULL;
+
+    wlc_phase("binding xdg_toplevel_icon_manager_v1");
+    struct wl_registry* reg = wl_display_get_registry(c->display);
+    wl_registry_add_listener(reg, &fi_registry_listener, NULL);
+    wlc_roundtrip(c);
+    if (!fi_manager)
+        wlc_die("compositor does not advertise xdg_toplevel_icon_manager_v1");
+
+    struct win* w = wlc_toplevel(c, 400, 300, "fenriz-test icon-window");
+    wlc_map(w, BLUE);
+
+    char icon[256];
+    fi_icon_of("fenriz-test icon-window", icon, sizeof icon);
+    if (icon[0])
+        wlc_die("a window that set no icon reports \"%s\"", icon);
+
+    wlc_phase("setting an icon name");
+    struct xdg_toplevel_icon_v1* named = xdg_toplevel_icon_manager_v1_create_icon(fi_manager);
+    xdg_toplevel_icon_v1_set_name(named, "text-editor");
+    xdg_toplevel_icon_manager_v1_set_icon(fi_manager, w->toplevel, named);
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
+    fi_icon_of("fenriz-test icon-window", icon, sizeof icon);
+    if (strcmp(icon, "text-editor"))
+        wlc_die("icon name did not reach the feed (got \"%s\")", icon);
+
+    // An icon carrying only pixels has no name to publish. Reporting the previous name here
+    // would be worse than reporting none — the bar would draw the wrong app.
+    wlc_phase("replacing it with a buffer-only icon");
+    struct xdg_toplevel_icon_v1* pixels = xdg_toplevel_icon_manager_v1_create_icon(fi_manager);
+    struct wl_buffer* buf = wlc_buffer(c, 64, 64, GREEN);
+    xdg_toplevel_icon_v1_add_buffer(pixels, buf, 1);
+    xdg_toplevel_icon_manager_v1_set_icon(fi_manager, w->toplevel, pixels);
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
+    fi_icon_of("fenriz-test icon-window", icon, sizeof icon);
+    if (icon[0])
+        wlc_die("buffer-only icon left \"%s\" published; a stale name is a wrong icon", icon);
+
+    wlc_phase("unsetting the icon");
+    xdg_toplevel_icon_manager_v1_set_icon(fi_manager, w->toplevel, NULL);
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
+    fi_icon_of("fenriz-test icon-window", icon, sizeof icon);
+    if (icon[0])
+        wlc_die("icon survived being unset: \"%s\"", icon);
+    wlc_log("name published, buffer-only and unset both cleared");
+
+    wlc_hold_point(c);
+
+    // The icon objects outlive the toplevel here on purpose: destroying them after the
+    // window is the ordering a client shutting down produces.
+    wlc_destroy(w);
+    wlc_roundtrip(c);
+    xdg_toplevel_icon_v1_destroy(named);
+    xdg_toplevel_icon_v1_destroy(pixels);
+    wl_buffer_destroy(buf);
+    wlc_roundtrip(c);
+}
+
 const struct scenario scenarios[] = {
     {"popup", s_popup, "toplevel -> popup -> nested popup, grab, reposition, off-screen anchor"},
     {"layer-popup", s_layer_popup, "corner-anchored popup and submenu on a full-output layer surface"},
@@ -1560,6 +1667,7 @@ const struct scenario scenarios[] = {
     {"hotplug", s_hotplug, "output enable/disable and lid churn under mapped surfaces"},
     {"workspace", s_workspace, "ext-workspace-v1: list, activate from the client, follow a switch"},
     {"dialog", s_dialog, "xdg-dialog-v1: a modal dialog holds focus against its parent"},
+    {"icon", s_icon, "xdg-toplevel-icon-v1: icon name reaches the feed; buffer-only and unset clear it"},
     {"foreign", s_foreign, "xdg-foreign: export a toplevel, import it, parent a second window to it"},
     {"evil", s_evil, "stale acks, commits between configures, self-resize, destroy/recreate"},
     {NULL, NULL, NULL},
