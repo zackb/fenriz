@@ -1245,11 +1245,18 @@ static void s_workspace(struct wlc* c) {
         wlc_die("no workspace is active");
     wlc_log("%d workspaces, %d group(s), %d active", n_ws, ws_groups, active_seen);
 
-    // Every workspace is always selectable, so a bar that drops hidden ones (waybar does by
-    // default) must still have something to draw.
-    for (int i = 0; i < n_ws; i++)
-        if (ws_list[i].state & EXT_WORKSPACE_HANDLE_V1_STATE_HIDDEN)
-            wlc_die("workspace %s is marked hidden", ws_list[i].name);
+    // An empty workspace nobody is on is hidden, so a bar lists only the ones worth drawing.
+    // Nothing of ours is mapped yet, so everything but the shown ones should be hidden.
+    int hidden = 0;
+    for (int i = 0; i < n_ws; i++) {
+        bool is_hidden = ws_list[i].state & EXT_WORKSPACE_HANDLE_V1_STATE_HIDDEN;
+        if (is_hidden && (ws_list[i].state & EXT_WORKSPACE_HANDLE_V1_STATE_ACTIVE))
+            wlc_die("workspace %s is active and hidden at once", ws_list[i].name);
+        hidden += is_hidden;
+    }
+    if (n_ws > active_seen && !hidden)
+        wlc_die("%d workspaces, %d shown, none hidden — a bar would list every empty one", n_ws, active_seen);
+    wlc_log("%d hidden", hidden);
 
     // A window so the switch has something to lay out and the tiling path runs too.
     struct win* w = wlc_toplevel(c, 400, 300, "fenriz-test workspace");
@@ -1264,6 +1271,10 @@ static void s_workspace(struct wlc* c) {
     wlc_until(c, ws_is_active, NULL);
     if (ws_ipc_active() != 3)
         wlc_die("protocol says workspace 3 is active, the control socket says %d", ws_ipc_active());
+    // Our toplevel is still on workspace 1. Holding a window is enough to stay listed, even
+    // once no screen is showing it — occupancy, not visibility, is what `hidden` tracks.
+    if (ws_named("1")->state & EXT_WORKSPACE_HANDLE_V1_STATE_HIDDEN)
+        wlc_die("workspace 1 is hidden with a mapped window on it");
 
     // Compositor -> client: the same switch made the way a keybind makes it.
     wlc_phase("switching back to workspace 1 over the control socket");

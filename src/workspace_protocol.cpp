@@ -77,13 +77,17 @@ namespace fenriz::workspace_protocol {
                 if (o->enabled && o->active_ws == ws)
                     active = true;
 
-            bool urgent = false;
+            bool urgent = false, occupied = active;
             for (View* v : server.views)
-                if (v->mapped && v->urgent && v->workspace == ws)
-                    urgent = true;
+                if (v->mapped && v->workspace == ws) {
+                    occupied = true;
+                    urgent = urgent || v->urgent;
+                }
 
             wlr_ext_workspace_handle_v1_set_active(state.handles[i], active);
             wlr_ext_workspace_handle_v1_set_urgent(state.handles[i], urgent);
+            // `hidden` is the protocol's "don't display this one"
+            wlr_ext_workspace_handle_v1_set_hidden(state.handles[i], !occupied);
         }
     }
 
