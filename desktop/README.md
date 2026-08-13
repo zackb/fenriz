@@ -10,12 +10,7 @@ with them and always will.
 
 ## Status
 
-This is extremely early alpha. It is not yet usable.
-
-## Known issues
-
-- Context menu clips at screen edges instead of sliding back on-screen. A popup
-  that doesn't fit should be unconstrained by the compositor.
+This is early alpha. I use it as my daily driver and it works for me.
 
 ## Scope
 
