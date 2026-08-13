@@ -550,6 +550,9 @@ namespace fenriz {
         wlr_xdg_foreign_v1_create(display, foreign_registry);
         wlr_xdg_foreign_v2_create(display, foreign_registry);
 
+        // xdg-dialog-v1: a client marks a child toplevel as a dialog, optionally modal.
+        wlr_xdg_wm_dialog_v1_create(display, 1);
+
         seat = wlr_seat_create(display, "seat0");
         wlr_seat_set_capabilities(seat, WL_SEAT_CAPABILITY_KEYBOARD | WL_SEAT_CAPABILITY_POINTER);
         l_new_input.server = this;

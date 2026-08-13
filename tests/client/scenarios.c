@@ -10,6 +10,7 @@
 #include "scenarios.h"
 
 #include "ext-workspace-v1-client-protocol.h"
+#include "xdg-dialog-v1-client-protocol.h"
 #include "xdg-foreign-unstable-v1-client-protocol.h"
 #include "xdg-foreign-unstable-v2-client-protocol.h"
 
@@ -1437,6 +1438,115 @@ static void s_foreign(struct wlc* c) {
     wlc_roundtrip(c);
 }
 
+// --- dialog -----------------------------------------------------------------------------
+//
+// xdg-dialog-v1. The dialog hint alone changes nothing — the protocol has no effect without
+// a parent toplevel, and a parented window already floats. `modal` is the new information:
+// focus must not leave a modal dialog for its parent. The oracle is the compositor's own
+// activeWindow, driven by asking it to cycle focus over the control socket, and the control
+// is unset_modal on the same window — one bit, everything else held still.
+
+static struct xdg_wm_dialog_v1* fd_wm_dialog;
+
+static void fd_registry_global(void* d, struct wl_registry* reg, uint32_t name, const char* iface, uint32_t ver) {
+    (void)d;
+    (void)ver;
+    if (!strcmp(iface, xdg_wm_dialog_v1_interface.name))
+        fd_wm_dialog = wl_registry_bind(reg, name, &xdg_wm_dialog_v1_interface, 1);
+}
+static void fd_registry_remove(void* d, struct wl_registry* reg, uint32_t name) {
+    (void)d;
+    (void)reg;
+    (void)name;
+}
+static const struct wl_registry_listener fd_registry_listener = {
+    .global = fd_registry_global,
+    .global_remove = fd_registry_remove,
+};
+
+// The focused window's title, per the compositor. Empty when nothing is focused.
+static void fd_active_title(char* out, size_t n) {
+    char snap[16384];
+    out[0] = 0;
+    if (!ipc_snapshot(snap, sizeof snap))
+        wlc_die("no control socket; cannot tell what is focused");
+    const char* p = strstr(snap, "\"activeWindow\":");
+    if (!p)
+        return;
+    const char* t = strstr(p, "\"title\":\"");
+    if (!t)
+        return; // activeWindow: null
+    t += 9;
+    const char* end = strchr(t, '"');
+    if (!end || (size_t)(end - t) >= n)
+        return;
+    snprintf(out, n, "%.*s", (int)(end - t), t);
+}
+
+static void s_dialog(struct wlc* c) {
+    fd_wm_dialog = NULL;
+
+    wlc_phase("binding xdg_wm_dialog_v1");
+    struct wl_registry* reg = wl_display_get_registry(c->display);
+    wl_registry_add_listener(reg, &fd_registry_listener, NULL);
+    wlc_roundtrip(c);
+    if (!fd_wm_dialog)
+        wlc_die("compositor does not advertise xdg_wm_dialog_v1");
+
+    // The parent must be mapped before set_parent: wlroots drops a parent that has no role yet.
+    wlc_phase("mapping the parent");
+    struct win* parent = wlc_toplevel(c, 600, 400, "fenriz-test dialog-parent");
+    wlc_map(parent, BLUE);
+
+    wlc_phase("mapping a modal dialog on it");
+    struct win* dlg = wlc_toplevel(c, 300, 200, "fenriz-test dialog-modal");
+    xdg_toplevel_set_parent(dlg->toplevel, parent->toplevel);
+    struct xdg_dialog_v1* dialog = xdg_wm_dialog_v1_get_xdg_dialog(fd_wm_dialog, dlg->toplevel);
+    xdg_dialog_v1_set_modal(dialog);
+    wlc_map(dlg, GREEN);
+    wlc_roundtrip(c);
+
+    char title[256];
+    fd_active_title(title, sizeof title);
+    if (strcmp(title, "fenriz-test dialog-modal"))
+        wlc_die("the modal dialog did not take focus when it mapped (focused: \"%s\")", title);
+
+    // Cycling focus must never land on the parent while the dialog is modal. Twice: with two
+    // windows a single cycle could sit still for the wrong reason.
+    wlc_phase("cycling focus with the dialog modal");
+    for (int i = 0; i < 4; i++) {
+        ipc_send("{\"cmd\":\"dispatch\",\"action\":\"focusnext\"}");
+        wlc_pump(c, 150);
+        fd_active_title(title, sizeof title);
+        if (strcmp(title, "fenriz-test dialog-modal"))
+            wlc_die("focus reached \"%s\" on cycle %d; a modal dialog must hold it", title, i);
+    }
+
+    // Same two windows, same stacking — drop only the modal bit and focus must move again.
+    wlc_phase("unsetting modal; focus must reach the parent now");
+    xdg_dialog_v1_unset_modal(dialog);
+    wlc_roundtrip(c);
+    bool reached_parent = false;
+    for (int i = 0; i < 4 && !reached_parent; i++) {
+        ipc_send("{\"cmd\":\"dispatch\",\"action\":\"focusnext\"}");
+        wlc_pump(c, 150);
+        fd_active_title(title, sizeof title);
+        reached_parent = !strcmp(title, "fenriz-test dialog-parent");
+    }
+    if (!reached_parent)
+        wlc_die("focus never reached the parent after unset_modal; the test proves nothing");
+    wlc_log("modal held focus, unset_modal released it");
+
+    wlc_hold_point(c);
+
+    // Destroying the dialog object must unapply the hint, not strand focus.
+    xdg_dialog_v1_destroy(dialog);
+    wlc_roundtrip(c);
+    wlc_destroy(dlg);
+    wlc_destroy(parent);
+    wlc_roundtrip(c);
+}
+
 const struct scenario scenarios[] = {
     {"popup", s_popup, "toplevel -> popup -> nested popup, grab, reposition, off-screen anchor"},
     {"layer-popup", s_layer_popup, "corner-anchored popup and submenu on a full-output layer surface"},
@@ -1449,6 +1559,7 @@ const struct scenario scenarios[] = {
     {"destroy-parent", s_destroy_parent, "destroy the parent under a live nested popup"},
     {"hotplug", s_hotplug, "output enable/disable and lid churn under mapped surfaces"},
     {"workspace", s_workspace, "ext-workspace-v1: list, activate from the client, follow a switch"},
+    {"dialog", s_dialog, "xdg-dialog-v1: a modal dialog holds focus against its parent"},
     {"foreign", s_foreign, "xdg-foreign: export a toplevel, import it, parent a second window to it"},
     {"evil", s_evil, "stale acks, commits between configures, self-resize, destroy/recreate"},
     {NULL, NULL, NULL},
