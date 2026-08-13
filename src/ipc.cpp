@@ -16,6 +16,7 @@
 #include "server.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
+#include "workspace_protocol.hpp"
 
 namespace fenriz::ipc {
 
@@ -174,11 +175,9 @@ namespace fenriz::ipc {
             }
         }
 
-        // Send one line, looping partial writes. Drop the client only on a real error, not on
-        // EAGAIN backpressure from the non-blocking socket. ponytail: no per-client output
-        // buffer — a slow client that stalls mid-line is dropped rather than buffered; add
-        // buffering only if a real streaming consumer needs it.
-        void send_line(int fd, const std::string& line) {
+        // Send one line, looping partial writes. False means the client is unusable and the
+        // caller should drop it
+        bool send_line(int fd, const std::string& line) {
             size_t off = 0;
             while (off < line.size()) {
                 ssize_t n = send(fd, line.data() + off, line.size() - off, MSG_NOSIGNAL);
@@ -188,15 +187,11 @@ namespace fenriz::ipc {
                 }
                 if (n < 0 && errno == EINTR)
                     continue;
-                if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-                    if (off == 0)
-                        return;      // nothing sent: skip this update, the next supersedes it
-                    drop_client(fd); // mid-line: framing is broken, can't recover without a buffer
-                    return;
-                }
-                drop_client(fd); // EPIPE/ECONNRESET or n == 0: client is gone
-                return;
+                if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+                    return off == 0;
+                return false; // EPIPE/ECONNRESET or n == 0: client is gone
             }
+            return true;
         }
 
         // Pull a "key":"value" string out of a command line, undoing \" and \\ escapes. Same
@@ -313,7 +308,7 @@ namespace fenriz::ipc {
                 return 0;
             wl_event_source* src = wl_event_loop_add_fd(st->loop, cfd, WL_EVENT_READABLE, on_client_readable, st);
             st->clients.push_back({cfd, src});
-            send_line(cfd, snapshot(*st->server)); // greet with current state
+            send_line(cfd, snapshot(*st->server));
             return 0;
         }
 
@@ -372,6 +367,7 @@ namespace fenriz::ipc {
         // not once per call.
         void do_publish() {
             g->publish_pending = false;
+            workspace_protocol::sync(*g->server);
             if (g->clients.empty()) // nobody listening: don't build the snapshot at all
                 return;
             std::string s = snapshot(*g->server);
@@ -383,7 +379,8 @@ namespace fenriz::ipc {
             for (const Client& c : g->clients)
                 fds.push_back(c.fd);
             for (int fd : fds)
-                send_line(fd, s);
+                if (!send_line(fd, s))
+                    drop_client(fd);
         }
 
         void publish_idle(void* data) {

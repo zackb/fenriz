@@ -9,6 +9,8 @@
 #define _GNU_SOURCE
 #include "scenarios.h"
 
+#include "ext-workspace-v1-client-protocol.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1023,6 +1025,287 @@ static void s_evil(struct wlc* c) {
 
 // --- table ------------------------------------------------------------------------------
 
+// --- workspace ------------------------------------------------------------------------
+//
+// ext-workspace-v1: what a bar binds to list workspaces and click one to switch. The oracle
+// runs both ways — the protocol's view has to agree with the control socket, an `activate`
+// request has to actually move the compositor, and a switch made behind the protocol's back
+// (over the socket, as a keybind would) has to come back out as a state event.
+
+#define WS_MAX_TEST 40
+
+static struct ws_entry {
+    struct ext_workspace_handle_v1* handle;
+    char name[32];
+    uint32_t state;
+    uint32_t caps;
+    bool removed;
+} ws_list[WS_MAX_TEST];
+
+static struct ext_workspace_manager_v1* ws_manager;
+static int n_ws;
+static int ws_groups;
+static int ws_dones;
+
+static struct ws_entry* ws_of(struct ext_workspace_handle_v1* h) {
+    for (int i = 0; i < n_ws; i++)
+        if (ws_list[i].handle == h)
+            return &ws_list[i];
+    wlc_die("state for an ext_workspace_handle_v1 we were never told about");
+    return NULL;
+}
+
+static struct ws_entry* ws_named(const char* name) {
+    for (int i = 0; i < n_ws; i++)
+        if (!ws_list[i].removed && !strcmp(ws_list[i].name, name))
+            return &ws_list[i];
+    return NULL;
+}
+
+static void ws_h_id(void* d, struct ext_workspace_handle_v1* h, const char* id) {
+    (void)d;
+    (void)h;
+    (void)id;
+}
+static void ws_h_name(void* d, struct ext_workspace_handle_v1* h, const char* name) {
+    (void)d;
+    snprintf(ws_of(h)->name, sizeof ws_list[0].name, "%s", name);
+}
+static void ws_h_coordinates(void* d, struct ext_workspace_handle_v1* h, struct wl_array* coords) {
+    (void)d;
+    (void)h;
+    (void)coords;
+}
+static void ws_h_state(void* d, struct ext_workspace_handle_v1* h, uint32_t state) {
+    (void)d;
+    struct ws_entry* e = ws_of(h);
+    e->state = state;
+    wlc_log("workspace %s state=%u", e->name, state);
+}
+static void ws_h_capabilities(void* d, struct ext_workspace_handle_v1* h, uint32_t caps) {
+    (void)d;
+    ws_of(h)->caps = caps;
+}
+static void ws_h_removed(void* d, struct ext_workspace_handle_v1* h) {
+    (void)d;
+    ws_of(h)->removed = true;
+}
+static const struct ext_workspace_handle_v1_listener ws_handle_listener = {
+    .id = ws_h_id,
+    .name = ws_h_name,
+    .coordinates = ws_h_coordinates,
+    .state = ws_h_state,
+    .capabilities = ws_h_capabilities,
+    .removed = ws_h_removed,
+};
+
+static uint32_t ws_group_caps;
+static void ws_g_capabilities(void* d, struct ext_workspace_group_handle_v1* g, uint32_t caps) {
+    (void)d;
+    (void)g;
+    ws_group_caps = caps;
+    wlc_log("workspace group caps=%u", caps);
+}
+static void ws_g_output_enter(void* d, struct ext_workspace_group_handle_v1* g, struct wl_output* o) {
+    (void)d;
+    (void)g;
+    (void)o;
+}
+static void ws_g_output_leave(void* d, struct ext_workspace_group_handle_v1* g, struct wl_output* o) {
+    (void)d;
+    (void)g;
+    (void)o;
+}
+static void ws_g_enter(void* d, struct ext_workspace_group_handle_v1* g, struct ext_workspace_handle_v1* w) {
+    (void)d;
+    (void)g;
+    (void)w;
+}
+static void ws_g_leave(void* d, struct ext_workspace_group_handle_v1* g, struct ext_workspace_handle_v1* w) {
+    (void)d;
+    (void)g;
+    (void)w;
+}
+static void ws_g_removed(void* d, struct ext_workspace_group_handle_v1* g) {
+    (void)d;
+    (void)g;
+    ws_groups--;
+}
+static const struct ext_workspace_group_handle_v1_listener ws_group_listener = {
+    .capabilities = ws_g_capabilities,
+    .output_enter = ws_g_output_enter,
+    .output_leave = ws_g_output_leave,
+    .workspace_enter = ws_g_enter,
+    .workspace_leave = ws_g_leave,
+    .removed = ws_g_removed,
+};
+
+static void ws_m_group(void* d, struct ext_workspace_manager_v1* m, struct ext_workspace_group_handle_v1* g) {
+    (void)d;
+    (void)m;
+    ws_groups++;
+    ext_workspace_group_handle_v1_add_listener(g, &ws_group_listener, NULL);
+}
+static void ws_m_workspace(void* d, struct ext_workspace_manager_v1* m, struct ext_workspace_handle_v1* w) {
+    (void)d;
+    (void)m;
+    if (n_ws == WS_MAX_TEST)
+        wlc_die("more than %d workspaces advertised", WS_MAX_TEST);
+    ws_list[n_ws++] = (struct ws_entry){.handle = w};
+    ext_workspace_handle_v1_add_listener(w, &ws_handle_listener, NULL);
+}
+static void ws_m_done(void* d, struct ext_workspace_manager_v1* m) {
+    (void)d;
+    (void)m;
+    ws_dones++;
+}
+static void ws_m_finished(void* d, struct ext_workspace_manager_v1* m) {
+    (void)d;
+    (void)m;
+    wlc_die("compositor sent finished without being asked to stop");
+}
+static const struct ext_workspace_manager_v1_listener ws_manager_listener = {
+    .workspace_group = ws_m_group,
+    .workspace = ws_m_workspace,
+    .done = ws_m_done,
+    .finished = ws_m_finished,
+};
+
+static void ws_registry_global(void* d, struct wl_registry* reg, uint32_t name, const char* iface, uint32_t ver) {
+    (void)d;
+    (void)ver;
+    if (strcmp(iface, ext_workspace_manager_v1_interface.name))
+        return;
+    ws_manager = wl_registry_bind(reg, name, &ext_workspace_manager_v1_interface, 1);
+    // The handles and their initial state follow immediately on bind, so the listener has
+    // to go on here rather than after the roundtrip that would already have drained them.
+    ext_workspace_manager_v1_add_listener(ws_manager, &ws_manager_listener, NULL);
+}
+static void ws_registry_remove(void* d, struct wl_registry* reg, uint32_t name) {
+    (void)d;
+    (void)reg;
+    (void)name;
+}
+static const struct wl_registry_listener ws_registry_listener = {
+    .global = ws_registry_global,
+    .global_remove = ws_registry_remove,
+};
+
+// The compositor's own idea of the active workspace, as a bar would read it off the socket.
+static int ws_ipc_active(void) {
+    char snap[8192];
+    if (!ipc_snapshot(snap, sizeof snap))
+        return 0;
+    const char* p = strstr(snap, "\"workspaces\":{\"active\":");
+    return p ? atoi(p + 23) : 0;
+}
+
+static const char* ws_want_active;
+static bool ws_is_active(void* arg) {
+    (void)arg;
+    struct ws_entry* e = ws_named(ws_want_active);
+    return e && (e->state & EXT_WORKSPACE_HANDLE_V1_STATE_ACTIVE);
+}
+
+static void s_workspace(struct wlc* c) {
+    ws_manager = NULL;
+    n_ws = ws_groups = ws_dones = 0;
+    ws_group_caps = 0;
+
+    wlc_phase("binding ext_workspace_manager_v1");
+    struct wl_registry* reg = wl_display_get_registry(c->display);
+    wl_registry_add_listener(reg, &ws_registry_listener, NULL);
+    wlc_roundtrip(c); // globals, and the bind above
+    if (!ws_manager)
+        wlc_die("compositor does not advertise ext_workspace_manager_v1");
+    wlc_roundtrip(c); // the workspaces, their state, and the closing done
+
+    if (!ws_dones)
+        wlc_die("no done event after the initial workspace burst");
+    if (n_ws < 3)
+        wlc_die("expected at least 3 workspaces, got %d", n_ws);
+    if (ws_groups < 1)
+        wlc_die("workspaces advertised with no workspace group");
+    if (ws_group_caps & EXT_WORKSPACE_GROUP_HANDLE_V1_GROUP_CAPABILITIES_CREATE_WORKSPACE)
+        wlc_die("group claims create_workspace; the set is fixed at `workspaces = N`");
+
+    // A bar needs a name to render and the activate cap to be clickable at all.
+    int active_seen = 0;
+    for (int i = 0; i < n_ws; i++) {
+        char want[32];
+        snprintf(want, sizeof want, "%d", i + 1);
+        if (strcmp(ws_list[i].name, want))
+            wlc_die("workspace %d is named \"%s\", expected \"%s\"", i, ws_list[i].name, want);
+        if (!(ws_list[i].caps & EXT_WORKSPACE_HANDLE_V1_WORKSPACE_CAPABILITIES_ACTIVATE))
+            wlc_die("workspace %s can't be activated; a bar could not click it", ws_list[i].name);
+        if (ws_list[i].state & EXT_WORKSPACE_HANDLE_V1_STATE_ACTIVE)
+            active_seen++;
+    }
+    if (!active_seen)
+        wlc_die("no workspace is active");
+    wlc_log("%d workspaces, %d group(s), %d active", n_ws, ws_groups, active_seen);
+
+    // An empty workspace nobody is on is hidden, so a bar lists only the ones worth drawing.
+    // Nothing of ours is mapped yet, so everything but the shown ones should be hidden.
+    int hidden = 0;
+    for (int i = 0; i < n_ws; i++) {
+        bool is_hidden = ws_list[i].state & EXT_WORKSPACE_HANDLE_V1_STATE_HIDDEN;
+        if (is_hidden && (ws_list[i].state & EXT_WORKSPACE_HANDLE_V1_STATE_ACTIVE))
+            wlc_die("workspace %s is active and hidden at once", ws_list[i].name);
+        hidden += is_hidden;
+    }
+    if (n_ws > active_seen && !hidden)
+        wlc_die("%d workspaces, %d shown, none hidden — a bar would list every empty one", n_ws, active_seen);
+    wlc_log("%d hidden", hidden);
+
+    // A window so the switch has something to lay out and the tiling path runs too.
+    struct win* w = wlc_toplevel(c, 400, 300, "fenriz-test workspace");
+    wlc_map(w, BLUE);
+    wlc_hold_point(c);
+
+    // Client -> compositor: this is the click.
+    wlc_phase("activating workspace 3");
+    ext_workspace_handle_v1_activate(ws_named("3")->handle);
+    ext_workspace_manager_v1_commit(ws_manager);
+    ws_want_active = "3";
+    wlc_until(c, ws_is_active, NULL);
+    if (ws_ipc_active() != 3)
+        wlc_die("protocol says workspace 3 is active, the control socket says %d", ws_ipc_active());
+    // Our toplevel is still on workspace 1. Holding a window is enough to stay listed, even
+    // once no screen is showing it — occupancy, not visibility, is what `hidden` tracks.
+    if (ws_named("1")->state & EXT_WORKSPACE_HANDLE_V1_STATE_HIDDEN)
+        wlc_die("workspace 1 is hidden with a mapped window on it");
+
+    // Compositor -> client: the same switch made the way a keybind makes it.
+    wlc_phase("switching back to workspace 1 over the control socket");
+    ipc_send("{\"cmd\":\"workspace\",\"n\":1}");
+    ws_want_active = "1";
+    wlc_until(c, ws_is_active, NULL);
+    if (ws_ipc_active() != 1)
+        wlc_die("protocol says workspace 1 is active, the control socket says %d", ws_ipc_active());
+
+    // One workspace is shown per screen, so the count can't drift as they're switched —
+    // a workspace that never has its active bit cleared would show up here.
+    int still_active = 0;
+    for (int i = 0; i < n_ws; i++)
+        if (ws_list[i].state & EXT_WORKSPACE_HANDLE_V1_STATE_ACTIVE)
+            still_active++;
+    if (still_active != active_seen)
+        wlc_die("%d workspaces active after switching, %d before", still_active, active_seen);
+
+    // Requests we never advertise a capability for must be ignored, not fatal.
+    wlc_phase("sending requests the compositor has no capability for");
+    ext_workspace_handle_v1_deactivate(ws_named("1")->handle);
+    ext_workspace_handle_v1_remove(ws_named("2")->handle);
+    ext_workspace_manager_v1_commit(ws_manager);
+    wlc_pump(c, 300);
+    if (!ws_named("2"))
+        wlc_die("workspace 2 was removed despite no remove capability");
+
+    wlc_destroy(w);
+    wlc_roundtrip(c);
+}
+
 const struct scenario scenarios[] = {
     {"popup", s_popup, "toplevel -> popup -> nested popup, grab, reposition, off-screen anchor"},
     {"layer-popup", s_layer_popup, "corner-anchored popup and submenu on a full-output layer surface"},
@@ -1034,6 +1317,7 @@ const struct scenario scenarios[] = {
     {"scale", s_scale, "buffer scale churn, fractional scale via viewport, crop/stretch"},
     {"destroy-parent", s_destroy_parent, "destroy the parent under a live nested popup"},
     {"hotplug", s_hotplug, "output enable/disable and lid churn under mapped surfaces"},
+    {"workspace", s_workspace, "ext-workspace-v1: list, activate from the client, follow a switch"},
     {"evil", s_evil, "stale acks, commits between configures, self-resize, destroy/recreate"},
     {NULL, NULL, NULL},
 };
