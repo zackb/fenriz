@@ -3,6 +3,9 @@
 # fenriz Release Automation Script
 # Usage: ./scripts/release.sh <version>
 # Example: ./scripts/release.sh 0.1.0
+#
+# Releases the compositor and fenriz-desktop together under one tag: six assets
+# (tar.gz + deb + rpm each) on one GitHub release, and four AUR packages.
 
 set -e
 
@@ -15,14 +18,48 @@ fi
 
 TAG="v$VERSION"
 REPO_ROOT=$(git rev-parse --show-toplevel)
-AUR_GIT_DIR="$REPO_ROOT/../fenriz-git"
-AUR_BIN_DIR="$REPO_ROOT/../fenriz-bin"
+ASSET_DIR="$REPO_ROOT/build/release"
+DESKTOP_ASSET_DIR="$REPO_ROOT/desktop/build/release"
+
+# Publishes packaging/aur/<name>/PKGBUILD into the sibling AUR checkout. pkgver and,
+# for -bin packages, sha256sums are the only fields rewritten; the rest is verbatim.
+# update_aur <pkgname> <pkgver> [tarball]
+update_aur() {
+    local name=$1 ver=$2 tarball=$3
+    local dir="$REPO_ROOT/../$name"
+
+    if [ ! -d "$dir" ]; then
+        echo "⚠️  Warning: $dir not found, run packaging/aur/bootstrap.sh. Skipping."
+        return
+    fi
+
+    cp "$REPO_ROOT/packaging/aur/$name/PKGBUILD" "$dir/PKGBUILD"
+    sed -i "s/^pkgver=.*/pkgver=$ver/" "$dir/PKGBUILD"
+    if [ -n "$tarball" ]; then
+        sed -i "s/^sha256sums=.*/sha256sums=('$(sha256sum "$tarball" | cut -d' ' -f1)')/" "$dir/PKGBUILD"
+    fi
+
+    (
+        cd "$dir"
+        makepkg --printsrcinfo > .SRCINFO
+        if git diff --quiet; then
+            echo "   $name already at $ver, nothing to push."
+            exit 0
+        fi
+        git add PKGBUILD .SRCINFO
+        git commit -m "update to $ver"
+        git push origin master
+        echo "   $name updated and pushed."
+    )
+}
 
 # 1. Validation
-if ! command -v gh &> /dev/null; then
-    echo "Error: 'gh' (GitHub CLI) is not installed."
-    exit 1
-fi
+for cmd in gh dpkg-deb rpmbuild; do
+    if ! command -v "$cmd" &> /dev/null; then
+        echo "Error: '$cmd' is not installed (needed to build or publish the release)."
+        exit 1
+    fi
+done
 
 if ! git diff-index --quiet HEAD --; then
     echo "Error: You have uncommitted changes. Please commit or stash them first."
@@ -37,9 +74,10 @@ fi
 
 echo "🚀 Starting release process for $TAG..."
 
-# 2. Update CMakeLists.txt version (this is what CPack names the tarball after)
+# 2. Update both project versions (this is what CPack names the tarballs after)
 sed -i "s/project(fenriz VERSION [0-9.]*/project(fenriz VERSION $VERSION/" "$REPO_ROOT/CMakeLists.txt"
-git add "$REPO_ROOT/CMakeLists.txt"
+sed -i "s/project(fenriz-desktop VERSION [0-9.]*/project(fenriz-desktop VERSION $VERSION/" "$REPO_ROOT/desktop/CMakeLists.txt"
+git add "$REPO_ROOT/CMakeLists.txt" "$REPO_ROOT/desktop/CMakeLists.txt"
 git commit -m "chore: bump version to $VERSION" || true
 
 # 3. Tag and Push
@@ -54,47 +92,29 @@ git push origin "$TAG"
 
 # 4. Build Packages
 echo "📦 Building packages..."
-rm -rf "$REPO_ROOT/build/release"
+rm -rf "$ASSET_DIR" "$DESKTOP_ASSET_DIR"
 make package
+make package-desktop
+
+TARBALL="$ASSET_DIR/fenriz-$VERSION.tar.gz"
+DESKTOP_TARBALL="$DESKTOP_ASSET_DIR/fenriz-desktop-$VERSION.tar.gz"
 
 # 5. Create GitHub Release
 echo "🌐 Creating GitHub Release..."
-TARBALL="$REPO_ROOT/build/release/fenriz-$VERSION.tar.gz"
+gh release create "$TAG" \
+    "$TARBALL" \
+    "$(ls "$ASSET_DIR"/fenriz-"$VERSION"*.deb | head -n 1)" \
+    "$(ls "$ASSET_DIR"/fenriz-"$VERSION"*.rpm | head -n 1)" \
+    "$DESKTOP_TARBALL" \
+    "$(ls "$DESKTOP_ASSET_DIR"/fenriz-desktop-"$VERSION"*.deb | head -n 1)" \
+    "$(ls "$DESKTOP_ASSET_DIR"/fenriz-desktop-"$VERSION"*.rpm | head -n 1)" \
+    --title "Release $TAG" --generate-notes
 
-gh release create "$TAG" "$TARBALL" --title "Release $TAG" --generate-notes
-
-# 6. Update AUR (fenriz-git)
-if [ -d "$AUR_GIT_DIR" ]; then
-    echo "🧬 Updating fenriz-git AUR..."
-    sed -i "s/^pkgver=.*/pkgver=$VERSION/" "$AUR_GIT_DIR/PKGBUILD"
-    (
-        cd "$AUR_GIT_DIR"
-        makepkg --printsrcinfo > .SRCINFO
-        git add PKGBUILD .SRCINFO
-        git commit -m "update to $VERSION"
-        git push origin master
-    )
-    echo "   fenriz-git updated and pushed."
-else
-    echo "⚠️  Warning: $AUR_GIT_DIR not found, skipping."
-fi
-
-# 7. Update AUR (fenriz-bin)
-if [ -d "$AUR_BIN_DIR" ]; then
-    echo "🏗️  Updating fenriz-bin AUR..."
-    SHA256=$(sha256sum "$TARBALL" | cut -d' ' -f1)
-    sed -i "s/^pkgver=.*/pkgver=$VERSION/" "$AUR_BIN_DIR/PKGBUILD"
-    sed -i "s/^sha256sums=.*/sha256sums=('$SHA256')/" "$AUR_BIN_DIR/PKGBUILD"
-    (
-        cd "$AUR_BIN_DIR"
-        makepkg --printsrcinfo > .SRCINFO
-        git add PKGBUILD .SRCINFO
-        git commit -m "update to $VERSION"
-        git push origin master
-    )
-    echo "   fenriz-bin updated and pushed."
-else
-    echo "⚠️  Warning: $AUR_BIN_DIR not found, skipping."
-fi
+# 6. Update AUR
+echo "🧬 Updating AUR packages..."
+update_aur fenriz-git "$VERSION"
+update_aur fenriz-bin "$VERSION" "$TARBALL"
+update_aur fenriz-desktop-git "$VERSION"
+update_aur fenriz-desktop-bin "$VERSION" "$DESKTOP_TARBALL"
 
 echo "✅ Full release $VERSION successfully deployed to GitHub and AUR!"

@@ -180,5 +180,20 @@ set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
 # drop the -Linux suffix so the name matches the release tag
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}")
-set(CPACK_GENERATOR "TGZ")
+
+# wlroots0.20 and scenefx0.5 are not packaged on Debian/Fedora, so they are absent
+# here. Arch is the supported path; deb/rpm are convenience.
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "zack@bartel.com")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libwayland-server0, libxkbcommon0, libpixman-1-0, libinput10, libxcb1")
+set(CPACK_DEBIAN_PACKAGE_SECTION "x11")
+set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/zackb/fenriz")
+
+set(CPACK_RPM_PACKAGE_REQUIRES "libwayland-server, libxkbcommon, pixman, libinput, libxcb")
+set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+set(CPACK_RPM_PACKAGE_RELOCATABLE FALSE)
+# owned by other packages; don't claim them
+set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
+    "/usr/share;/usr/share/wayland-sessions;/usr/share/xdg-desktop-portal")
+
+set(CPACK_GENERATOR "TGZ;DEB;RPM")
 include(CPack)

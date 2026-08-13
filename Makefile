@@ -31,12 +31,15 @@ test-wl: debug
 	ctest --test-dir build/debug --output-on-failure -L integration
 
 # fenriz-desktop is a standalone subproject with its own presets; these just forward.
-.PHONY: desktop install-desktop run-desktop
+.PHONY: desktop install-desktop run-desktop package-desktop
 desktop:
 	$(MAKE) -C desktop
 
 install-desktop:
 	$(MAKE) -C desktop install
+
+package-desktop:
+	$(MAKE) -C desktop package
 
 run-desktop:
 	$(MAKE) -C desktop run

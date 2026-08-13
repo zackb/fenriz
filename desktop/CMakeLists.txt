@@ -137,6 +137,34 @@ target_link_libraries(desktop_notify_test PRIVATE PkgConfig::GTK4 PkgConfig::LAY
 target_compile_options(desktop_notify_test PRIVATE -UNDEBUG)
 target_compile_definitions(desktop_notify_test PRIVATE FENRIZ_DESKTOP_VERSION="${PROJECT_VERSION}")
 
+set(CPACK_SET_DESTDIR ON)
+set(CPACK_PACKAGE_RELOCATABLE FALSE)
+set(CPACK_PACKAGE_NAME "fenriz-desktop")
+set(CPACK_PACKAGE_VENDOR "zackb")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Desktop shell for the fenriz Wayland compositor")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_CONTACT "zack@bartel.com")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/../LICENSE")
+set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+# drop the -Linux suffix so the name matches the release tag
+set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}")
+
+# gtk4-layer-shell and wireplumber have no stable package name across Debian/Fedora
+# releases, so they are absent here. Arch is the supported path; deb/rpm are convenience.
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "zack@bartel.com")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libgtk-4-1, libglib2.0-0, libwayland-client0, libpolkit-agent-1-0, libpam0g")
+set(CPACK_DEBIAN_PACKAGE_SECTION "x11")
+set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/zackb/fenriz")
+
+set(CPACK_RPM_PACKAGE_REQUIRES "gtk4, glib2, libwayland-client, polkit-libs, pam")
+set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+set(CPACK_RPM_PACKAGE_RELOCATABLE FALSE)
+# owned by other packages; don't claim them
+set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION "/etc/pam.d;/usr/share")
+
+set(CPACK_GENERATOR "TGZ;DEB;RPM")
+include(CPack)
+
 enable_testing()
 add_test(NAME config   COMMAND desktop_config_test)
 add_test(NAME menu     COMMAND desktop_menu_test)
