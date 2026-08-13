@@ -572,12 +572,35 @@ namespace fenriz {
         server.views.push_back(v);
     }
 
+    // xdg-dialog-v1: the mapped modal dialog standing in front of `view`, or `view` itself.
+    View* modal_front(Server& server, View* view) {
+        for (int hop = 0; hop < 8; hop++) {
+            View* modal = nullptr;
+            for (View* v : server.views) {
+                if (!v->mapped || v == view || v->kind != View::Kind::Xdg)
+                    continue;
+                if (v->toplevel->parent != view->toplevel || !view_visible(server, v))
+                    continue;
+                const wlr_xdg_dialog_v1* d = wlr_xdg_dialog_v1_try_from_wlr_xdg_toplevel(v->toplevel);
+                if (d && d->modal)
+                    modal = v; // later views are higher in the stack; take the topmost
+            }
+            if (!modal)
+                return view;
+            view = modal;
+        }
+        return view;
+    }
+
     void focus_view(Server& server, View* view) {
         // While locked, keyboard focus belongs to the lock surface; a window mapping or a
         // click underneath must not steal it. focused_view is left as-is so it's restored
         // on unlock (on_unlock in lock.cpp).
         if (!view || server.locked)
             return;
+
+        if (view->kind == View::Kind::Xdg)
+            view = modal_front(server, view);
 
         // Above the early-return below on purpose
         view->urgent = false;
