@@ -42,11 +42,12 @@ update_aur() {
     (
         cd "$dir"
         makepkg --printsrcinfo > .SRCINFO
-        if git diff --quiet; then
+        git add PKGBUILD .SRCINFO
+        # index vs HEAD
+        if git diff --cached --quiet; then
             echo "   $name already at $ver, nothing to push."
             exit 0
         fi
-        git add PKGBUILD .SRCINFO
         git commit -m "update to $ver"
         git push origin master
         echo "   $name updated and pushed."
