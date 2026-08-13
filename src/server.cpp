@@ -16,6 +16,7 @@
 #include "tiling.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
+#include "workspace_protocol.hpp"
 #include "xwayland.hpp"
 
 namespace fenriz {
@@ -579,6 +580,10 @@ namespace fenriz {
         // need the wlr protocol above, so both stay live and each view carries both handles.
         ext_foreign_toplevel_list = wlr_ext_foreign_toplevel_list_v1_create(display, 1);
 
+        // ext-workspace-v1: workspace list + click-to-switch for standard bars. Must precede
+        // wlr_backend_start below, so the first outputs can join the workspace group.
+        workspace_protocol::init(*this);
+
         // ext-image-copy-capture: modern successor to wlr-screencopy; coexists with it.
         // xdg-desktop-portal-wlr prefers this path, and the foreign-toplevel source below
         // is what enables *per-window* screen sharing (screencopy alone is output-only).
@@ -640,6 +645,10 @@ namespace fenriz {
         // Control socket (FENRIZ_SOCKET) — needs WAYLAND_DISPLAY set, and must be up before
         // exec_once so bars/tools spawned below inherit the env and can connect immediately.
         ipc::init(*this);
+
+        // The outputs came up inside wlr_backend_start above, before the socket existed, so
+        // every publish they made was dropped.
+        ipc::publish(*this);
 
         // Hot-reload: apply edits to fenriz.conf live (no restart). See init_config_watch.
         init_config_watch(*this, loop);

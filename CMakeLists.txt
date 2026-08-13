@@ -64,6 +64,7 @@ wl_client_proto(viewporter           ${WL_PROTO_DIR}/stable/viewporter/viewporte
 wl_client_proto(xdg-decoration-unstable-v1
                                      ${WL_PROTO_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml)
 wl_client_proto(fractional-scale-v1  ${WL_PROTO_DIR}/staging/fractional-scale/fractional-scale-v1.xml)
+wl_client_proto(ext-workspace-v1     ${WL_PROTO_DIR}/staging/ext-workspace/ext-workspace-v1.xml)
 wl_client_proto(wlr-layer-shell-unstable-v1
                                      ${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-layer-shell-unstable-v1.xml)
 
@@ -82,6 +83,7 @@ add_executable(fenriz
     src/lock.cpp
     src/decoration.cpp
     src/ipc.cpp
+    src/workspace_protocol.cpp
     src/xwayland.cpp
     ${LAYER_SHELL_HEADER}
     ${OUTPUT_POWER_HEADER}
@@ -162,7 +164,7 @@ add_test(NAME keybind COMMAND fenriz_keybind_test)
 add_test(NAME output  COMMAND fenriz_output_test)
 add_test(NAME ctl     COMMAND fenrizctl_test)
 
-foreach(s popup layer-popup resize fullscreen dnd grab subsurface scale destroy-parent hotplug evil)
+foreach(s popup layer-popup resize fullscreen dnd grab subsurface scale destroy-parent hotplug workspace evil)
     add_test(NAME wl-${s}
              COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/wltest.sh
                      --build-dir ${CMAKE_CURRENT_BINARY_DIR} ${s})

@@ -14,6 +14,7 @@
 #include "tiling.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
+#include "workspace_protocol.hpp"
 
 namespace fenriz::output {
 
@@ -25,10 +26,7 @@ namespace fenriz::output {
 
         // Advance the slide-into-place animation: decay each visible view's render offset
         // toward 0 by an exponential factor scaled to the elapsed frame time (so the speed
-        // is independent of refresh rate), pushing the result into its scene node. A held
-        // (dragging) view keeps its offset. Returns true while anything is still moving, so
-        // the caller keeps requesting frames — moving a scene node also self-damages, but we
-        // schedule explicitly so a motionless held drag still ticks.
+        // is independent of refresh rate), pushing the result into its scene node.
         //
         // Only animates views on THIS output, so a busy screen doesn't drive frames on a
         // quiet one (each output tracks its own dt).
@@ -268,6 +266,7 @@ namespace fenriz::output {
             wl_list_remove(&output->request_state.link);
             wl_list_remove(&output->destroy.link);
             server.outputs.remove(output);
+            workspace_protocol::output_leave(output->handle);
 
             close_layer_surfaces(server, output->handle);
             if (output->zoom_swapchain)
@@ -303,6 +302,7 @@ namespace fenriz::output {
             add_listener(output->destroy, out->events.destroy, output_handle_destroy);
 
             server.outputs.push_back(output);
+            workspace_protocol::output_enter(out); // the workspace group spans every screen
 
             // Scene output must exist before the output is added to the layout below.
             wlr_scene_output* scene_output = wlr_scene_output_create(server.scene, out);
