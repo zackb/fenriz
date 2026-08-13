@@ -10,6 +10,8 @@
 #include "scenarios.h"
 
 #include "ext-workspace-v1-client-protocol.h"
+#include "xdg-foreign-unstable-v1-client-protocol.h"
+#include "xdg-foreign-unstable-v2-client-protocol.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1306,6 +1308,135 @@ static void s_workspace(struct wlc* c) {
     wlc_roundtrip(c);
 }
 
+// --- foreign ----------------------------------------------------------------------------
+//
+// xdg-foreign: one client exports a toplevel handle, another imports it and declares its own
+// window a child. This is how a portal's file chooser is parented to the app that opened it.
+// The oracle is not "the global exists" — it is that the parent relationship reaches the
+// compositor's window rules, which float anything with a parent. Read back over the control
+// socket, since a client cannot see its own tiling state.
+
+static struct zxdg_exporter_v2* fe_exporter;
+static struct zxdg_importer_v2* fe_importer;
+static struct zxdg_exporter_v1* fe_exporter_v1;
+static struct zxdg_importer_v1* fe_importer_v1;
+static char fe_handle[256];
+
+static void fe_handle_cb(void* d, struct zxdg_exported_v2* e, const char* handle) {
+    (void)d;
+    (void)e;
+    snprintf(fe_handle, sizeof fe_handle, "%s", handle);
+    wlc_log("exported handle: %s", handle);
+}
+static const struct zxdg_exported_v2_listener fe_exported_listener = {.handle = fe_handle_cb};
+
+static void fe_destroyed(void* d, struct zxdg_imported_v2* i) {
+    (void)d;
+    (void)i;
+    wlc_log("imported handle was revoked");
+}
+static const struct zxdg_imported_v2_listener fe_imported_listener = {.destroyed = fe_destroyed};
+
+static void fe_registry_global(void* d, struct wl_registry* reg, uint32_t name, const char* iface, uint32_t ver) {
+    (void)d;
+    (void)ver;
+    if (!strcmp(iface, zxdg_exporter_v2_interface.name))
+        fe_exporter = wl_registry_bind(reg, name, &zxdg_exporter_v2_interface, 1);
+    else if (!strcmp(iface, zxdg_importer_v2_interface.name))
+        fe_importer = wl_registry_bind(reg, name, &zxdg_importer_v2_interface, 1);
+    else if (!strcmp(iface, zxdg_exporter_v1_interface.name))
+        fe_exporter_v1 = wl_registry_bind(reg, name, &zxdg_exporter_v1_interface, 1);
+    else if (!strcmp(iface, zxdg_importer_v1_interface.name))
+        fe_importer_v1 = wl_registry_bind(reg, name, &zxdg_importer_v1_interface, 1);
+}
+static void fe_registry_remove(void* d, struct wl_registry* reg, uint32_t name) {
+    (void)d;
+    (void)reg;
+    (void)name;
+}
+static const struct wl_registry_listener fe_registry_listener = {
+    .global = fe_registry_global,
+    .global_remove = fe_registry_remove,
+};
+
+static bool fe_have_handle(void* arg) {
+    (void)arg;
+    return fe_handle[0] != 0;
+}
+
+// Is the window with this title floating, per the compositor's own state feed?
+static bool fe_is_floating(const char* title) {
+    char snap[16384];
+    if (!ipc_snapshot(snap, sizeof snap))
+        wlc_die("no control socket; cannot tell whether the child floated");
+    const char* p = strstr(snap, title);
+    if (!p)
+        wlc_die("window \"%s\" is not in the state snapshot", title);
+    // Fields run appId, title, workspace, floating: read the first `floating` after the title.
+    const char* f = strstr(p, "\"floating\":");
+    return f && !strncmp(f + 11, "true", 4);
+}
+
+static void s_foreign(struct wlc* c) {
+    fe_exporter = NULL;
+    fe_importer = NULL;
+    fe_exporter_v1 = NULL;
+    fe_importer_v1 = NULL;
+    fe_handle[0] = 0;
+
+    wlc_phase("binding xdg-foreign");
+    struct wl_registry* reg = wl_display_get_registry(c->display);
+    wl_registry_add_listener(reg, &fe_registry_listener, NULL);
+    wlc_roundtrip(c);
+    if (!fe_exporter || !fe_importer)
+        wlc_die("compositor does not advertise zxdg_exporter_v2 / zxdg_importer_v2");
+    if (!fe_exporter_v1 || !fe_importer_v1)
+        wlc_die("compositor does not advertise the v1 pair (toolkits still bind it)");
+
+    // The parent has to be mapped before it can be exported: wlroots drops a set_parent
+    // against a surface that has no role yet, and the whole point here is the parent link.
+    wlc_phase("mapping the exporting toplevel");
+    struct win* parent = wlc_toplevel(c, 600, 400, "fenriz-test foreign-parent");
+    wlc_map(parent, BLUE);
+
+    wlc_phase("exporting it");
+    struct zxdg_exported_v2* exported = zxdg_exporter_v2_export_toplevel(fe_exporter, parent->surface);
+    zxdg_exported_v2_add_listener(exported, &fe_exported_listener, NULL);
+    wlc_until(c, fe_have_handle, NULL);
+
+    wlc_phase("importing the handle and parenting a second toplevel to it");
+    struct zxdg_imported_v2* imported = zxdg_importer_v2_import_toplevel(fe_importer, fe_handle);
+    zxdg_imported_v2_add_listener(imported, &fe_imported_listener, NULL);
+
+    // set_parent_of before the child's first buffer: window rules run when it maps, and a
+    // parent arriving afterwards would not retroactively float it.
+    struct win* child = wlc_toplevel(c, 300, 200, "fenriz-test foreign-child");
+    zxdg_imported_v2_set_parent_of(imported, child->surface);
+    wlc_roundtrip(c);
+    wlc_map(child, GREEN);
+    wlc_roundtrip(c);
+    wlc_hold_point(c);
+
+    if (!fe_is_floating("fenriz-test foreign-child"))
+        wlc_die("the imported child tiled; the parent link never reached the window rules");
+    // Control: the same client, same app_id, no parent — proves the float above came from
+    // xdg-foreign and not from some blanket rule about this test's windows.
+    if (fe_is_floating("fenriz-test foreign-parent"))
+        wlc_die("the exporting parent floated too; the float is not coming from the parent link");
+    wlc_log("child floated, parent tiled");
+
+    // Revoking the export must not take the child or the compositor with it.
+    wlc_phase("destroying the export under a live import");
+    zxdg_exported_v2_destroy(exported);
+    wlc_roundtrip(c);
+    wlc_pump(c, 200);
+
+    zxdg_imported_v2_destroy(imported);
+    wlc_destroy(child);
+    wlc_destroy(parent);
+    wlc_roundtrip(c);
+}
+
 const struct scenario scenarios[] = {
     {"popup", s_popup, "toplevel -> popup -> nested popup, grab, reposition, off-screen anchor"},
     {"layer-popup", s_layer_popup, "corner-anchored popup and submenu on a full-output layer surface"},
@@ -1318,6 +1449,7 @@ const struct scenario scenarios[] = {
     {"destroy-parent", s_destroy_parent, "destroy the parent under a live nested popup"},
     {"hotplug", s_hotplug, "output enable/disable and lid churn under mapped surfaces"},
     {"workspace", s_workspace, "ext-workspace-v1: list, activate from the client, follow a switch"},
+    {"foreign", s_foreign, "xdg-foreign: export a toplevel, import it, parent a second window to it"},
     {"evil", s_evil, "stale acks, commits between configures, self-resize, destroy/recreate"},
     {NULL, NULL, NULL},
 };
