@@ -544,6 +544,12 @@ namespace fenriz {
         l_new_popup.server = this;
         add_listener(l_new_popup.listener, xdg_shell->events.new_popup, on_new_popup);
 
+        // xdg-foreign: one process exports a toplevel handle, another imports it and declares
+        // its window a child.
+        wlr_xdg_foreign_registry* foreign_registry = wlr_xdg_foreign_registry_create(display);
+        wlr_xdg_foreign_v1_create(display, foreign_registry);
+        wlr_xdg_foreign_v2_create(display, foreign_registry);
+
         seat = wlr_seat_create(display, "seat0");
         wlr_seat_set_capabilities(seat, WL_SEAT_CAPABILITY_KEYBOARD | WL_SEAT_CAPABILITY_POINTER);
         l_new_input.server = this;
