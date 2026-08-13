@@ -30,6 +30,19 @@ namespace fenriz {
             new View(*sl->server, static_cast<wlr_xdg_toplevel*>(data));
         }
 
+        // xdg-toplevel-icon-v1. Only the icon name is kept: it is an XDG icon-theme name.
+        void on_set_icon(wl_listener* listener, void* data) {
+            SignalListener* sl = wl_container_of(listener, sl, listener);
+            auto* event = static_cast<wlr_xdg_toplevel_icon_manager_v1_set_icon_event*>(data);
+            for (View* v : sl->server->views) {
+                if (v->kind != View::Kind::Xdg || v->toplevel != event->toplevel)
+                    continue;
+                v->icon = event->icon && event->icon->name ? event->icon->name : "";
+                ipc::publish(*sl->server);
+                return;
+            }
+        }
+
         // Per-popup state: popups need their own commit/destroy listeners, so each one gets a
         // small heap object, freed when the popup goes away.
         struct Popup {
@@ -552,6 +565,10 @@ namespace fenriz {
 
         // xdg-dialog-v1: a client marks a child toplevel as a dialog, optionally modal.
         wlr_xdg_wm_dialog_v1_create(display, 1);
+
+        // xdg-toplevel-icon-v1: a per-window icon for bars and window lists
+        wlr_xdg_toplevel_icon_manager_v1* icon_manager = wlr_xdg_toplevel_icon_manager_v1_create(display, 1);
+        add_listener(*this, l_set_icon, icon_manager->events.set_icon, on_set_icon);
 
         seat = wlr_seat_create(display, "seat0");
         wlr_seat_set_capabilities(seat, WL_SEAT_CAPABILITY_KEYBOARD | WL_SEAT_CAPABILITY_POINTER);

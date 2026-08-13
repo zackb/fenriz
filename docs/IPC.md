@@ -72,8 +72,8 @@ means something changed.
  "lid":"open",
  "cursor":{"x":100,"y":200},
  "workspaces":{"active":1,"occupied":[1,2,4],"urgent":[4]},
- "windows":[{"appId":"foot","title":"~","workspace":1,"floating":false,"fullscreen":false,"focused":true}],
- "activeWindow":{"appId":"foot","title":"~"}}
+ "windows":[{"appId":"foot","title":"~","icon":"","workspace":1,"floating":false,"fullscreen":false,"focused":true}],
+ "activeWindow":{"appId":"foot","title":"~","icon":""}}
 ```
 
 | Field | Type | Meaning |
@@ -93,6 +93,7 @@ means something changed.
 | `windows` | object[] | Every mapped window, across all workspaces, in stacking order (bottom → top). |
 | `windows[].appId` | string | xdg app id, or the X11 `WM_CLASS` for XWayland windows. |
 | `windows[].title` | string | Window title. |
+| `windows[].icon` | string | XDG icon-theme name the client set via xdg-toplevel-icon-v1, or `""`. |
 | `windows[].workspace` | int | Which workspace it's on, 1-indexed. |
 | `windows[].floating` | bool | Escaped the tiling tree (free move/resize). |
 | `windows[].fullscreen` | bool | Currently fullscreen. |
@@ -100,6 +101,7 @@ means something changed.
 | `activeWindow` | object \| null | Focused window, or `null` when nothing is focused. Redundant with `windows[].focused`, kept for existing bars. |
 | `activeWindow.appId` | string | Focused window's app id. |
 | `activeWindow.title` | string | Focused window's title. |
+| `activeWindow.icon` | string | Focused window's icon name, same rules as `windows[].icon`. |
 
 Strings are JSON-escaped; control characters other than `\n` are dropped.
 
