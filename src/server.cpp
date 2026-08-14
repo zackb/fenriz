@@ -354,17 +354,16 @@ namespace fenriz {
         void on_activation_request(wl_listener* listener, void* data) {
             SignalListener* sl = wl_container_of(listener, sl, listener);
             auto* ev = static_cast<wlr_xdg_activation_v1_request_activate_event*>(data);
-            Server& s = *sl->server;
-            for (View* v : s.views) {
-                if (view_surface(v) != ev->surface)
-                    continue;
-                // Already looking at it: nothing to demand attention about.
-                if (v == s.focused_view || view_visible(s, v))
-                    return;
-                v->urgent = true;
-                ipc::publish(s);
-                return;
-            }
+            mark_urgent(*sl->server, ev->surface, true);
+        }
+
+        // xdg-system-bell-v1: the terminal bell (and anything else asking for attention)
+        void on_bell(wl_listener* listener, void* data) {
+            SignalListener* sl = wl_container_of(listener, sl, listener);
+            auto* ev = static_cast<wlr_xdg_system_bell_v1_ring_event*>(data);
+            // A bell with no surface is not attributable to a window; there is nothing to flag.
+            if (ev->surface)
+                mark_urgent(*sl->server, ev->surface, false);
         }
 
         // idle-inhibit-v1: a client holding an inhibitor (video/fullscreen) keeps the
@@ -560,6 +559,16 @@ namespace fenriz {
         // xdg-toplevel-tag-v1 + xdg-toplevel-icon-v1: the stable name a `windowrule` can match on, and the icon name
         // the feed publishes.
         toplevel_props::init(*this);
+
+        // xdg-system-bell-v1: a client rings; the window is flagged for the bar.
+        wlr_xdg_system_bell_v1* bell = wlr_xdg_system_bell_v1_create(display, 1);
+        add_listener(*this, l_bell, bell->events.ring, on_bell);
+
+        // alpha-modifier-v1: a client sets its own surface opacity, read back in apply_view_effects.
+        wlr_alpha_modifier_v1_create(display);
+
+        // wl_fixes: lets a client destroy a wl_registry.
+        wlr_fixes_create(display, 1);
 
         seat = wlr_seat_create(display, "seat0");
         wlr_seat_set_capabilities(seat, WL_SEAT_CAPABILITY_KEYBOARD | WL_SEAT_CAPABILITY_POINTER);

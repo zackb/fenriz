@@ -9,10 +9,12 @@
 #define _GNU_SOURCE
 #include "scenarios.h"
 
+#include "alpha-modifier-v1-client-protocol.h"
 #include "ext-workspace-v1-client-protocol.h"
 #include "xdg-dialog-v1-client-protocol.h"
 #include "xdg-foreign-unstable-v1-client-protocol.h"
 #include "xdg-foreign-unstable-v2-client-protocol.h"
+#include "xdg-system-bell-v1-client-protocol.h"
 #include "xdg-toplevel-drag-v1-client-protocol.h"
 #include "xdg-toplevel-icon-v1-client-protocol.h"
 #include "xdg-toplevel-tag-v1-client-protocol.h"
@@ -2014,6 +2016,176 @@ static void s_toplevel_tag(struct wlc* c) {
     wlc_roundtrip(c);
 }
 
+// --- bell / alpha / fixes -------------------------------------------------------------
+
+static struct xdg_system_bell_v1* sm_bell;
+static struct wp_alpha_modifier_v1* sm_alpha;
+static struct wl_fixes* sm_fixes;
+
+static void sm_registry_global(void* d, struct wl_registry* reg, uint32_t name, const char* iface, uint32_t ver) {
+    (void)d;
+    (void)ver;
+    if (!strcmp(iface, xdg_system_bell_v1_interface.name))
+        sm_bell = wl_registry_bind(reg, name, &xdg_system_bell_v1_interface, 1);
+    else if (!strcmp(iface, wp_alpha_modifier_v1_interface.name))
+        sm_alpha = wl_registry_bind(reg, name, &wp_alpha_modifier_v1_interface, 1);
+    else if (!strcmp(iface, wl_fixes_interface.name))
+        sm_fixes = wl_registry_bind(reg, name, &wl_fixes_interface, 1);
+}
+static void sm_registry_remove(void* d, struct wl_registry* reg, uint32_t name) {
+    (void)d;
+    (void)reg;
+    (void)name;
+}
+static const struct wl_registry_listener sm_registry_listener = {
+    .global = sm_registry_global,
+    .global_remove = sm_registry_remove,
+};
+
+static void sm_bind(struct wlc* c) {
+    sm_bell = NULL;
+    sm_alpha = NULL;
+    sm_fixes = NULL;
+    struct wl_registry* reg = wl_display_get_registry(c->display);
+    wl_registry_add_listener(reg, &sm_registry_listener, NULL);
+    wlc_roundtrip(c);
+}
+
+// Whether the compositor is flagging this window as wanting attention.
+static bool sm_is_urgent(const char* title) {
+    char snap[16384];
+    if (!ipc_snapshot(snap, sizeof snap))
+        wlc_die("no control socket; cannot read the urgent flag");
+    const char* p = strstr(snap, title);
+    if (!p)
+        wlc_die("window \"%s\" is not in the state snapshot", title);
+    const char* u = strstr(p, "\"urgent\":");
+    if (!u)
+        wlc_die("no urgent field in the snapshot; the feed never grew one");
+    return !strncmp(u + 9, "true", 4);
+}
+
+static void s_bell(struct wlc* c) {
+    sm_bind(c);
+    if (!sm_bell)
+        wlc_die("compositor does not advertise xdg_system_bell_v1");
+
+    // Two tiled windows: both on screen, the second one focused because it mapped last.
+    struct win* bg = wlc_toplevel(c, 400, 300, "fenriz-test bell-window");
+    wlc_map(bg, BLUE);
+    struct win* fg = wlc_toplevel(c, 400, 300, "fenriz-test bell-focused");
+    wlc_map(fg, GREEN);
+    wlc_pump(c, 100);
+
+    if (sm_is_urgent("fenriz-test bell-window"))
+        wlc_die("a window nobody rang is already urgent");
+
+    // The bell's whole point is the window you are NOT typing into: it is on screen, so an
+    // xdg-activation request would be ignored, but a bell there is exactly what to flag.
+    wlc_phase("ringing the bell on the unfocused window");
+    xdg_system_bell_v1_ring(sm_bell, bg->surface);
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
+    if (!sm_is_urgent("fenriz-test bell-window"))
+        wlc_die("ringing the bell on an unfocused window did not flag it");
+    // Control: the bell is attributed to one window, not sprayed across the client.
+    if (sm_is_urgent("fenriz-test bell-focused"))
+        wlc_die("the bell flagged the focused window too; it is not attributed to a surface");
+
+    // A bell in the window you are already looking at has nothing to demand.
+    wlc_phase("ringing the bell on the focused window");
+    xdg_system_bell_v1_ring(sm_bell, fg->surface);
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
+    if (sm_is_urgent("fenriz-test bell-focused"))
+        wlc_die("the focused window was flagged urgent; focus is what clears that flag");
+
+    // A surfaceless bell is legal ("not tied to a particular window") and must not upset it.
+    wlc_phase("ringing a surfaceless bell");
+    xdg_system_bell_v1_ring(sm_bell, NULL);
+    wlc_roundtrip(c);
+    wlc_pump(c, 100);
+    wlc_hold_point(c);
+
+    xdg_system_bell_v1_destroy(sm_bell);
+    wlc_destroy(fg);
+    wlc_destroy(bg);
+    wlc_roundtrip(c);
+}
+
+static void s_alpha(struct wlc* c) {
+    sm_bind(c);
+    if (!sm_alpha)
+        wlc_die("compositor does not advertise wp_alpha_modifier_v1");
+
+    struct win* w = wlc_toplevel(c, 400, 300, "fenriz-test alpha-window");
+    wlc_map(w, BLUE);
+
+    // Note this asserts the protocol is accepted and survives, NOT that the window is drawn
+    // any dimmer: opacity is not in the state feed, and the headless backend renders into
+    // memory nothing here can read back. The compositor-side multiply lives in apply_fx.
+    wlc_phase("setting a surface multiplier");
+    struct wp_alpha_modifier_surface_v1* mod = wp_alpha_modifier_v1_get_surface(sm_alpha, w->surface);
+    wp_alpha_modifier_surface_v1_set_multiplier(mod, UINT32_MAX / 2); // ~0.5
+    wlc_paint(w, BLUE);
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
+
+    wlc_phase("walking the multiplier over its whole range");
+    wp_alpha_modifier_surface_v1_set_multiplier(mod, 0); // fully transparent, still mapped
+    wlc_paint(w, BLUE);
+    wlc_roundtrip(c);
+    wlc_pump(c, 100);
+    wp_alpha_modifier_surface_v1_set_multiplier(mod, UINT32_MAX); // fully opaque again
+    wlc_paint(w, BLUE);
+    wlc_roundtrip(c);
+    wlc_pump(c, 100);
+    wlc_hold_point(c);
+
+    // Destroying the modifier drops back to the compositor's own opacity; the surface must
+    // outlive it cleanly.
+    wp_alpha_modifier_surface_v1_destroy(mod);
+    wlc_paint(w, BLUE);
+    wlc_roundtrip(c);
+    wlc_pump(c, 100);
+    // sm_is_urgent dies if the window is gone from the feed, so this is the "still mapped and
+    // healthy after the modifier was destroyed" check.
+    if (sm_is_urgent("fenriz-test alpha-window"))
+        wlc_die("the window came back urgent from an opacity change");
+
+    wp_alpha_modifier_v1_destroy(sm_alpha);
+    wlc_destroy(w);
+    wlc_roundtrip(c);
+}
+
+static void s_fixes(struct wlc* c) {
+    sm_bind(c);
+    if (!sm_fixes)
+        wlc_die("compositor does not advertise wl_fixes");
+
+    // The entire point of the protocol: a registry can be destroyed. Without it libwayland
+    // leaks one per bind for the life of the connection.
+    wlc_phase("destroying registries through wl_fixes");
+    for (int i = 0; i < 8; i++) {
+        struct wl_registry* reg = wl_display_get_registry(c->display);
+        wlc_roundtrip(c); // let it fill with globals before throwing it away
+        wl_fixes_destroy_registry(sm_fixes, reg);
+        wlc_roundtrip(c);
+    }
+
+    // Still serving afterwards: bind a fresh registry and map a window through it.
+    struct win* w = wlc_toplevel(c, 300, 200, "fenriz-test fixes-window");
+    wlc_map(w, GREEN);
+    wlc_pump(c, 100);
+    if (sm_is_urgent("fenriz-test fixes-window"))
+        wlc_die("unexpected state for a freshly mapped window");
+    wlc_hold_point(c);
+
+    wl_fixes_destroy(sm_fixes);
+    wlc_destroy(w);
+    wlc_roundtrip(c);
+}
+
 const struct scenario scenarios[] = {
     {"popup", s_popup, "toplevel -> popup -> nested popup, grab, reposition, off-screen anchor"},
     {"layer-popup", s_layer_popup, "corner-anchored popup and submenu on a full-output layer surface"},
@@ -2033,6 +2205,9 @@ const struct scenario scenarios[] = {
      s_toplevel_tag,
      "xdg-toplevel-tag-v1: a tag set before map reaches the feed and dies with the window"},
     {"toplevel-drag", s_toplevel_drag, "xdg-toplevel-drag-v1: a tab torn out follows the cursor to the drop"},
+    {"bell", s_bell, "xdg-system-bell-v1: a bell flags the window it names, not the focused one"},
+    {"alpha", s_alpha, "alpha-modifier-v1: per-surface opacity accepted across its whole range"},
+    {"fixes", s_fixes, "wl_fixes: registries can be destroyed and the compositor keeps serving"},
     {"evil", s_evil, "stale acks, commits between configures, self-resize, destroy/recreate"},
     {NULL, NULL, NULL},
 };

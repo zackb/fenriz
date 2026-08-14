@@ -72,7 +72,7 @@ means something changed.
  "lid":"open",
  "cursor":{"x":100,"y":200},
  "workspaces":{"active":1,"occupied":[1,2,4],"urgent":[4]},
- "windows":[{"appId":"foot","title":"~","icon":"","tag":"","workspace":1,"floating":false,"fullscreen":false,"focused":true}],
+ "windows":[{"appId":"foot","title":"~","icon":"","tag":"","workspace":1,"floating":false,"fullscreen":false,"focused":true,"urgent":false}],
  "activeWindow":{"appId":"foot","title":"~","icon":"","tag":""}}
 ```
 
@@ -94,6 +94,7 @@ means something changed.
 | `windows[].appId` | string | xdg app id, or the X11 `WM_CLASS` for XWayland windows. |
 | `windows[].title` | string | Window title. |
 | `windows[].icon` | string | XDG icon-theme name the client set via xdg-toplevel-icon-v1, or `""`. |
+| `windows[].urgent` | bool | The window asked for attention and has not been focused since. An xdg-activation or xdg-system-bell ring. |
 | `windows[].tag` | string | Client's own stable name for the window (xdg-toplevel-tag-v1), or `""`. Unlike the title it does not change as the window is used, so it is the stable way to tell one window of an app from another. |
 | `windows[].workspace` | int | Which workspace it's on, 1-indexed. |
 | `windows[].floating` | bool | Escaped the tiling tree (free move/resize). |

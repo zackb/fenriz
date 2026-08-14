@@ -130,7 +130,13 @@ namespace fenriz {
             const int bw = v->fullscreen ? 0 : s.config.border_width;
             const int r = v->fullscreen ? 0 : std::max(0, s.config.rounding - bw);
             wlr_scene_buffer_set_corner_radius(buf, r);
-            wlr_scene_buffer_set_opacity(buf, v->fullscreen ? 1.0f : s.config.opacity);
+            // alpha-modifier-v1: a client's own opacity multiplies the compositor's
+            float alpha = v->fullscreen ? 1.0f : s.config.opacity;
+            if (wlr_scene_surface* ss = wlr_scene_surface_try_from_buffer(buf))
+                if (const wlr_alpha_modifier_surface_v1_state* am =
+                        wlr_alpha_modifier_v1_get_surface_state(ss->surface))
+                    alpha *= (float)am->multiplier;
+            wlr_scene_buffer_set_opacity(buf, alpha);
         }
 
         // Tell a toplevel it's tiled on all edges (or none). Advertising the tiled state is
@@ -675,6 +681,19 @@ namespace fenriz {
         }
         wlr_seat_keyboard_notify_clear_focus(server.seat);
         ipc::publish(server);
+    }
+
+    bool mark_urgent(Server& server, wlr_surface* surface, bool hidden_only) {
+        for (View* v : server.views) {
+            if (view_surface(v) != surface)
+                continue;
+            if (v == server.focused_view || (hidden_only && view_visible(server, v)))
+                return false;
+            v->urgent = true;
+            ipc::publish(server);
+            return true;
+        }
+        return false;
     }
 
     void set_fullscreen(Server& server, View* view, bool on) {

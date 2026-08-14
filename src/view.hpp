@@ -150,6 +150,9 @@ namespace fenriz {
     // Drop keyboard focus entirely (e.g. switching to an empty workspace).
     void clear_focus(Server& server);
 
+    // Flag the window owning `surface` as wanting attention. Focusing the window clears it again.
+    bool mark_urgent(Server& server, wlr_surface* surface, bool hidden_only);
+
     // Make a view cover the whole output (no border/gap, above the bar) or restore it
     // to tiling. Driven by client set_fullscreen requests and the fullscreen keybind.
     void set_fullscreen(Server& server, View* view, bool on);
