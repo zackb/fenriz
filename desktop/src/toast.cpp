@@ -4,6 +4,9 @@
 
 #include <algorithm>
 
+#include "blur.hpp"
+#include "theme.hpp"
+
 namespace fenriz::desktop {
 
     namespace {
@@ -96,6 +99,7 @@ namespace fenriz::desktop {
 
         column_ = gtk_box_new(GTK_ORIENTATION_VERTICAL, SPACING);
         gtk_window_set_child(window_, column_);
+        blur::attach(GTK_NATIVE(window_), column_, blur::Mode::Children, theme::CARD_RADIUS);
     }
 
     void Toasts::on_click(GtkGestureClick*, int, double, double, gpointer data) {

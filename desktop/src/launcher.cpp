@@ -5,7 +5,9 @@
 
 #include <algorithm>
 
+#include "blur.hpp"
 #include "spawn.hpp"
+#include "theme.hpp"
 
 namespace fenriz::desktop {
 
@@ -197,6 +199,7 @@ namespace fenriz::desktop {
         gtk_window_set_default_size(window_, WIDTH, -1);
         gtk_layer_set_anchor(window_, GTK_LAYER_SHELL_EDGE_TOP, TRUE);
         gtk_layer_set_margin(window_, GTK_LAYER_SHELL_EDGE_TOP, TOP_MARGIN);
+        gtk_widget_add_css_class(GTK_WIDGET(window_), "fenriz-shell");
 
         app_monitor_ = g_app_info_monitor_get();
         g_signal_connect(app_monitor_, "changed", G_CALLBACK(on_apps_changed), this);
@@ -231,6 +234,7 @@ namespace fenriz::desktop {
 
         gtk_window_set_child(window_, root);
         gtk_window_set_focus(window_, search_);
+        blur::attach(GTK_NATIVE(window_), root, blur::Mode::Widget, theme::CARD_RADIUS);
     }
 
     void Launcher::prewarm(GtkApplication* app) {

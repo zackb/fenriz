@@ -7,7 +7,12 @@
 #include <polkitagent/polkitagent.h>
 #include <unistd.h>
 
+#include "blur.hpp"
+#include "theme.hpp"
+
 namespace {
+
+    namespace blur = fenriz::desktop::blur;
 
     // One in-flight authentication
     struct Request {
@@ -104,13 +109,10 @@ namespace {
         gtk_layer_set_namespace(req->window, "fenriz-polkit");
         gtk_layer_set_layer(req->window, GTK_LAYER_SHELL_LAYER_OVERLAY);
         gtk_layer_set_keyboard_mode(req->window, GTK_LAYER_SHELL_KEYBOARD_MODE_EXCLUSIVE);
+        gtk_widget_add_css_class(GTK_WIDGET(req->window), "fenriz-shell");
 
         GtkWidget* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
         gtk_widget_add_css_class(box, "fenriz-polkit");
-        gtk_widget_set_margin_start(box, 24);
-        gtk_widget_set_margin_end(box, 24);
-        gtk_widget_set_margin_top(box, 20);
-        gtk_widget_set_margin_bottom(box, 20);
         gtk_widget_set_size_request(box, 420, -1);
 
         GtkWidget* title = gtk_label_new(message ? message : "Authentication required");
@@ -154,6 +156,7 @@ namespace {
 
         gtk_window_set_child(req->window, box);
         gtk_window_set_focus(req->window, req->entry);
+        blur::attach(GTK_NATIVE(req->window), box, blur::Mode::Widget, fenriz::desktop::theme::CARD_RADIUS);
         gtk_window_present(req->window);
     }
 

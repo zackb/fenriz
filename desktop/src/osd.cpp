@@ -2,6 +2,9 @@
 
 #include <gtk4-layer-shell.h>
 
+#include "blur.hpp"
+#include "theme.hpp"
+
 namespace fenriz::desktop {
 
     namespace {
@@ -64,6 +67,7 @@ namespace fenriz::desktop {
         gtk_box_append(GTK_BOX(root), bar_);
 
         gtk_window_set_child(window_, root);
+        blur::attach(GTK_NATIVE(window_), pill_, blur::Mode::Widget, theme::PILL_RADIUS);
     }
 
     void Osd::show(GtkApplication* app, const char* icon, int percent) {

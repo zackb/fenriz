@@ -34,11 +34,14 @@ wayland_client_protocol(PROTO_SRC
 wayland_client_protocol(PROTO_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-output-power-management-unstable-v1.xml
     wlr-output-power-management-unstable-v1)
+wayland_client_protocol(PROTO_SRC
+    ${WL_PROTO_DIR}/staging/ext-background-effect/ext-background-effect-v1.xml ext-background-effect-v1)
 
 add_executable(fenriz-desktop
     src/main.cpp
     src/config.cpp
     src/theme.cpp
+    src/blur.cpp
     src/log.cpp
     src/background.cpp
     src/wallpaper.cpp
@@ -131,11 +134,33 @@ target_include_directories(desktop_screensaver_test PRIVATE ${CMAKE_CURRENT_SOUR
 target_link_libraries(desktop_screensaver_test PRIVATE PkgConfig::GIO_UNIX)
 target_compile_options(desktop_screensaver_test PRIVATE -UNDEBUG)
 
-add_executable(desktop_notify_test src/notify.cpp src/toast.cpp src/config.cpp src/test_notify.cpp)
-target_include_directories(desktop_notify_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(desktop_notify_test PRIVATE PkgConfig::GTK4 PkgConfig::LAYER_SHELL PkgConfig::GIO_UNIX)
+add_executable(desktop_notify_test src/notify.cpp src/toast.cpp src/config.cpp src/test_notify.cpp src/blur.cpp
+               ${CMAKE_CURRENT_BINARY_DIR}/ext-background-effect-v1-protocol.c
+               ${CMAKE_CURRENT_BINARY_DIR}/ext-background-effect-v1-client-protocol.h)
+target_include_directories(desktop_notify_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_BINARY_DIR})
+target_link_libraries(desktop_notify_test PRIVATE PkgConfig::GTK4 PkgConfig::LAYER_SHELL PkgConfig::GIO_UNIX
+                      PkgConfig::WAYLAND)
 target_compile_options(desktop_notify_test PRIVATE -UNDEBUG)
 target_compile_definitions(desktop_notify_test PRIVATE FENRIZ_DESKTOP_VERSION="${PROJECT_VERSION}")
+
+# dev tool: render a styled surface to a PNG
+add_executable(desktop_preview tools/preview.cpp src/theme.cpp src/config.cpp)
+target_include_directories(desktop_preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(desktop_preview PRIVATE PkgConfig::GTK4)
+target_compile_definitions(desktop_preview PRIVATE
+        FENRIZ_DESKTOP_DEFAULT_CONFIG="${FENRIZ_DESKTOP_DATADIR}/fenriz-desktop.conf")
+
+add_executable(desktop_theme_test src/theme.cpp src/config.cpp src/test_theme.cpp)
+target_include_directories(desktop_theme_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(desktop_theme_test PRIVATE PkgConfig::GTK4)
+target_compile_options(desktop_theme_test PRIVATE -UNDEBUG)
+
+add_executable(desktop_blur_test src/blur.cpp src/test_blur.cpp
+               ${CMAKE_CURRENT_BINARY_DIR}/ext-background-effect-v1-protocol.c
+               ${CMAKE_CURRENT_BINARY_DIR}/ext-background-effect-v1-client-protocol.h)
+target_include_directories(desktop_blur_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_BINARY_DIR})
+target_link_libraries(desktop_blur_test PRIVATE PkgConfig::GTK4 PkgConfig::WAYLAND)
+target_compile_options(desktop_blur_test PRIVATE -UNDEBUG)
 
 set(CPACK_SET_DESTDIR ON)
 set(CPACK_PACKAGE_RELOCATABLE FALSE)
@@ -176,3 +201,5 @@ add_test(NAME volume   COMMAND desktop_volume_test)
 add_test(NAME wallpaper COMMAND desktop_wallpaper_test)
 add_test(NAME screensaver COMMAND desktop_screensaver_test)
 add_test(NAME notify   COMMAND desktop_notify_test)
+add_test(NAME blur     COMMAND desktop_blur_test)
+add_test(NAME theme    COMMAND desktop_theme_test)

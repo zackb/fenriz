@@ -4,7 +4,9 @@
 
 #include <filesystem>
 
+#include "blur.hpp"
 #include "spawn.hpp"
+#include "theme.hpp"
 #include "wallpaper.hpp"
 
 namespace fenriz::desktop {
@@ -253,6 +255,7 @@ namespace fenriz::desktop {
         gtk_layer_set_layer(window_, GTK_LAYER_SHELL_LAYER_OVERLAY);
         gtk_layer_set_keyboard_mode(window_, GTK_LAYER_SHELL_KEYBOARD_MODE_EXCLUSIVE);
         gtk_window_set_default_size(window_, WIDTH, HEIGHT);
+        gtk_widget_add_css_class(GTK_WIDGET(window_), "fenriz-shell");
 
         GtkWidget* root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
         gtk_widget_add_css_class(root, "fenriz-wallpaper");
@@ -267,7 +270,7 @@ namespace fenriz::desktop {
             g_signal_connect(search_, "changed", G_CALLBACK(on_search_changed), this);
             gtk_box_append(GTK_BOX(root), search_);
         } else {
-            gtk_widget_set_margin_top(root, 10);
+            gtk_widget_add_css_class(root, "no-search");
         }
 
         scroll_ = gtk_scrolled_window_new();
@@ -283,6 +286,7 @@ namespace fenriz::desktop {
         gtk_window_set_child(window_, root);
         if (search_)
             gtk_search_entry_set_key_capture_widget(GTK_SEARCH_ENTRY(search_), GTK_WIDGET(window_));
+        blur::attach(GTK_NATIVE(window_), root, blur::Mode::Widget, theme::CARD_RADIUS);
     }
 
     void WallpaperPicker::toggle(GtkApplication* app) {

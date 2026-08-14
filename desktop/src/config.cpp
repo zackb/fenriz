@@ -53,6 +53,14 @@ namespace fenriz::desktop {
             }
         }
 
+        double parse_double(const std::string& s, double fallback, double lo, double hi) {
+            try {
+                return std::clamp(std::stod(s), lo, hi);
+            } catch (...) {
+                return fallback;
+            }
+        }
+
         bool parse_bool(const std::string& s, bool fallback) {
             if (s == "true" || s == "1" || s == "on" || s == "yes")
                 return true;
@@ -124,6 +132,8 @@ namespace fenriz::desktop {
                 cfg.wallpaper_search = parse_bool(value, cfg.wallpaper_search);
             } else if (key == "terminal") {
                 cfg.terminal = value;
+            } else if (key == "shell_opacity") {
+                cfg.shell_opacity = parse_double(value, cfg.shell_opacity, 0.0, 1.0);
             } else if (key == "lock_blur") {
                 cfg.lock_blur = parse_int(value, cfg.lock_blur, 0, 200);
             } else if (key == "lock_on_suspend") {

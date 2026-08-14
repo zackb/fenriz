@@ -6,6 +6,7 @@
 #include <string>
 
 #include "background.hpp"
+#include "blur.hpp"
 #include "brightness.hpp"
 #include "config.hpp"
 #include "idle.hpp"
@@ -114,6 +115,8 @@ namespace {
 
         session->cfg = Config::load();
         fenriz::desktop::theme::install(session->cfg);
+        if (session->cfg.shell_opacity < 1.0)
+            fenriz::desktop::blur::init();
 
         if (!session->cfg.selected_wallpaper.empty() &&
             (!session->cfg.wallpaper.empty() || !session->cfg.output_wallpaper.empty()))

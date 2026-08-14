@@ -28,7 +28,8 @@ This is not meant to be a worse version of [quickshell](https://quickshell.org),
 
 Requires only `wlr-layer-shell`, `ext-session-lock-v1`, `ext-idle-notify-v1`, and
 `wlr-output-power-management-unstable-v1` (only for `idle_dpms`; without it
-everything else still runs)
+everything else still runs). `ext-background-effect-v1` is used for the frosted
+backdrop behind the shell's cards; without it they are simply translucent.
 
 WirePlumber has to be running for the volume OSD to work.
 
@@ -67,6 +68,13 @@ menu = Screenshot, grim -g "$(slurp)" - | wl-copy
 ## Theming
 `fenriz-desktop` will use the system GTK4 theme if one is set (nwg-look), or fall back to Adwaita.
 `border_active` and `border_gradient` are used from `fenriz.conf` if it exists, otherwise defaults are used.
+
+The launcher, notifications, OSDs, wallpaper picker, desktop menu and polkit
+dialog are translucent, and ask the compositor to blur the wallpaper behind them:
+
+```ini
+shell_opacity = 0.80   # 1.0 is opaque, and asks for no blur at all
+```
 
 ```ini
 

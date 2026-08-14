@@ -230,6 +230,17 @@ namespace {
         assert(garbage.accent == "#16b8f3");
     }
 
+    void test_shell_opacity() {
+        assert(Config::parse("").shell_opacity == 0.80);
+        assert(Config::parse("shell_opacity = 0.5\n").shell_opacity == 0.5);
+        // 1.0 is the opaque case, and the one that turns the blur request off.
+        assert(Config::parse("shell_opacity = 1\n").shell_opacity == 1.0);
+        // Out of range clamps rather than producing an invalid CSS alpha.
+        assert(Config::parse("shell_opacity = 4\n").shell_opacity == 1.0);
+        assert(Config::parse("shell_opacity = -2\n").shell_opacity == 0.0);
+        assert(Config::parse("shell_opacity = frosted\n").shell_opacity == 0.80);
+    }
+
 } // namespace
 
 int main() {
@@ -257,5 +268,6 @@ int main() {
     test_missing_file_falls_back_to_shipped();
     test_config_path();
     test_accents_from_compositor_config();
+    test_shell_opacity();
     return 0;
 }

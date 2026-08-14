@@ -19,6 +19,10 @@ namespace fenriz::desktop {
         std::vector<std::pair<std::string, std::string>> menu;
         bool launcher = true;
 
+        // Alpha of every shell card. 1.0 is opaque and stops the desktop asking the compositor to blur what is behind
+        // them.
+        double shell_opacity = 0.80;
+
         int lock_blur = 24;
         bool lock_on_suspend = true;
         int idle_lock = 0;

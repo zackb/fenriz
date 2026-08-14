@@ -9,6 +9,12 @@
 #
 # settings: key = value, `#` starts a comment.
 
+# --- Appearance ------------------------------------------------------------
+
+# How opaque the shell's cards are
+# behind them, so the transluent
+# shell_opacity = 0.80
+
 # --- Wallpaper -------------------------------------------------------------
 
 # Applies to every screen.

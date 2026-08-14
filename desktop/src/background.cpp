@@ -5,7 +5,9 @@
 #include <algorithm>
 #include <vector>
 
+#include "blur.hpp"
 #include "menu.hpp"
+#include "theme.hpp"
 
 namespace fenriz::desktop {
 
@@ -110,6 +112,7 @@ namespace fenriz::desktop {
         gtk_popover_set_position(GTK_POPOVER(popover), GTK_POS_RIGHT);
         gtk_widget_set_valign(popover, GTK_ALIGN_START);
         menu::show_icons(popover);
+        blur::attach(GTK_NATIVE(popover), gtk_widget_get_last_child(popover), blur::Mode::Widget, theme::CARD_RADIUS);
 
         GtkGesture* click = gtk_gesture_click_new();
         gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(click), GDK_BUTTON_SECONDARY);
