@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdlib>
 
+#include "background_blur.hpp"
 #include "color.hpp"
 #include "cursor.hpp"
 #include "ipc.hpp"
@@ -117,13 +118,7 @@ namespace fenriz {
         }
 
         // Per-buffer effects for a mapped window: round the content corners and apply the
-        // global opacity. Fullscreen drops all three (border, rounding, opacity) — nothing
-        // should show through a fullscreen window, and scenefx only direct-scans-out at
-        // opacity 1.0. Iterated over the xdg surface subtree so every buffer matches.
-        // ponytail: CSD apps (GTK/Firefox) whose buffer includes a shadow margin round the
-        // buffer corner, not the visible window edge — clip each buffer to window geometry
-        // (SwayFX-style) if that looks wrong. Rounding radius is inset by the border so the
-        // content radius nests inside the (rounded) border frame.
+        // global opacity. Fullscreen drops all three (border, rounding, opacity).
         void apply_fx(wlr_scene_buffer* buf, int /*sx*/, int /*sy*/, void* data) {
             View* v = static_cast<View*>(data);
             Server& s = *v->server;
@@ -297,6 +292,7 @@ namespace fenriz {
                     corner = nullptr;
                 for (wlr_scene_buffer*& edge : view->grad_edge)
                     edge = nullptr;
+                background_blur::forget(view->blur); // freed with the tree above
                 view->grad_gen = 0;
                 if (view->kind == View::Kind::Xdg)
                     view->toplevel->base->data = nullptr;
@@ -1047,6 +1043,17 @@ namespace fenriz {
         // Popups position themselves against the window-geometry origin, which is exactly where surface_tree sits
         if (view->popup_tree)
             wlr_scene_node_set_position(&view->popup_tree->node, bw, bw);
+
+        // Blur sits under the surface at the same origin, so the client's region coordinates
+        // (surface-local) line up without any translation of their own.
+        background_blur::place(view_surface(view),
+                               view->scene_tree,
+                               &view->surface_tree->node,
+                               bw - geo.x,
+                               bw - geo.y,
+                               geo,
+                               view->fullscreen ? 0 : std::max(0, server.config.rounding - bw),
+                               view->blur);
 
         // Crop the client to its window geometry so CSD shadow margins (Firefox/GTK/
         // Chromium ship a buffer bigger than the geometry) don't draw over the border

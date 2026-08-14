@@ -298,6 +298,12 @@ namespace fenriz {
                 cfg.shadow_color = parse_color(val, cfg.shadow_color);
             else if (key == "shadow_blur")
                 cfg.shadow_blur = parse_int(val, cfg.shadow_blur, 0, 200);
+            else if (key == "blur")
+                cfg.blur = parse_bool(val, cfg.blur);
+            else if (key == "blur_passes")
+                cfg.blur_passes = parse_int(val, cfg.blur_passes, 1, 10);
+            else if (key == "blur_radius")
+                cfg.blur_radius = parse_int(val, cfg.blur_radius, 1, 50);
             else if (key == "gaps")
                 // The ceiling is generous on purpose: tiling::arrange clamps the gap again
                 cfg.gaps = parse_int(val, cfg.gaps, 0, 500);

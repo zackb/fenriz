@@ -461,6 +461,8 @@ static void registry_global(void* data, struct wl_registry* reg, uint32_t name, 
         c->viewporter = wl_registry_bind(reg, name, &wp_viewporter_interface, 1);
     else if (!strcmp(iface, wp_fractional_scale_manager_v1_interface.name))
         c->frac_scale = wl_registry_bind(reg, name, &wp_fractional_scale_manager_v1_interface, 1);
+    else if (!strcmp(iface, zwlr_screencopy_manager_v1_interface.name))
+        c->screencopy = wl_registry_bind(reg, name, &zwlr_screencopy_manager_v1_interface, 1);
     else if (!strcmp(iface, zwlr_virtual_pointer_manager_v1_interface.name))
         c->vpm = wl_registry_bind(reg, name, &zwlr_virtual_pointer_manager_v1_interface, cap(version, 2));
     else if (!strcmp(iface, zwlr_layer_shell_v1_interface.name))
@@ -502,6 +504,162 @@ void wlc_finish(struct wlc* c) {
     wlc_roundtrip(c);
     wl_display_disconnect(c->display);
     free(c);
+}
+
+// --- screenshots ----------------------------------------------------------------------
+
+struct shot_state {
+    struct wlc_shot* shot;
+    struct wlc* c;
+    int stride;
+    uint32_t format;
+    bool y_invert, done, failed;
+};
+
+static void
+    shot_buffer(void* data, struct zwlr_screencopy_frame_v1* f, uint32_t fmt, uint32_t w, uint32_t h, uint32_t stride) {
+    struct shot_state* st = data;
+    st->format = fmt;
+    st->stride = (int)stride;
+    st->shot->width = (int)w;
+    st->shot->height = (int)h;
+
+    // The compositor dictates size, stride and format; we just provide memory shaped that way.
+    size_t size = (size_t)stride * h;
+    int fd = memfd_create("fenriz-test-shot", MFD_CLOEXEC);
+    if (fd < 0 || ftruncate(fd, size) < 0)
+        wlc_die("shot memfd: %s", strerror(errno));
+    void* map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (map == MAP_FAILED)
+        wlc_die("shot mmap: %s", strerror(errno));
+    struct wl_shm_pool* pool = wl_shm_create_pool(st->c->shm, fd, size);
+    st->shot->buffer = wl_shm_pool_create_buffer(pool, 0, (int)w, (int)h, (int)stride, fmt);
+    wl_shm_pool_destroy(pool);
+    close(fd);
+
+    st->shot->map = map;
+    st->shot->map_size = size;
+    zwlr_screencopy_frame_v1_copy(f, st->shot->buffer);
+}
+static void shot_flags(void* data, struct zwlr_screencopy_frame_v1* f, uint32_t flags) {
+    (void)f;
+    ((struct shot_state*)data)->y_invert = flags & ZWLR_SCREENCOPY_FRAME_V1_FLAGS_Y_INVERT;
+}
+static void shot_ready(void* data, struct zwlr_screencopy_frame_v1* f, uint32_t hi, uint32_t lo, uint32_t ns) {
+    (void)f;
+    (void)hi;
+    (void)lo;
+    (void)ns;
+    ((struct shot_state*)data)->done = true;
+}
+static void shot_failed(void* data, struct zwlr_screencopy_frame_v1* f) {
+    (void)f;
+    struct shot_state* st = data;
+    st->failed = true;
+    st->done = true;
+}
+static void shot_damage(void* d, struct zwlr_screencopy_frame_v1* f, uint32_t a, uint32_t b, uint32_t c2, uint32_t e) {
+    (void)d;
+    (void)f;
+    (void)a;
+    (void)b;
+    (void)c2;
+    (void)e;
+}
+static void shot_dmabuf(void* d, struct zwlr_screencopy_frame_v1* f, uint32_t a, uint32_t b, uint32_t c2) {
+    (void)d;
+    (void)f;
+    (void)a;
+    (void)b;
+    (void)c2;
+}
+static void shot_buffer_done(void* d, struct zwlr_screencopy_frame_v1* f) {
+    (void)d;
+    (void)f;
+}
+static const struct zwlr_screencopy_frame_v1_listener shot_listener = {
+    .buffer = shot_buffer,
+    .flags = shot_flags,
+    .ready = shot_ready,
+    .failed = shot_failed,
+    .damage = shot_damage,
+    .linux_dmabuf = shot_dmabuf,
+    .buffer_done = shot_buffer_done,
+};
+
+static bool shot_is_done(void* arg) { return ((struct shot_state*)arg)->done; }
+
+struct wlc_shot* wlc_capture(struct wlc* c, int output) {
+    if (!c->screencopy)
+        wlc_die("compositor has no zwlr_screencopy_manager_v1; nothing can read back what it drew");
+    if (output >= c->n_outputs)
+        wlc_die("no output %d to capture", output);
+
+    struct wlc_shot* shot = calloc(1, sizeof *shot);
+    struct shot_state st = {.shot = shot, .c = c};
+    struct zwlr_screencopy_frame_v1* frame =
+        zwlr_screencopy_manager_v1_capture_output(c->screencopy, 0, c->outputs[output]);
+    zwlr_screencopy_frame_v1_add_listener(frame, &shot_listener, &st);
+    wlc_until(c, shot_is_done, &st);
+    zwlr_screencopy_frame_v1_destroy(frame);
+    if (st.failed)
+        wlc_die("screencopy failed for output %d", output);
+
+    // Normalise into a tightly packed, top-down, 0xAARRGGBB image so callers index and compare
+    // it plainly. Two things have to be undone first: the compositor may hand back a y-inverted
+    // buffer, and it picks the pixel format — a GL readback is commonly BGR-ordered, which reads
+    // as a red/blue swap if taken at face value.
+    const bool swap_rb = st.format == WL_SHM_FORMAT_XBGR8888 || st.format == WL_SHM_FORMAT_ABGR8888;
+    shot->px = calloc((size_t)shot->width * shot->height, sizeof(uint32_t));
+    for (int y = 0; y < shot->height; y++) {
+        const int src = st.y_invert ? shot->height - 1 - y : y;
+        const uint32_t* in = (const uint32_t*)((char*)shot->map + (size_t)src * st.stride);
+        uint32_t* out = shot->px + (size_t)y * shot->width;
+        for (int x = 0; x < shot->width; x++) {
+            const uint32_t p = in[x];
+            out[x] =
+                swap_rb
+                    ? ((p & 0xff000000u) | ((p & 0x00ff0000u) >> 16) | (p & 0x0000ff00u) | ((p & 0x000000ffu) << 16))
+                    : p;
+        }
+    }
+    return shot;
+}
+
+uint32_t wlc_pixel(const struct wlc_shot* s, int x, int y) {
+    if (x < 0 || y < 0 || x >= s->width || y >= s->height)
+        wlc_die("pixel %d,%d is outside the %dx%d screenshot", x, y, s->width, s->height);
+    return s->px[(size_t)y * s->width + x] | 0xff000000u; // opaque: the output has no alpha
+}
+
+void wlc_shot_free(struct wlc_shot* s) {
+    if (!s)
+        return;
+    if (s->buffer)
+        wl_buffer_destroy(s->buffer);
+    if (s->map)
+        munmap(s->map, s->map_size);
+    free(s->px);
+    free(s);
+}
+
+bool wlc_color_near(uint32_t a, uint32_t b, int tol) {
+    for (int shift = 0; shift <= 16; shift += 8) {
+        int d = (int)((a >> shift) & 0xff) - (int)((b >> shift) & 0xff);
+        if (d < 0)
+            d = -d;
+        if (d > tol)
+            return false;
+    }
+    return true;
+}
+
+const char* wlc_color_str(uint32_t c) {
+    static char buf[4][16];
+    static int n = 0;
+    n = (n + 1) % 4;
+    snprintf(buf[n], sizeof buf[0], "0x%06x", c & 0xffffff);
+    return buf[n];
 }
 
 // --- injected pointer -----------------------------------------------------------------
@@ -716,7 +874,7 @@ void wlc_map(struct win* w, uint32_t argb) {
 
 // Some of what we want to try is an outright protocol violation, and the compositor is supposed to kill the client for
 // it.
-void wlc_abuse(struct wlc* c, const char* what, void (*fn)(struct wlc*)) {
+bool wlc_abuse(struct wlc* c, const char* what, void (*fn)(struct wlc*)) {
     wlc_phase("abuse: %s", what);
     fflush(NULL);
     pid_t pid = fork();
@@ -742,6 +900,7 @@ void wlc_abuse(struct wlc* c, const char* what, void (*fn)(struct wlc*)) {
             : rc == 0            ? "ACCEPTED (compositor let it through)"
                                  : "child died unexpectedly");
     wlc_roundtrip(c); // the real check: are we still connected to a live compositor?
+    return rc == ABUSE_REJECTED;
 }
 
 // --- hold -----------------------------------------------------------------------------

@@ -124,6 +124,9 @@ Colors are `0xRRGGBBAA` hex.
 | `shadow` | `on` | soft glow behind the focused window |
 | `shadow_color` | `0x00000055` | glow intensity: only the alpha is used |
 | `shadow_blur` | `28` | glow spread, px |
+| `blur` | `true` | blur the desktop behind translucent surfaces that ask for it |
+| `blur_passes` | `2` | blur passes, 1–10; more is softer and more expensive |
+| `blur_radius` | `5` | blur radius, 1–50 |
 | `gaps` | `8` | gap between windows, px |
 | `margin` | `0` | inset from the screen edges, px. One value = all sides, two = vertical horizontal, four = top right bottom left |
 | `rounding` | `10` | corner radius, px |

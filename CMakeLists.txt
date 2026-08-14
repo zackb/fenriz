@@ -55,6 +55,26 @@ add_custom_command(
     VERBATIM
 )
 
+# ext-background-effect-v1
+set(BACKGROUND_EFFECT_HEADER ${CMAKE_CURRENT_BINARY_DIR}/ext-background-effect-v1-server-protocol.h)
+add_custom_command(
+    OUTPUT ${BACKGROUND_EFFECT_HEADER}
+    COMMAND ${WAYLAND_SCANNER} server-header
+            ${WL_PROTO_DIR}/staging/ext-background-effect/ext-background-effect-v1.xml
+            ${BACKGROUND_EFFECT_HEADER}
+    DEPENDS ${WL_PROTO_DIR}/staging/ext-background-effect/ext-background-effect-v1.xml
+    VERBATIM
+)
+
+set(KDE_BLUR_HEADER ${CMAKE_CURRENT_BINARY_DIR}/kde-blur-protocol.h)
+add_custom_command(
+    OUTPUT ${KDE_BLUR_HEADER}
+    COMMAND ${WAYLAND_SCANNER} server-header
+            ${CMAKE_CURRENT_SOURCE_DIR}/protocols/kde-blur.xml ${KDE_BLUR_HEADER}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/protocols/kde-blur.xml
+    VERBATIM
+)
+
 pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 set(WL_CLIENT_PROTO_SRC "")
 function(wl_client_proto name xml)
@@ -85,10 +105,14 @@ wl_client_proto(xdg-toplevel-drag-v1 ${WL_PROTO_DIR}/staging/xdg-toplevel-drag/x
 wl_client_proto(xdg-toplevel-tag-v1  ${WL_PROTO_DIR}/staging/xdg-toplevel-tag/xdg-toplevel-tag-v1.xml)
 wl_client_proto(alpha-modifier-v1    ${WL_PROTO_DIR}/staging/alpha-modifier/alpha-modifier-v1.xml)
 wl_client_proto(xdg-system-bell-v1   ${WL_PROTO_DIR}/staging/xdg-system-bell/xdg-system-bell-v1.xml)
+wl_client_proto(ext-background-effect-v1
+                                     ${WL_PROTO_DIR}/staging/ext-background-effect/ext-background-effect-v1.xml)
+wl_client_proto(kde-blur             ${CMAKE_CURRENT_SOURCE_DIR}/protocols/kde-blur.xml)
 wl_client_proto(wlr-layer-shell-unstable-v1
                                      ${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-layer-shell-unstable-v1.xml)
-# The headless backend has no input devices, so the test client injects pointer motion and
-# clicks through the virtual-pointer protocol fenriz already implements.
+# test client only
+wl_client_proto(wlr-screencopy-unstable-v1
+                                     ${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-screencopy-unstable-v1.xml)
 wl_client_proto(wlr-virtual-pointer-unstable-v1
                                      ${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-virtual-pointer-unstable-v1.xml)
 
@@ -110,10 +134,15 @@ add_executable(fenriz
     src/workspace_protocol.cpp
     src/toplevel_drag.cpp
     src/toplevel_props.cpp
+    src/background_blur.cpp
     src/xwayland.cpp
     ${LAYER_SHELL_HEADER}
     ${OUTPUT_POWER_HEADER}
     ${TOPLEVEL_DRAG_HEADER}
+    ${BACKGROUND_EFFECT_HEADER}
+    ${KDE_BLUR_HEADER}
+    ${CMAKE_CURRENT_BINARY_DIR}/ext-background-effect-v1-protocol.c
+    ${CMAKE_CURRENT_BINARY_DIR}/kde-blur-protocol.c
     ${CMAKE_CURRENT_BINARY_DIR}/xdg-toplevel-drag-v1-protocol.c
     ${CMAKE_CURRENT_BINARY_DIR}/xdg-shell-protocol.c
 )
@@ -196,7 +225,7 @@ add_test(NAME ctl     COMMAND fenrizctl_test)
 # fails when wlroots or wayland-protocols offers a protocol that is in neither src/ nor docs/PROTOCOLS.md.
 add_test(NAME protocols COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/protocol-audit.sh)
 
-foreach(s popup layer-popup resize fullscreen dnd grab subsurface scale destroy-parent hotplug workspace foreign dialog icon toplevel-drag toplevel-tag bell alpha fixes evil)
+foreach(s popup layer-popup resize fullscreen dnd grab subsurface scale destroy-parent hotplug workspace foreign dialog icon toplevel-drag toplevel-tag bell alpha fixes background-effect kde-blur pixels layer-blur blur-off evil)
     add_test(NAME wl-${s}
              COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/wltest.sh
                      --build-dir ${CMAKE_CURRENT_BINARY_DIR} ${s})

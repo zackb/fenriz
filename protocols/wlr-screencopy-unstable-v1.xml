@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="wlr_screencopy_unstable_v1">
+  <copyright>
+    Copyright © 2018 Simon Ser
+    Copyright © 2019 Andri Yngvason
+
+    Permission to use, copy, modify, distribute, and sell this software and its
+    documentation for any purpose is hereby granted without fee, provided that
+    the above copyright notice appear in all copies and that both that copyright
+    notice and this permission notice appear in supporting documentation, and
+    that the name of the copyright holders not be used in advertising or
+    publicity pertaining to distribution of the software without specific,
+    written prior permission.  The copyright holders make no representations
+    about the suitability of this software for any purpose.  It is provided "as
+    is" without express or implied warranty.
+  </copyright>
+
+  <!--
+    Vendored from wlr-protocols, which is not a fenriz dependency. Used only by the test
+    client: it is how a scenario reads back what the compositor actually drew, so geometry
+    and effects (rounding, borders, blur) can be asserted instead of eyeballed. fenriz
+    implements the server side through wlroots (wlr_screencopy_v1_create), which is also what
+    grim and the screen-sharing portal use.
+  -->
+
+  <interface name="zwlr_screencopy_manager_v1" version="3">
+    <request name="capture_output">
+      <arg name="frame" type="new_id" interface="zwlr_screencopy_frame_v1"/>
+      <arg name="overlay_cursor" type="int"/>
+      <arg name="output" type="object" interface="wl_output"/>
+    </request>
+
+    <request name="capture_output_region">
+      <arg name="frame" type="new_id" interface="zwlr_screencopy_frame_v1"/>
+      <arg name="overlay_cursor" type="int"/>
+      <arg name="output" type="object" interface="wl_output"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </request>
+
+    <request name="destroy" type="destructor"/>
+  </interface>
+
+  <interface name="zwlr_screencopy_frame_v1" version="3">
+    <enum name="error">
+      <entry name="already_used" value="0"/>
+      <entry name="invalid_buffer" value="1"/>
+    </enum>
+
+    <enum name="flags" bitfield="true">
+      <entry name="y_invert" value="1" summary="contents are y-inverted"/>
+    </enum>
+
+    <event name="buffer">
+      <arg name="format" type="uint" enum="wl_shm.format"/>
+      <arg name="width" type="uint"/>
+      <arg name="height" type="uint"/>
+      <arg name="stride" type="uint"/>
+    </event>
+
+    <request name="copy">
+      <arg name="buffer" type="object" interface="wl_buffer"/>
+    </request>
+
+    <event name="flags">
+      <arg name="flags" type="uint" enum="flags"/>
+    </event>
+
+    <event name="ready">
+      <arg name="tv_sec_hi" type="uint"/>
+      <arg name="tv_sec_lo" type="uint"/>
+      <arg name="tv_nsec" type="uint"/>
+    </event>
+
+    <event name="failed"/>
+
+    <request name="destroy" type="destructor"/>
+
+    <event name="damage" since="2">
+      <arg name="x" type="uint"/>
+      <arg name="y" type="uint"/>
+      <arg name="width" type="uint"/>
+      <arg name="height" type="uint"/>
+    </event>
+
+    <event name="linux_dmabuf" since="3">
+      <arg name="format" type="uint"/>
+      <arg name="width" type="uint"/>
+      <arg name="height" type="uint"/>
+    </event>
+
+    <event name="buffer_done" since="3"/>
+
+    <request name="copy_with_damage" since="2">
+      <arg name="buffer" type="object" interface="wl_buffer"/>
+    </request>
+  </interface>
+</protocol>

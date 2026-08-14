@@ -10,7 +10,9 @@
 #include "scenarios.h"
 
 #include "alpha-modifier-v1-client-protocol.h"
+#include "ext-background-effect-v1-client-protocol.h"
 #include "ext-workspace-v1-client-protocol.h"
+#include "kde-blur-client-protocol.h"
 #include "xdg-dialog-v1-client-protocol.h"
 #include "xdg-foreign-unstable-v1-client-protocol.h"
 #include "xdg-foreign-unstable-v2-client-protocol.h"
@@ -1703,6 +1705,8 @@ static void td_dd_offer(void* d, struct wl_data_device* dd, struct wl_data_offer
     (void)dd;
     (void)o;
 }
+static struct wl_data_offer* td_offer;
+
 static void td_dd_enter(void* d,
                         struct wl_data_device* dd,
                         uint32_t serial,
@@ -1712,11 +1716,19 @@ static void td_dd_enter(void* d,
                         struct wl_data_offer* o) {
     (void)d;
     (void)dd;
-    (void)serial;
     (void)x;
     (void)y;
-    (void)o;
     td_dnd_surface = s;
+    td_offer = o;
+    // Accepting, and then never finishing, is what leaves the drop pending — so the seat drag
+    // outlives the button release. That is the window in which a client destroys its
+    // xdg_toplevel_drag object, and the compositor still has to put the window back.
+    if (o) {
+        wl_data_offer_accept(o, serial, "text/plain");
+        if (wl_data_offer_get_version(o) >= 3)
+            wl_data_offer_set_actions(
+                o, WL_DATA_DEVICE_MANAGER_DND_ACTION_MOVE, WL_DATA_DEVICE_MANAGER_DND_ACTION_MOVE);
+    }
 }
 static void td_dd_leave(void* d, struct wl_data_device* dd) {
     (void)d;
@@ -1770,6 +1782,8 @@ static struct td_run td_tear_off(struct wlc* c, struct win* parent, const char* 
     r.src = wl_data_device_manager_create_data_source(c->ddm);
     wl_data_source_add_listener(r.src, &source_listener, NULL);
     wl_data_source_offer(r.src, "text/plain");
+    if (wl_data_source_get_version(r.src) >= 3)
+        wl_data_source_set_actions(r.src, WL_DATA_DEVICE_MANAGER_DND_ACTION_MOVE);
     r.drag = xdg_toplevel_drag_manager_v1_get_xdg_toplevel_drag(td_manager, r.src);
     wl_data_device_start_drag(c->data_device, r.src, parent->surface, NULL, c->last_serial);
     wlc_roundtrip(c);
@@ -1785,8 +1799,12 @@ static struct td_run td_tear_off(struct wlc* c, struct win* parent, const char* 
 
 static void td_drop(struct wlc* c, struct td_run* r) {
     wlc_pointer_button(c, BTN_LEFT, false);
-    wlc_pump(c, 100);
+    // Destroyed immediately, which is what the protocol tells a client to do once the drop is
+    // performed — and that can land while the seat drag is still alive. Waiting first would let
+    // the seat drag die first and quietly test the easy ordering instead.
     xdg_toplevel_drag_v1_destroy(r->drag);
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
     wl_data_source_destroy(r->src);
     wlc_roundtrip(c);
 }
@@ -2186,6 +2204,492 @@ static void s_fixes(struct wlc* c) {
     wlc_roundtrip(c);
 }
 
+// --- background-effect ----------------------------------------------------------------
+
+static struct ext_background_effect_manager_v1* be_manager;
+static uint32_t be_caps;
+static bool be_got_caps;
+
+static void be_capabilities(void* d, struct ext_background_effect_manager_v1* m, uint32_t flags) {
+    (void)d;
+    (void)m;
+    be_caps = flags;
+    be_got_caps = true;
+    wlc_log("background effect capabilities 0x%x", flags);
+}
+static const struct ext_background_effect_manager_v1_listener be_manager_listener = {
+    .capabilities = be_capabilities,
+};
+
+static void be_registry_global(void* d, struct wl_registry* reg, uint32_t name, const char* iface, uint32_t ver) {
+    (void)d;
+    (void)ver;
+    if (!strcmp(iface, ext_background_effect_manager_v1_interface.name)) {
+        be_manager = wl_registry_bind(reg, name, &ext_background_effect_manager_v1_interface, 1);
+        ext_background_effect_manager_v1_add_listener(be_manager, &be_manager_listener, NULL);
+    }
+}
+static void be_registry_remove(void* d, struct wl_registry* reg, uint32_t name) {
+    (void)d;
+    (void)reg;
+    (void)name;
+}
+static const struct wl_registry_listener be_registry_listener = {
+    .global = be_registry_global,
+    .global_remove = be_registry_remove,
+};
+
+// Two effect objects on one surface is a background_effect_exists error; the client that does
+// it is expected to be killed, and the compositor to keep serving everyone else.
+static void be_double_effect(struct wlc* c) {
+    struct wl_registry* reg = wl_display_get_registry(c->display);
+    be_manager = NULL;
+    wl_registry_add_listener(reg, &be_registry_listener, NULL);
+    wlc_roundtrip(c);
+    if (!be_manager)
+        return;
+    struct win* w = wlc_toplevel(c, 300, 200, "fenriz-test be-abuse");
+    wlc_map(w, BLUE);
+    ext_background_effect_manager_v1_get_background_effect(be_manager, w->surface);
+    ext_background_effect_manager_v1_get_background_effect(be_manager, w->surface);
+    wlc_roundtrip(c);
+}
+
+static void s_background_effect(struct wlc* c) {
+    be_manager = NULL;
+    be_caps = 0;
+    be_got_caps = false;
+
+    wlc_phase("binding ext_background_effect_manager_v1");
+    struct wl_registry* reg = wl_display_get_registry(c->display);
+    wl_registry_add_listener(reg, &be_registry_listener, NULL);
+    wlc_roundtrip(c);
+    if (!be_manager)
+        wlc_die("compositor does not advertise ext_background_effect_manager_v1");
+    wlc_roundtrip(c); // the bind only reaches the server at the end of the roundtrip above
+
+    // Capabilities arrive on bind. tests/config/background-effect.conf turns blur on, so the
+    // bit has to be set — which also proves the config knob reaches the protocol.
+    if (!be_got_caps)
+        wlc_die("no capabilities event on bind; clients cannot tell what is supported");
+    if (!(be_caps & EXT_BACKGROUND_EFFECT_MANAGER_V1_CAPABILITY_BLUR))
+        wlc_die("compositor reports no blur capability (0x%x) with blur enabled in its config", be_caps);
+
+    struct win* w = wlc_toplevel(c, 400, 300, "fenriz-test be-window");
+    wlc_map(w, BLUE);
+
+    wlc_phase("setting a blur region");
+    struct ext_background_effect_surface_v1* fx =
+        ext_background_effect_manager_v1_get_background_effect(be_manager, w->surface);
+    struct wl_region* r = wl_compositor_create_region(c->compositor);
+    wl_region_add(r, 0, 0, 200, 150);
+    ext_background_effect_surface_v1_set_blur_region(fx, r);
+    wl_region_destroy(r); // copy semantics: legal immediately
+    wlc_paint(w, BLUE);   // the region is double-buffered; this commit is what applies it
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
+
+    // A region of several rectangles, which is one blur node each on the compositor side.
+    wlc_phase("replacing it with a multi-rectangle region");
+    r = wl_compositor_create_region(c->compositor);
+    wl_region_add(r, 0, 0, 400, 40);
+    wl_region_add(r, 0, 260, 400, 40);
+    wl_region_add(r, 180, 40, 40, 220);
+    ext_background_effect_surface_v1_set_blur_region(fx, r);
+    wl_region_destroy(r);
+    wlc_paint(w, BLUE);
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
+
+    // Setting a region without committing must not apply it, and must not upset anything.
+    wlc_phase("leaving a region pending, uncommitted");
+    r = wl_compositor_create_region(c->compositor);
+    wl_region_add(r, 0, 0, 50, 50);
+    ext_background_effect_surface_v1_set_blur_region(fx, r);
+    wl_region_destroy(r);
+    wlc_roundtrip(c);
+    wlc_pump(c, 100);
+
+    wlc_phase("clearing the region with NULL");
+    ext_background_effect_surface_v1_set_blur_region(fx, NULL);
+    wlc_paint(w, BLUE);
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
+    wlc_hold_point(c);
+
+    // Destroying the effect with a region still live is the ordinary teardown path.
+    r = wl_compositor_create_region(c->compositor);
+    wl_region_add(r, 0, 0, 100, 100);
+    ext_background_effect_surface_v1_set_blur_region(fx, r);
+    wl_region_destroy(r);
+    wlc_paint(w, BLUE);
+    wlc_roundtrip(c);
+    ext_background_effect_surface_v1_destroy(fx);
+    wlc_roundtrip(c);
+    wlc_pump(c, 100);
+
+    // A second effect object is legal once the first is gone.
+    wlc_phase("re-attaching an effect after destroying the first");
+    struct ext_background_effect_surface_v1* fx2 =
+        ext_background_effect_manager_v1_get_background_effect(be_manager, w->surface);
+    wlc_roundtrip(c);
+    ext_background_effect_surface_v1_destroy(fx2);
+
+    // An effect whose surface dies under it goes inert rather than taking anything with it.
+    wlc_phase("destroying a window under a live effect");
+    struct win* doomed = wlc_toplevel(c, 300, 200, "fenriz-test be-doomed");
+    wlc_map(doomed, GREEN);
+    struct ext_background_effect_surface_v1* fx3 =
+        ext_background_effect_manager_v1_get_background_effect(be_manager, doomed->surface);
+    r = wl_compositor_create_region(c->compositor);
+    wl_region_add(r, 0, 0, 300, 200);
+    ext_background_effect_surface_v1_set_blur_region(fx3, r);
+    wl_region_destroy(r);
+    wlc_paint(doomed, GREEN);
+    wlc_roundtrip(c);
+    wlc_destroy(doomed);
+    wlc_roundtrip(c);
+    ext_background_effect_surface_v1_destroy(fx3); // the object outlives its surface
+    wlc_roundtrip(c);
+
+    if (!wlc_abuse(c, "two background effects on one surface", be_double_effect))
+        wlc_die("a second effect on one surface was accepted; background_effect_exists is not enforced");
+
+    ext_background_effect_manager_v1_destroy(be_manager);
+    wlc_destroy(w);
+    wlc_roundtrip(c);
+}
+
+// --- kde-blur -------------------------------------------------------------------------
+
+static struct org_kde_kwin_blur_manager* kb_manager;
+
+static void kb_registry_global(void* d, struct wl_registry* reg, uint32_t name, const char* iface, uint32_t ver) {
+    (void)d;
+    (void)ver;
+    if (!strcmp(iface, org_kde_kwin_blur_manager_interface.name))
+        kb_manager = wl_registry_bind(reg, name, &org_kde_kwin_blur_manager_interface, 1);
+}
+static void kb_registry_remove(void* d, struct wl_registry* reg, uint32_t name) {
+    (void)d;
+    (void)reg;
+    (void)name;
+}
+static const struct wl_registry_listener kb_registry_listener = {
+    .global = kb_registry_global,
+    .global_remove = kb_registry_remove,
+};
+
+static void s_kde_blur(struct wlc* c) {
+    kb_manager = NULL;
+
+    wlc_phase("binding org_kde_kwin_blur_manager");
+    struct wl_registry* reg = wl_display_get_registry(c->display);
+    wl_registry_add_listener(reg, &kb_registry_listener, NULL);
+    wlc_roundtrip(c);
+    if (!kb_manager)
+        wlc_die("compositor does not advertise org_kde_kwin_blur_manager");
+
+    struct win* w = wlc_toplevel(c, 400, 300, "fenriz-test kde-blur-window");
+    wlc_map(w, BLUE);
+
+    // Exactly what Ghostty sends: create, commit, never a region. In this protocol that means
+    // "blur the whole surface" — unlike ext-background-effect-v1, whose region starts empty and
+    // blurs nothing. A compositor that treats them the same accepts all of this and draws no
+    // blur at all, which is a silent no-op rather than an error.
+    wlc_phase("create + commit with no region, the way Ghostty asks");
+    struct org_kde_kwin_blur* b = org_kde_kwin_blur_manager_create(kb_manager, w->surface);
+    org_kde_kwin_blur_commit(b);
+    wlc_paint(w, BLUE);
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
+
+    wlc_phase("narrowing it to a region, then back to the whole surface");
+    struct wl_region* r = wl_compositor_create_region(c->compositor);
+    wl_region_add(r, 10, 10, 100, 80);
+    org_kde_kwin_blur_set_region(b, r);
+    wl_region_destroy(r);
+    org_kde_kwin_blur_commit(b);
+    wlc_paint(w, BLUE);
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
+
+    org_kde_kwin_blur_set_region(b, NULL); // NULL here means all of it, not none
+    org_kde_kwin_blur_commit(b);
+    wlc_paint(w, BLUE);
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
+
+    // Creating a second blur for the same surface replaces the first; clients were written
+    // against a compositor that allows it, so it must not be an error.
+    wlc_phase("creating a second blur for the same surface");
+    struct org_kde_kwin_blur* b2 = org_kde_kwin_blur_manager_create(kb_manager, w->surface);
+    org_kde_kwin_blur_commit(b2);
+    wlc_roundtrip(c);
+    wlc_pump(c, 100);
+    wlc_hold_point(c);
+
+    wlc_phase("unset, then release");
+    org_kde_kwin_blur_manager_unset(kb_manager, w->surface);
+    wlc_paint(w, BLUE);
+    wlc_roundtrip(c);
+    org_kde_kwin_blur_release(b2);
+    wlc_roundtrip(c);
+
+    // A blur object outliving its surface must go inert, not take the compositor with it.
+    wlc_phase("destroying a window under a live blur object");
+    struct win* doomed = wlc_toplevel(c, 300, 200, "fenriz-test kde-blur-doomed");
+    wlc_map(doomed, GREEN);
+    struct org_kde_kwin_blur* b3 = org_kde_kwin_blur_manager_create(kb_manager, doomed->surface);
+    org_kde_kwin_blur_commit(b3);
+    wlc_paint(doomed, GREEN);
+    wlc_roundtrip(c);
+    wlc_destroy(doomed);
+    wlc_roundtrip(c);
+    org_kde_kwin_blur_set_region(b3, NULL); // legal, and must be ignored rather than crash
+    org_kde_kwin_blur_release(b3);
+    wlc_roundtrip(c);
+
+    wlc_destroy(w);
+    wlc_roundtrip(c);
+}
+
+// --- pixels ---------------------------------------------------------------------------
+// Everything else in this file asserts that a protocol was accepted. This one asserts what
+// the compositor actually drew, by taking a screenshot and reading it back — the only way to
+// catch geometry and effects going wrong. The blur corner bug that shipped once (a blur
+// rectangle painting over a window's rounded corner) is invisible to every other scenario
+// here and is caught below.
+
+static void s_pixels(struct wlc* c) {
+    if (c->out_w <= 0 || c->out_h <= 0)
+        wlc_die("no output mode; nothing to compute expected coordinates from");
+    const int W = c->out_w, H = c->out_h;
+
+    wlc_phase("mapping a window that fills the output");
+    struct win* bg = wlc_toplevel(c, W, H, "fenriz-test pixels-bg");
+    wlc_map(bg, RED);
+    wlc_pump(c, 200);
+
+    struct wlc_shot* shot = wlc_capture(c, 0);
+    if (shot->width != W || shot->height != H)
+        wlc_die("screenshot is %dx%d, the output is %dx%d", shot->width, shot->height, W, H);
+
+    // The oracle's own self-test: with no gaps and no border the window IS the output, so its
+    // colour has to be at the centre. If this fails the screenshot is not what we think it is
+    // and nothing below means anything.
+    const uint32_t centre = wlc_pixel(shot, W / 2, H / 2);
+    if (!wlc_color_near(centre, RED, 4))
+        wlc_die("centre of a full-screen window is %s, expected %s", wlc_color_str(centre), wlc_color_str(RED));
+
+    // Rounded corners cut the window away, so the very corner shows the desktop behind it.
+    // A window drawn square would report its own colour here.
+    const uint32_t corner = wlc_pixel(shot, 1, 1);
+    if (wlc_color_near(corner, RED, 24))
+        wlc_die("pixel 1,1 is %s — the window's own colour, so its corner was not rounded", wlc_color_str(corner));
+    // ...and just inside the curve it is the window again, which is what stops the check above
+    // passing for a window that simply is not there.
+    const uint32_t inside = wlc_pixel(shot, 40, 40);
+    if (!wlc_color_near(inside, RED, 4))
+        wlc_die("pixel 40,40 is %s, expected the window colour %s just inside the corner radius",
+                wlc_color_str(inside),
+                wlc_color_str(RED));
+    wlc_shot_free(shot);
+    wlc_log("full-screen window, centre and rounded corner all where they should be");
+
+    // A second window, floated and centred by the scenario's config so it sits over the middle
+    // of the red one, translucent, and asking for blur across itself. Its rounded corner has to
+    // show the red window crisply: the blur node is a rectangle, and if it is not rounded to
+    // match, it paints its own processed version of red over exactly these pixels.
+    wlc_phase("floating a blurred window over it");
+    be_manager = NULL;
+    struct wl_registry* reg = wl_display_get_registry(c->display);
+    wl_registry_add_listener(reg, &be_registry_listener, NULL);
+    wlc_roundtrip(c);
+    wlc_roundtrip(c);
+    if (!be_manager)
+        wlc_die("compositor does not advertise ext_background_effect_manager_v1");
+
+    struct win* top = wlc_toplevel(c, 300, 220, "fenriz-test pixels-float");
+    struct ext_background_effect_surface_v1* fx =
+        ext_background_effect_manager_v1_get_background_effect(be_manager, top->surface);
+    struct wl_region* r = wl_compositor_create_region(c->compositor);
+    wl_region_add(r, 0, 0, 300, 220);
+    ext_background_effect_surface_v1_set_blur_region(fx, r);
+    wl_region_destroy(r);
+    wlc_map(top, 0x30202020u); // premultiplied, mostly transparent: the blur is what shows
+    wlc_pump(c, 300);
+
+    // Centred with no gaps and no border, so its top-left is exactly here.
+    const int fw = 300, fh = 220;
+    const int fx0 = (W - fw) / 2, fy0 = (H - fh) / 2;
+
+    shot = wlc_capture(c, 0);
+    // Inside the float, the red behind is blurred and tinted, so it must NOT still read as
+    // plain red — otherwise the blur never happened and the corner check below proves nothing.
+    const uint32_t middle = wlc_pixel(shot, fx0 + fw / 2, fy0 + fh / 2);
+    if (wlc_color_near(middle, RED, 4))
+        wlc_die("centre of the blurred window is plain %s; no blur was drawn, so the corner "
+                "assertion cannot fail either",
+                wlc_color_str(middle));
+    // The corner: rounded away, so the red window shows through untouched.
+    const uint32_t fcorner = wlc_pixel(shot, fx0 + 2, fy0 + 2);
+    if (!wlc_color_near(fcorner, RED, 8))
+        wlc_die("pixel %d,%d is %s, expected the window behind (%s) — the blur squared off the "
+                "rounded corner",
+                fx0 + 2,
+                fy0 + 2,
+                wlc_color_str(fcorner),
+                wlc_color_str(RED));
+    wlc_shot_free(shot);
+    wlc_log("blur is drawn, and stops at the rounded corner");
+
+    // A region far bigger than the surface. The protocol says the compositor clips it to the
+    // surface; a compositor that takes it at face value blurs a chunk of the screen the window
+    // does not own — and any client could ask for that.
+    wlc_phase("asking to blur far more than the window");
+    r = wl_compositor_create_region(c->compositor);
+    wl_region_add(r, -500, -500, 4000, 4000);
+    ext_background_effect_surface_v1_set_blur_region(fx, r);
+    wl_region_destroy(r);
+    wlc_paint(top, 0x30202020u);
+    wlc_roundtrip(c);
+    wlc_pump(c, 250);
+
+    shot = wlc_capture(c, 0);
+    // Well outside the float, over the red window: still crisp red if the region was clipped.
+    const uint32_t outside = wlc_pixel(shot, fx0 - 60, fy0 + fh / 2);
+    if (!wlc_color_near(outside, RED, 8))
+        wlc_die("pixel %d,%d is %s, expected %s — blur escaped the window that asked for it",
+                fx0 - 60,
+                fy0 + fh / 2,
+                wlc_color_str(outside),
+                wlc_color_str(RED));
+    wlc_shot_free(shot);
+    wlc_log("an oversized region stays inside the window");
+
+    ext_background_effect_surface_v1_destroy(fx);
+    wlc_destroy(top);
+    wlc_destroy(bg);
+    wlc_roundtrip(c);
+}
+
+// --- layer-blur -----------------------------------------------------------------------
+// Blur on a layer surface (a bar), which is where the node lifetime is hardest: the blur nodes
+// are siblings of the surface's scene subtree, so nothing moves, hides or frees them with it.
+
+static void s_layer_blur(struct wlc* c) {
+    be_manager = NULL;
+    struct wl_registry* reg = wl_display_get_registry(c->display);
+    wl_registry_add_listener(reg, &be_registry_listener, NULL);
+    wlc_roundtrip(c);
+    wlc_roundtrip(c);
+    if (!be_manager)
+        wlc_die("compositor does not advertise ext_background_effect_manager_v1");
+    if (!c->layer_shell)
+        wlc_die("compositor has no zwlr_layer_shell_v1");
+
+    // Something behind the bar to blur.
+    struct win* bg = wlc_toplevel(c, 400, 300, "fenriz-test layer-blur-bg");
+    wlc_map(bg, RED);
+
+    wlc_phase("mapping a blurred layer surface");
+    struct win* bar = wlc_layer(c, "fenriz-test-bar", ZWLR_LAYER_SHELL_V1_LAYER_TOP);
+    struct ext_background_effect_surface_v1* fx =
+        ext_background_effect_manager_v1_get_background_effect(be_manager, bar->surface);
+    struct wl_region* r = wl_compositor_create_region(c->compositor);
+    wl_region_add(r, 0, 0, 4000, 4000); // clipped to the surface by the compositor
+    ext_background_effect_surface_v1_set_blur_region(fx, r);
+    wl_region_destroy(r);
+    wlc_map(bar, 0x40202020u);
+    wlc_pump(c, 200);
+
+    // Moving between layers reparents the surface's subtree. The blur nodes live in the tree it
+    // came from, and putting them back under a surface that is now somewhere else is not
+    // something the scene graph allows.
+    wlc_phase("moving the blurred layer surface to another layer");
+    zwlr_layer_surface_v1_set_layer(bar->layer, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
+    wl_surface_commit(bar->surface);
+    wlc_roundtrip(c);
+    wlc_pump(c, 200);
+    zwlr_layer_surface_v1_set_layer(bar->layer, ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM);
+    wl_surface_commit(bar->surface);
+    wlc_roundtrip(c);
+    wlc_pump(c, 200);
+    wlc_hold_point(c);
+
+    wlc_phase("tearing the blurred layer surface down");
+    wlc_destroy(bar);
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
+
+    // Re-map one, to prove the teardown left nothing behind that a second surface trips over.
+    struct win* bar2 = wlc_layer(c, "fenriz-test-bar2", ZWLR_LAYER_SHELL_V1_LAYER_TOP);
+    struct ext_background_effect_surface_v1* fx2 =
+        ext_background_effect_manager_v1_get_background_effect(be_manager, bar2->surface);
+    r = wl_compositor_create_region(c->compositor);
+    wl_region_add(r, 0, 0, 200, 60);
+    ext_background_effect_surface_v1_set_blur_region(fx2, r);
+    wl_region_destroy(r);
+    wlc_map(bar2, 0x40202020u);
+    wlc_pump(c, 200);
+
+    ext_background_effect_surface_v1_destroy(fx2);
+    ext_background_effect_surface_v1_destroy(fx);
+    wlc_destroy(bar2);
+    wlc_destroy(bg);
+    wlc_roundtrip(c);
+}
+
+// --- blur-off -------------------------------------------------------------------------
+
+static void s_blur_off(struct wlc* c) {
+    be_manager = NULL;
+    be_caps = 0;
+    be_got_caps = false;
+
+    struct wl_registry* reg = wl_display_get_registry(c->display);
+    wl_registry_add_listener(reg, &be_registry_listener, NULL);
+    wlc_roundtrip(c);
+    wlc_roundtrip(c);
+    if (!be_manager)
+        wlc_die("compositor does not advertise ext_background_effect_manager_v1 with blur off");
+    if (!be_got_caps)
+        wlc_die("no capabilities event on bind");
+    if (be_caps & EXT_BACKGROUND_EFFECT_MANAGER_V1_CAPABILITY_BLUR)
+        wlc_die("compositor claims it can blur (0x%x) with blur disabled in its config", be_caps);
+
+    // Asking anyway is legal and must be accepted quietly — the protocol's answer to a missing
+    // capability is that no effect is applied, not that the client is at fault.
+    wlc_phase("asking for blur anyway");
+    struct win* bg = wlc_toplevel(c, 400, 300, "fenriz-test blur-off-bg");
+    wlc_map(bg, RED);
+    struct ext_background_effect_surface_v1* fx =
+        ext_background_effect_manager_v1_get_background_effect(be_manager, bg->surface);
+    struct wl_region* r = wl_compositor_create_region(c->compositor);
+    wl_region_add(r, 0, 0, 400, 300);
+    ext_background_effect_surface_v1_set_blur_region(fx, r);
+    wl_region_destroy(r);
+    wlc_paint(bg, RED);
+    wlc_roundtrip(c);
+    wlc_pump(c, 200);
+
+    // ...and nothing is drawn: with no gaps or border the window is the output, so its own
+    // colour has to come back untouched by any blur pass.
+    struct wlc_shot* shot = wlc_capture(c, 0);
+    const uint32_t px = wlc_pixel(shot, c->out_w / 2, c->out_h / 2);
+    if (!wlc_color_near(px, RED, 4))
+        wlc_die("pixel is %s, expected an untouched %s — something was blurred with blur off",
+                wlc_color_str(px),
+                wlc_color_str(RED));
+    wlc_shot_free(shot);
+
+    ext_background_effect_surface_v1_destroy(fx);
+    ext_background_effect_manager_v1_destroy(be_manager);
+    wlc_destroy(bg);
+    wlc_roundtrip(c);
+}
+
 const struct scenario scenarios[] = {
     {"popup", s_popup, "toplevel -> popup -> nested popup, grab, reposition, off-screen anchor"},
     {"layer-popup", s_layer_popup, "corner-anchored popup and submenu on a full-output layer surface"},
@@ -2208,6 +2712,11 @@ const struct scenario scenarios[] = {
     {"bell", s_bell, "xdg-system-bell-v1: a bell flags the window it names, not the focused one"},
     {"alpha", s_alpha, "alpha-modifier-v1: per-surface opacity accepted across its whole range"},
     {"fixes", s_fixes, "wl_fixes: registries can be destroyed and the compositor keeps serving"},
+    {"background-effect", s_background_effect, "ext-background-effect-v1: capabilities, region latching, teardown"},
+    {"kde-blur", s_kde_blur, "org_kde_kwin_blur: whole-surface default, regions, replace, unset"},
+    {"pixels", s_pixels, "screenshot oracle: window geometry, rounded corners, blur stops at them"},
+    {"layer-blur", s_layer_blur, "blur on a layer surface: layer changes, teardown, re-map"},
+    {"blur-off", s_blur_off, "blur disabled: no capability advertised, nothing drawn"},
     {"evil", s_evil, "stale acks, commits between configures, self-resize, destroy/recreate"},
     {NULL, NULL, NULL},
 };
