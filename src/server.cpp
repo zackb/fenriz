@@ -6,6 +6,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "background_blur.hpp"
 #include "cursor.hpp"
 #include "decoration.hpp"
 #include "ipc.hpp"
@@ -567,6 +568,10 @@ namespace fenriz {
         // alpha-modifier-v1: a client sets its own surface opacity, read back in apply_view_effects.
         wlr_alpha_modifier_v1_create(display);
 
+        // ext-background-effect-v1: a client asks for the background behind part of its
+        // surface to be blurred. Needs the scene, which exists by now.
+        background_blur::init(*this);
+
         // wl_fixes: lets a client destroy a wl_registry.
         wlr_fixes_create(display, 1);
 
@@ -714,6 +719,8 @@ namespace fenriz {
         // Re-apply output mode/scale/position and workspace homes, then re-home + re-arrange.
         output::apply_config(server);
         cursor::reload(server); // `cursor =` / `cursor_size =` re-theme the pointer live
+        // `blur` toggling changes the advertised capability, which clients are told about.
+        background_blur::reload(server);
         for (View* v : server.views)
             place_view_nodes(v); // border width/color/rounding on all views (incl. floating)
         wlr_log(WLR_INFO, "fenriz: config reloaded from %s", server.config.source.c_str());

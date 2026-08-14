@@ -1,6 +1,7 @@
 #pragma once
 
-#include <string>
+#include "background_blur.hpp"
+
 #include <wayland-server-core.h>
 
 struct wlr_xdg_toplevel;
@@ -11,6 +12,7 @@ struct wlr_ext_foreign_toplevel_handle_v1;
 struct wlr_scene_tree;
 struct wlr_scene_rect;
 struct wlr_scene_shadow;
+struct wlr_scene_blur;
 struct wlr_scene_buffer;
 struct wlr_buffer;
 struct wlr_scene;
@@ -91,6 +93,9 @@ namespace fenriz {
         wlr_scene_tree* popup_tree = nullptr;
         wlr_scene_rect* border = nullptr;
         wlr_scene_shadow* shadow = nullptr; // soft glow, bottom-most; enabled only when focused
+
+        // ext-background-effect-v1: blur nodes under this window's surface, one per region rect.
+        wlr_scene_blur* blur[background_blur::RECTS_MAX] = {};
 
         // Gradient border, drawn instead of `border` when border_gradient is set and the view is focused.
         wlr_scene_buffer* grad_edge[4] = {};

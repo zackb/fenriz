@@ -71,8 +71,11 @@ namespace fenriz {
         uint32_t border_gradient = 0;          // RGBA — second accent washed across the focused border; 0 = flat
         float border_gradient_ease = 1.0f;     // 0 = linear sweep, 1 = smoothstep
         bool shadow = true;                    // soft glow behind the focused window
-        uint32_t shadow_color = 0x00000055;    // RGBA — alpha = glow intensity; hue tracks border_active
-        int shadow_blur = 28;                  // blur sigma (px) — wider halo = softer falloff
+        bool blur = true;
+        int blur_passes = 2;
+        int blur_radius = 5;
+        uint32_t shadow_color = 0x00000055; // RGBA — alpha = glow intensity; hue tracks border_active
+        int shadow_blur = 28;               // blur sigma (px) — wider halo = softer falloff
         int gaps = 8;
         Margin margin{};
         int rounding = 10;

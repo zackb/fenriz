@@ -11,6 +11,7 @@
 #include "fractional-scale-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
+#include "wlr-screencopy-unstable-v1-client-protocol.h"
 #include "wlr-virtual-pointer-unstable-v1-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
@@ -36,6 +37,7 @@ struct wlc {
     struct wp_viewporter* viewporter;
     struct wp_fractional_scale_manager_v1* frac_scale;
     struct zwlr_layer_shell_v1* layer_shell;
+    struct zwlr_screencopy_manager_v1* screencopy;
     struct zwlr_virtual_pointer_manager_v1* vpm;
     struct zwlr_virtual_pointer_v1* vp; // created by wlc_pointer_init
 
@@ -113,6 +115,25 @@ void wlc_map(struct win* w, uint32_t argb);
 
 struct wl_buffer* wlc_buffer(struct wlc* c, int w, int h, uint32_t argb);
 
+// A screenshot of what the compositor actually put on an output — the only way a test can
+// check geometry and effects (rounding, borders, blur) rather than trusting that a protocol
+// was accepted. Pixels are 0xAARRGGBB, already un-inverted, in output-local coordinates.
+struct wlc_shot {
+    int width, height;
+    uint32_t* px;
+    void* map;
+    size_t map_size;
+    struct wl_buffer* buffer;
+};
+struct wlc_shot* wlc_capture(struct wlc* c, int output);
+uint32_t wlc_pixel(const struct wlc_shot* s, int x, int y);
+void wlc_shot_free(struct wlc_shot* s);
+// True when the two colours match within `tol` on every channel; alpha is ignored, since a
+// screenshot of an opaque output carries none.
+bool wlc_color_near(uint32_t a, uint32_t b, int tol);
+// Describe a pixel for a failure message: "0xRRGGBB".
+const char* wlc_color_str(uint32_t c);
+
 // Injected pointer, via the virtual-pointer protocol: the headless backend has no input
 // devices, so without this nothing can produce the button press that a drag grab.
 void wlc_pointer_init(struct wlc* c);
@@ -121,7 +142,9 @@ void wlc_pointer_button(struct wlc* c, uint32_t button, bool pressed);
 
 // Run an outright protocol violation in a throwaway child on its own connection. The
 // child is expected to be killed; the assertion is that `c` is still live afterwards.
-void wlc_abuse(struct wlc* c, const char* what, void (*fn)(struct wlc*));
+// Returns whether the compositor actually rejected it, for the callers that want to insist —
+// most just record the outcome, since a violation fenriz knowingly tolerates is not a failure.
+bool wlc_abuse(struct wlc* c, const char* what, void (*fn)(struct wlc*));
 
 // With --hold, park here with everything mapped so the surfaces can be looked at.
 extern bool wlc_hold;

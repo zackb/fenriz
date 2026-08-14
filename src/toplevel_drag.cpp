@@ -128,9 +128,11 @@ namespace fenriz::toplevel_drag {
 
         void drag_resource_destroy(wl_resource* resource) {
             Drag* d = drag_from_resource(resource);
-            unwatch_toplevel(d);
+            // Order matters. on_drag_destroy resolves the dragged window through d->toplevel to put it back in the
+            // layout, and unwatch_toplevel is what clears that.
             if (state.active == d)
                 on_drag_destroy(&state.drag_destroy, nullptr);
+            unwatch_toplevel(d);
             std::erase(state.drags, d);
             delete d;
         }

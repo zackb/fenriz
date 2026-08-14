@@ -1,5 +1,7 @@
 #include "layer.hpp"
 
+#include "background_blur.hpp"
+
 #include "server.hpp"
 #include "tiling.hpp"
 #include "view.hpp"
@@ -94,6 +96,7 @@ namespace fenriz::layer {
             LayerSurface* ls = wl_container_of(listener, ls, destroy);
             (void)data;
             Server& server = *ls->server;
+            background_blur::clear(ls->blur);
             wl_list_remove(&ls->map.link);
             wl_list_remove(&ls->unmap.link);
             wl_list_remove(&ls->commit.link);
@@ -136,6 +139,24 @@ namespace fenriz::layer {
 
     } // namespace
 
+    void place_blur(LayerSurface* ls) {
+        if (!ls->scene)
+            return;
+        if (!ls->mapped) {
+            background_blur::clear(ls->blur);
+            return;
+        }
+        const wlr_box content = {0, 0, ls->handle->surface->current.width, ls->handle->surface->current.height};
+        background_blur::place(ls->handle->surface,
+                               ls->scene->tree->node.parent,
+                               &ls->scene->tree->node,
+                               ls->scene->tree->node.x,
+                               ls->scene->tree->node.y,
+                               content,
+                               0, // fenriz does not round layer surfaces
+                               ls->blur);
+    }
+
     // Configure every layer surface and recompute each output's usable_area. Returns true if
     // any output's usable area actually moved or resized.
     bool reconfigure(Server& server) {
@@ -166,6 +187,7 @@ namespace fenriz::layer {
                         if ((ls->handle->current.exclusive_zone > 0) != exclusive)
                             continue;
                         wlr_scene_layer_surface_v1_configure(ls->scene, &full, &usable);
+                        place_blur(ls);
                     }
 
             out->usable_area = {usable.x, usable.y, usable.width, usable.height};
