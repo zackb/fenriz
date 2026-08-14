@@ -576,8 +576,16 @@ namespace fenriz {
     }
 
     void focus_surface(Server& server, wlr_surface* surface) {
-        if (wlr_keyboard* kb = wlr_seat_get_keyboard(server.seat))
-            wlr_seat_keyboard_notify_enter(server.seat, surface, kb->keycodes, kb->num_keycodes, &kb->modifiers);
+        wlr_keyboard* kb = wlr_seat_get_keyboard(server.seat);
+        if (!kb)
+            return;
+        // keys a bind swallowed stay invisible
+        uint32_t keys[WLR_KEYBOARD_KEYS_CAP];
+        size_t n = 0;
+        for (size_t i = 0; i < kb->num_keycodes; i++)
+            if (!server.bound_keys.count(kb->keycodes[i]))
+                keys[n++] = kb->keycodes[i];
+        wlr_seat_keyboard_notify_enter(server.seat, surface, keys, n, &kb->modifiers);
     }
 
     // Move a view to the tail of the list, which is the top of the stacking/cycle order.

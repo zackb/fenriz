@@ -151,6 +151,7 @@ namespace fenriz {
                 for (int i = 0; i < n; i++) {
                     if (const unsigned vt = vt_for_keysym(syms[i])) {
                         stop_repeat(server);
+                        server.bound_keys.insert(event->keycode);
                         if (server.session) // null when nested: no VT to switch to
                             wlr_session_change_vt(server.session, vt);
                         return;
@@ -182,6 +183,7 @@ namespace fenriz {
                 for (int i = 0; i < nsyms; i++) {
                     if (const Bind* b = handle_keybind(server, mods, syms[i])) {
                         handled = true;
+                        server.bound_keys.insert(event->keycode);
                         // A repeating bind arms the timer; any other bind cancels a stale repeat.
                         if (b->repeat)
                             start_repeat(server, *b, keycode);
@@ -192,6 +194,10 @@ namespace fenriz {
                 }
             }
 
+            // The press went to a bind, drop the matching release so the client sees neither half.
+            if (event->state == WL_KEYBOARD_KEY_STATE_RELEASED && server.bound_keys.erase(event->keycode))
+                return;
+
             if (!handled) {
                 wlr_seat_set_keyboard(server.seat, kb);
                 wlr_seat_keyboard_notify_key(server.seat, event->time_msec, event->keycode, event->state);
@@ -201,6 +207,7 @@ namespace fenriz {
         void keyboard_handle_destroy(wl_listener* listener, void* data) {
             Keyboard* keyboard = wl_container_of(listener, keyboard, destroy);
             (void)data;
+            keyboard->server->bound_keys.clear();
             wl_list_remove(&keyboard->key.link);
             wl_list_remove(&keyboard->modifiers.link);
             wl_list_remove(&keyboard->destroy.link);

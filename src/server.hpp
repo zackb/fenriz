@@ -1,6 +1,7 @@
 #pragma once
 
 #include <list>
+#include <set>
 #include <string>
 #include <wayland-server-core.h>
 
@@ -148,6 +149,9 @@ namespace fenriz {
         Bind repeat_bind;
         // xkb keycode currently held; 0 = idle.
         uint32_t repeat_keycode = 0;
+
+        // Raw evdev keycodes whose press a keybind swallowed.
+        std::set<uint32_t> bound_keys;
 
         wl_display* display = nullptr;
         wlr_backend* backend = nullptr;
