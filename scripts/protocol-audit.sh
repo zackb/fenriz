@@ -51,6 +51,13 @@ classify() {
             return
         fi
     done
+    # A protocol wlroots has no helper for is implemented by including its generated server
+    # header, which is the same kind of proof as a create symbol — without this a hand-rolled
+    # protocol could only ever be "documented".
+    if grep -rqF "$key-server-protocol.h" "$SRC"; then
+        implemented+=("$key (hand-rolled)")
+        return
+    fi
     # Upstream files carry `-unstable-` where everyone (including the doc, and the interface
     # names themselves) writes the bare protocol name: pointer-constraints-unstable-v1 is
     # pointer-constraints-v1. One deterministic strip, not a fuzzy match.

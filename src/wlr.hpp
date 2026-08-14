@@ -27,6 +27,7 @@ extern "C" {
 #include <wlr/render/swapchain.h> // offscreen buffers for the zoom magnifier
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/render/wlr_texture.h> // wlr_texture_from_buffer, for the zoom blit
+#include <wlr/types/wlr_alpha_modifier_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_content_type_v1.h>
 #include <wlr/types/wlr_cursor.h>
@@ -38,6 +39,7 @@ extern "C" {
 #include <wlr/types/wlr_ext_image_capture_source_v1.h>
 #include <wlr/types/wlr_ext_image_copy_capture_v1.h>
 #include <wlr/types/wlr_ext_workspace_v1.h>
+#include <wlr/types/wlr_fixes.h>
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
@@ -93,7 +95,9 @@ extern "C" {
 #include <wlr/types/wlr_xdg_foreign_v2.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/types/wlr_xdg_system_bell_v1.h>
 #include <wlr/types/wlr_xdg_toplevel_icon_v1.h>
+#include <wlr/types/wlr_xdg_toplevel_tag_v1.h>
 #include <xcb/xcb.h>
 #include <xcb/xcb_ewmh.h>
 #include <xcb/xcb_icccm.h>

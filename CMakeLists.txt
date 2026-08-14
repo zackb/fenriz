@@ -43,9 +43,19 @@ add_custom_command(
     VERBATIM
 )
 
-pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 pkg_get_variable(WL_PROTO_DIR wayland-protocols pkgdatadir)
 
+set(TOPLEVEL_DRAG_HEADER ${CMAKE_CURRENT_BINARY_DIR}/xdg-toplevel-drag-v1-server-protocol.h)
+add_custom_command(
+    OUTPUT ${TOPLEVEL_DRAG_HEADER}
+    COMMAND ${WAYLAND_SCANNER} server-header
+            ${WL_PROTO_DIR}/staging/xdg-toplevel-drag/xdg-toplevel-drag-v1.xml
+            ${TOPLEVEL_DRAG_HEADER}
+    DEPENDS ${WL_PROTO_DIR}/staging/xdg-toplevel-drag/xdg-toplevel-drag-v1.xml
+    VERBATIM
+)
+
+pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 set(WL_CLIENT_PROTO_SRC "")
 function(wl_client_proto name xml)
     set(hdr ${CMAKE_CURRENT_BINARY_DIR}/${name}-client-protocol.h)
@@ -71,8 +81,16 @@ wl_client_proto(xdg-foreign-unstable-v1
                                      ${WL_PROTO_DIR}/unstable/xdg-foreign/xdg-foreign-unstable-v1.xml)
 wl_client_proto(xdg-foreign-unstable-v2
                                      ${WL_PROTO_DIR}/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml)
+wl_client_proto(xdg-toplevel-drag-v1 ${WL_PROTO_DIR}/staging/xdg-toplevel-drag/xdg-toplevel-drag-v1.xml)
+wl_client_proto(xdg-toplevel-tag-v1  ${WL_PROTO_DIR}/staging/xdg-toplevel-tag/xdg-toplevel-tag-v1.xml)
+wl_client_proto(alpha-modifier-v1    ${WL_PROTO_DIR}/staging/alpha-modifier/alpha-modifier-v1.xml)
+wl_client_proto(xdg-system-bell-v1   ${WL_PROTO_DIR}/staging/xdg-system-bell/xdg-system-bell-v1.xml)
 wl_client_proto(wlr-layer-shell-unstable-v1
                                      ${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-layer-shell-unstable-v1.xml)
+# The headless backend has no input devices, so the test client injects pointer motion and
+# clicks through the virtual-pointer protocol fenriz already implements.
+wl_client_proto(wlr-virtual-pointer-unstable-v1
+                                     ${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-virtual-pointer-unstable-v1.xml)
 
 add_executable(fenriz
     src/main.cpp
@@ -90,9 +108,14 @@ add_executable(fenriz
     src/decoration.cpp
     src/ipc.cpp
     src/workspace_protocol.cpp
+    src/toplevel_drag.cpp
+    src/toplevel_props.cpp
     src/xwayland.cpp
     ${LAYER_SHELL_HEADER}
     ${OUTPUT_POWER_HEADER}
+    ${TOPLEVEL_DRAG_HEADER}
+    ${CMAKE_CURRENT_BINARY_DIR}/xdg-toplevel-drag-v1-protocol.c
+    ${CMAKE_CURRENT_BINARY_DIR}/xdg-shell-protocol.c
 )
 
 # wlroots headers require this before inclusion
@@ -173,7 +196,7 @@ add_test(NAME ctl     COMMAND fenrizctl_test)
 # fails when wlroots or wayland-protocols offers a protocol that is in neither src/ nor docs/PROTOCOLS.md.
 add_test(NAME protocols COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/protocol-audit.sh)
 
-foreach(s popup layer-popup resize fullscreen dnd grab subsurface scale destroy-parent hotplug workspace foreign dialog icon evil)
+foreach(s popup layer-popup resize fullscreen dnd grab subsurface scale destroy-parent hotplug workspace foreign dialog icon toplevel-drag toplevel-tag bell alpha fixes evil)
     add_test(NAME wl-${s}
              COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/wltest.sh
                      --build-dir ${CMAKE_CURRENT_BINARY_DIR} ${s})

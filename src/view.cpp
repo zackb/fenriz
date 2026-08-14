@@ -11,6 +11,8 @@
 #include "ipc.hpp"
 #include "server.hpp"
 #include "tiling.hpp"
+#include "toplevel_drag.hpp"
+#include "toplevel_props.hpp"
 #include "wlr.hpp"
 
 namespace fenriz {
@@ -128,7 +130,13 @@ namespace fenriz {
             const int bw = v->fullscreen ? 0 : s.config.border_width;
             const int r = v->fullscreen ? 0 : std::max(0, s.config.rounding - bw);
             wlr_scene_buffer_set_corner_radius(buf, r);
-            wlr_scene_buffer_set_opacity(buf, v->fullscreen ? 1.0f : s.config.opacity);
+            // alpha-modifier-v1: a client's own opacity multiplies the compositor's
+            float alpha = v->fullscreen ? 1.0f : s.config.opacity;
+            if (wlr_scene_surface* ss = wlr_scene_surface_try_from_buffer(buf))
+                if (const wlr_alpha_modifier_surface_v1_state* am =
+                        wlr_alpha_modifier_v1_get_surface_state(ss->surface))
+                    alpha *= (float)am->multiplier;
+            wlr_scene_buffer_set_opacity(buf, alpha);
         }
 
         // Tell a toplevel it's tiled on all edges (or none). Advertising the tiled state is
@@ -190,6 +198,8 @@ namespace fenriz {
             // Window rules run before the scene tree is built (it branches on floating) and
             // before tiling/focus below.
             const bool no_focus = apply_window_rules(server, view);
+            // A window mapping into an in-flight toplevel drag belongs under the cursor.
+            toplevel_drag::adopt(view);
 
             // Build the scene nodes: a container tree holding the border rect (below), the
             // xdg surface subtree (inset by the border in place_view_nodes), and the popup
@@ -481,6 +491,14 @@ namespace fenriz {
         return view->kind == View::Kind::Xdg ? view->toplevel->title : view->xwl->title;
     }
 
+    const char* view_tag(View* view) {
+        return view->kind == View::Kind::Xdg ? toplevel_props::tag_of(view->toplevel) : "";
+    }
+
+    const char* view_icon(View* view) {
+        return view->kind == View::Kind::Xdg ? toplevel_props::icon_of(view->toplevel) : "";
+    }
+
     void view_min_size(const View* view, int& w, int& h) {
         // Client's minimum content size (window-geometry units, CSD excluded); 0 = no minimum.
         // X11 hints are optional (size_hints may be null before the client sets WM_NORMAL_HINTS,
@@ -665,6 +683,19 @@ namespace fenriz {
         ipc::publish(server);
     }
 
+    bool mark_urgent(Server& server, wlr_surface* surface, bool hidden_only) {
+        for (View* v : server.views) {
+            if (view_surface(v) != surface)
+                continue;
+            if (v == server.focused_view || (hidden_only && view_visible(server, v)))
+                return false;
+            v->urgent = true;
+            ipc::publish(server);
+            return true;
+        }
+        return false;
+    }
+
     void set_fullscreen(Server& server, View* view, bool on) {
         if (!view || view->fullscreen == on)
             return;
@@ -697,11 +728,10 @@ namespace fenriz {
         return {a.x, a.y, a.width, a.height};
     }
 
-    void toggle_floating(Server& server) {
-        View* v = server.focused_view;
-        if (!v)
+    void set_floating(Server& server, View* v, bool on) {
+        if (!v || v->floating == on)
             return;
-        v->floating = !v->floating;
+        v->floating = on;
         set_tiled(v, !v->floating); // floating -> normal (own size + shadow); tiled -> honor ours
         if (v->floating) {
             // Leave the tree (its slot is reclaimed by the sibling). Move to the list tail so it
@@ -742,6 +772,11 @@ namespace fenriz {
         }
         restack_view(server, v);
         tiling::arrange(server);
+    }
+
+    void toggle_floating(Server& server) {
+        if (View* v = server.focused_view)
+            set_floating(server, v, !v->floating);
     }
 
     void toggle_pin(Server& server) {
@@ -787,7 +822,8 @@ namespace fenriz {
         }
         // The matching itself is pure and lives in config.cpp, where it can be unit-tested
         // without a compositor (see test_config.cpp).
-        const RuleResult r = match_rules(server.config.window_rules, view_app_id(view), view_title(view));
+        const RuleResult r =
+            match_rules(server.config.window_rules, view_app_id(view), view_title(view), view_tag(view));
         if (r.floating)
             view->floating = true;
         if (r.center)

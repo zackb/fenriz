@@ -64,6 +64,11 @@ for s in "${SCENARIOS[@]}"; do
     log=$OUT/$s.log
     printf '%-16s ' "$s"
 
+    # A scenario that needs compositor config (a windowrule to match against) ships it next to
+    # the scenario code; everything else runs on the compiled-in defaults.
+    conf=$ROOT/tests/config/$s.conf
+    [ -f "$conf" ] && export FENRIZ_TEST_CONFIG=$conf || unset FENRIZ_TEST_CONFIG
+
     if ! fenriz_boot "$log" "$BACKEND" "$FENRIZ" >"$OUT/$s.boot" 2>&1; then
         results+=("$s BOOT-FAILED")
         echo "BOOT FAILED (see $OUT/$s.boot)"

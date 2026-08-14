@@ -58,9 +58,6 @@ namespace fenriz {
         bool float_self_sized = true;
         bool urgent = false; // asked to be activated while unfocused; cleared on focus
 
-        // xdg-toplevel-icon-v1: the XDG icon-theme name the client asked for, empty if none.
-        std::string icon;
-
         int req_w = 0, req_h = 0;
         bool acked = false;
 
@@ -127,6 +124,10 @@ namespace fenriz {
     wlr_surface* view_surface(View* view);
     const char* view_app_id(View* view); // xdg app_id, or X11 WM_CLASS
     const char* view_title(View* view);
+    // xdg-toplevel-tag-v1: the client's stable name for this window, "" if it set none (XWayland).
+    const char* view_tag(View* view);
+    // xdg-toplevel-icon-v1: the XDG icon-theme name the client asked for, same rules.
+    const char* view_icon(View* view);
     // Client's minimum content size (geometry units, CSD excluded); 0 = no minimum.
     void view_min_size(const View* view, int& w, int& h);
     // Client's maximum content size, 0 = no maximum
@@ -149,6 +150,9 @@ namespace fenriz {
     // Drop keyboard focus entirely (e.g. switching to an empty workspace).
     void clear_focus(Server& server);
 
+    // Flag the window owning `surface` as wanting attention. Focusing the window clears it again.
+    bool mark_urgent(Server& server, wlr_surface* surface, bool hidden_only);
+
     // Make a view cover the whole output (no border/gap, above the bar) or restore it
     // to tiling. Driven by client set_fullscreen requests and the fullscreen keybind.
     void set_fullscreen(Server& server, View* view, bool on);
@@ -156,8 +160,10 @@ namespace fenriz {
     // Toggle fullscreen on the currently focused view.
     void toggle_fullscreen(Server& server);
 
-    // Toggle floating on the currently focused view: pull it out of the tiling tree (or
-    // return it), so it can be freely moved/resized with the mouse.
+    // Pull a view out of the tiling tree (or return it to it), so it can be freely moved and resized.
+    void set_floating(Server& server, View* view, bool on);
+
+    // Toggle floating on the currently focused view.
     void toggle_floating(Server& server);
 
     // Toggle "pin" on the focused view (floating-only): a pinned float follows the active

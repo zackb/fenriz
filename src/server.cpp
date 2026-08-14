@@ -14,6 +14,8 @@
 #include "lock.hpp"
 #include "output.hpp"
 #include "tiling.hpp"
+#include "toplevel_drag.hpp"
+#include "toplevel_props.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
 #include "workspace_protocol.hpp"
@@ -28,19 +30,6 @@ namespace fenriz {
             // View registers its own map/unmap/destroy listeners and deletes itself on
             // destroy, so the raw new is intentional (not a leak).
             new View(*sl->server, static_cast<wlr_xdg_toplevel*>(data));
-        }
-
-        // xdg-toplevel-icon-v1. Only the icon name is kept: it is an XDG icon-theme name.
-        void on_set_icon(wl_listener* listener, void* data) {
-            SignalListener* sl = wl_container_of(listener, sl, listener);
-            auto* event = static_cast<wlr_xdg_toplevel_icon_manager_v1_set_icon_event*>(data);
-            for (View* v : sl->server->views) {
-                if (v->kind != View::Kind::Xdg || v->toplevel != event->toplevel)
-                    continue;
-                v->icon = event->icon && event->icon->name ? event->icon->name : "";
-                ipc::publish(*sl->server);
-                return;
-            }
         }
 
         // Per-popup state: popups need their own commit/destroy listeners, so each one gets a
@@ -288,6 +277,8 @@ namespace fenriz {
                 return;
             }
             wlr_seat_start_pointer_drag(seat, ev->drag, ev->serial);
+            // xdg-toplevel-drag rides on this drag
+            toplevel_drag::begin(*sl->server, ev->drag, ev->origin);
             // Render the drag icon: wire it into the scene above windows and let cursor motion
             // (process_motion) track it. wlroots frees the node when the icon is destroyed.
             if (ev->drag->icon) {
@@ -363,17 +354,16 @@ namespace fenriz {
         void on_activation_request(wl_listener* listener, void* data) {
             SignalListener* sl = wl_container_of(listener, sl, listener);
             auto* ev = static_cast<wlr_xdg_activation_v1_request_activate_event*>(data);
-            Server& s = *sl->server;
-            for (View* v : s.views) {
-                if (view_surface(v) != ev->surface)
-                    continue;
-                // Already looking at it: nothing to demand attention about.
-                if (v == s.focused_view || view_visible(s, v))
-                    return;
-                v->urgent = true;
-                ipc::publish(s);
-                return;
-            }
+            mark_urgent(*sl->server, ev->surface, true);
+        }
+
+        // xdg-system-bell-v1: the terminal bell (and anything else asking for attention)
+        void on_bell(wl_listener* listener, void* data) {
+            SignalListener* sl = wl_container_of(listener, sl, listener);
+            auto* ev = static_cast<wlr_xdg_system_bell_v1_ring_event*>(data);
+            // A bell with no surface is not attributable to a window; there is nothing to flag.
+            if (ev->surface)
+                mark_urgent(*sl->server, ev->surface, false);
         }
 
         // idle-inhibit-v1: a client holding an inhibitor (video/fullscreen) keeps the
@@ -566,9 +556,19 @@ namespace fenriz {
         // xdg-dialog-v1: a client marks a child toplevel as a dialog, optionally modal.
         wlr_xdg_wm_dialog_v1_create(display, 1);
 
-        // xdg-toplevel-icon-v1: a per-window icon for bars and window lists
-        wlr_xdg_toplevel_icon_manager_v1* icon_manager = wlr_xdg_toplevel_icon_manager_v1_create(display, 1);
-        add_listener(*this, l_set_icon, icon_manager->events.set_icon, on_set_icon);
+        // xdg-toplevel-tag-v1 + xdg-toplevel-icon-v1: the stable name a `windowrule` can match on, and the icon name
+        // the feed publishes.
+        toplevel_props::init(*this);
+
+        // xdg-system-bell-v1: a client rings; the window is flagged for the bar.
+        wlr_xdg_system_bell_v1* bell = wlr_xdg_system_bell_v1_create(display, 1);
+        add_listener(*this, l_bell, bell->events.ring, on_bell);
+
+        // alpha-modifier-v1: a client sets its own surface opacity, read back in apply_view_effects.
+        wlr_alpha_modifier_v1_create(display);
+
+        // wl_fixes: lets a client destroy a wl_registry.
+        wlr_fixes_create(display, 1);
 
         seat = wlr_seat_create(display, "seat0");
         wlr_seat_set_capabilities(seat, WL_SEAT_CAPABILITY_KEYBOARD | WL_SEAT_CAPABILITY_POINTER);
@@ -585,6 +585,8 @@ namespace fenriz {
             l_set_primary_selection.listener, seat->events.request_set_primary_selection, on_set_primary_selection);
         l_start_drag.server = this;
         add_listener(l_start_drag.listener, seat->events.request_start_drag, on_request_start_drag);
+        // xdg-toplevel-drag-v1 window rides along with a drag
+        toplevel_drag::init(*this);
         wlr_primary_selection_v1_device_manager_create(display);
         wlr_data_control_manager_v1_create(display);
         wlr_ext_data_control_manager_v1_create(display, 1);

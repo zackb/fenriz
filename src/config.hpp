@@ -43,6 +43,8 @@ namespace fenriz {
     struct WindowRule {
         std::string app_id; // regex; empty = match any
         std::string title;  // regex; empty = match any
+        // xdg-toplevel-tag-v1: the client's own name for this window, which does not change. Regex. empty = match any.
+        std::string tag;
         bool floating = false;
         bool center = false;
         bool no_focus = false; // don't take focus when it maps
@@ -133,9 +135,10 @@ namespace fenriz {
     };
 
     // Run `rules` in order against a window's identity. A pattern matches when it is empty
-    // (meaning "any") or its regex matches the value; a null app_id/title is treated as ""
+    // (meaning "any") or its regex matches the value; a null app_id/title/tag is treated as ""
     // so a `^$` rule can target unset identity. An invalid regex matches nothing.
-    RuleResult match_rules(const std::vector<WindowRule>& rules, const char* app_id, const char* title);
+    RuleResult
+        match_rules(const std::vector<WindowRule>& rules, const char* app_id, const char* title, const char* tag);
 
     // Should this toplevel float regardless of any rule
     bool auto_float(int min_w, int max_w, int min_h, int max_h, bool has_parent);

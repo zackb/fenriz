@@ -8,6 +8,7 @@
 #include "layer.hpp"
 #include "server.hpp"
 #include "tiling.hpp"
+#include "toplevel_drag.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
 
@@ -312,16 +313,24 @@ namespace fenriz::cursor {
             if (server.drag_icon)
                 wlr_scene_node_set_position(&server.drag_icon->node, (int)c->cursor->x, (int)c->cursor->y);
 
+            // xdg-toplevel-drag: a window attached to that drag follows the cursor too.
+            toplevel_drag::track(server);
+
             // While zoomed, the viewport re-centers on the cursor each frame
             if (server.zoom > 1.0f)
                 schedule_frame_at_cursor(c);
 
             const double lx = c->cursor->x, ly = c->cursor->y;
             double sx, sy;
-            // The scene graph resolves z-order (and the locked-only lock tree) for us. Keep the
-            // hit node so focus-follows-pointer can find the View from it, no second walk.
             wlr_scene_node* hit = nullptr;
+            View* dragged = toplevel_drag::attached(server);
+            wlr_scene_tree* hidden =
+                dragged && dragged->scene_tree && dragged->scene_tree->node.enabled ? dragged->scene_tree : nullptr;
+            if (hidden)
+                wlr_scene_node_set_enabled(&hidden->node, false);
             wlr_surface* surface = scene_surface_at(server, lx, ly, &sx, &sy, &hit);
+            if (hidden)
+                wlr_scene_node_set_enabled(&hidden->node, true);
 
             // Pointer focus is changing right here, and a constraint only ever applies to
             // the surface that holds it

@@ -142,11 +142,14 @@ namespace fenriz::ipc {
                 s += "\",\"title\":\"";
                 json_escape(s, view_title(v));
                 s += "\",\"icon\":\"";
-                json_escape(s, v->icon.c_str());
+                json_escape(s, view_icon(v));
+                s += "\",\"tag\":\"";
+                json_escape(s, view_tag(v));
                 s += "\",\"workspace\":" + std::to_string(v->workspace + 1);
                 s += ",\"floating\":" + std::string(v->floating ? "true" : "false");
                 s += ",\"fullscreen\":" + std::string(v->fullscreen ? "true" : "false");
                 s += ",\"focused\":" + std::string(v == server.focused_view ? "true" : "false");
+                s += ",\"urgent\":" + std::string(v->urgent ? "true" : "false");
                 s += '}';
             }
 
@@ -158,7 +161,9 @@ namespace fenriz::ipc {
                 s += "\",\"title\":\"";
                 json_escape(s, view_title(f));
                 s += "\",\"icon\":\"";
-                json_escape(s, f->icon.c_str());
+                json_escape(s, view_icon(f));
+                s += "\",\"tag\":\"";
+                json_escape(s, view_tag(f));
                 s += "\"}";
             } else {
                 s += "null";
