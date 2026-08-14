@@ -156,8 +156,10 @@ namespace fenriz {
     // Toggle fullscreen on the currently focused view.
     void toggle_fullscreen(Server& server);
 
-    // Toggle floating on the currently focused view: pull it out of the tiling tree (or
-    // return it), so it can be freely moved/resized with the mouse.
+    // Pull a view out of the tiling tree (or return it to it), so it can be freely moved and resized.
+    void set_floating(Server& server, View* view, bool on);
+
+    // Toggle floating on the currently focused view.
     void toggle_floating(Server& server);
 
     // Toggle "pin" on the focused view (floating-only): a pinned float follows the active

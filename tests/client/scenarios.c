@@ -13,6 +13,7 @@
 #include "xdg-dialog-v1-client-protocol.h"
 #include "xdg-foreign-unstable-v1-client-protocol.h"
 #include "xdg-foreign-unstable-v2-client-protocol.h"
+#include "xdg-toplevel-drag-v1-client-protocol.h"
 #include "xdg-toplevel-icon-v1-client-protocol.h"
 
 #include <stdio.h>
@@ -1654,6 +1655,205 @@ static void s_icon(struct wlc* c) {
     wlc_roundtrip(c);
 }
 
+// --- toplevel-drag --------------------------------------------------------------------
+
+static struct xdg_toplevel_drag_manager_v1* td_manager;
+
+static void td_registry_global(void* d, struct wl_registry* reg, uint32_t name, const char* iface, uint32_t ver) {
+    (void)d;
+    (void)ver;
+    if (!strcmp(iface, xdg_toplevel_drag_manager_v1_interface.name))
+        td_manager = wl_registry_bind(reg, name, &xdg_toplevel_drag_manager_v1_interface, 1);
+}
+static void td_registry_remove(void* d, struct wl_registry* reg, uint32_t name) {
+    (void)d;
+    (void)reg;
+    (void)name;
+}
+static const struct wl_registry_listener td_registry_listener = {
+    .global = td_registry_global,
+    .global_remove = td_registry_remove,
+};
+
+// Drag focus, i.e. which of our surfaces the compositor considers the drop target. The drag
+// is our own, so we receive our own dnd events and can see the target it picks.
+static struct wl_surface* td_dnd_surface;
+
+static void td_dd_offer(void* d, struct wl_data_device* dd, struct wl_data_offer* o) {
+    (void)d;
+    (void)dd;
+    (void)o;
+}
+static void td_dd_enter(void* d,
+                        struct wl_data_device* dd,
+                        uint32_t serial,
+                        struct wl_surface* s,
+                        wl_fixed_t x,
+                        wl_fixed_t y,
+                        struct wl_data_offer* o) {
+    (void)d;
+    (void)dd;
+    (void)serial;
+    (void)x;
+    (void)y;
+    (void)o;
+    td_dnd_surface = s;
+}
+static void td_dd_leave(void* d, struct wl_data_device* dd) {
+    (void)d;
+    (void)dd;
+    td_dnd_surface = NULL;
+}
+static void td_dd_motion(void* d, struct wl_data_device* dd, uint32_t t, wl_fixed_t x, wl_fixed_t y) {
+    (void)d;
+    (void)dd;
+    (void)t;
+    (void)x;
+    (void)y;
+}
+static void td_dd_drop(void* d, struct wl_data_device* dd) {
+    (void)d;
+    (void)dd;
+}
+static void td_dd_selection(void* d, struct wl_data_device* dd, struct wl_data_offer* o) {
+    (void)d;
+    (void)dd;
+    (void)o;
+}
+static const struct wl_data_device_listener td_dd_listener = {
+    .data_offer = td_dd_offer,
+    .enter = td_dd_enter,
+    .leave = td_dd_leave,
+    .motion = td_dd_motion,
+    .drop = td_dd_drop,
+    .selection = td_dd_selection,
+};
+
+#define BTN_LEFT 0x110
+
+// One tear-off: press on `parent`, start a drag, attach a fresh toplevel at offset 20,30,
+// map it, and walk the cursor to the drop point. Leaves the button held.
+struct td_run {
+    struct win* tab;
+    struct xdg_toplevel_drag_v1* drag;
+    struct wl_data_source* src;
+};
+
+static struct td_run td_tear_off(struct wlc* c, struct win* parent, const char* title, int px, int py, int dx, int dy) {
+    wlc_pointer_to(c, px, py);
+    wlc_pump(c, 60);
+    if (c->enter_surface != parent->surface)
+        wlc_die("injected pointer is not over the window to tear from; no drag can start here");
+    wlc_pointer_button(c, BTN_LEFT, true);
+    wlc_pump(c, 60);
+
+    struct td_run r = {0};
+    r.src = wl_data_device_manager_create_data_source(c->ddm);
+    wl_data_source_add_listener(r.src, &source_listener, NULL);
+    wl_data_source_offer(r.src, "text/plain");
+    r.drag = xdg_toplevel_drag_manager_v1_get_xdg_toplevel_drag(td_manager, r.src);
+    wl_data_device_start_drag(c->data_device, r.src, parent->surface, NULL, c->last_serial);
+    wlc_roundtrip(c);
+
+    // The torn-off tab: attached before it maps, which is the order the protocol describes.
+    r.tab = wlc_toplevel(c, 200, 150, title);
+    xdg_toplevel_drag_v1_attach(r.drag, r.tab->toplevel, 20, 30);
+    wlc_map(r.tab, GREEN);
+    wlc_pointer_to(c, dx, dy);
+    wlc_pump(c, 100);
+    return r;
+}
+
+static void td_drop(struct wlc* c, struct td_run* r) {
+    wlc_pointer_button(c, BTN_LEFT, false);
+    wlc_pump(c, 100);
+    xdg_toplevel_drag_v1_destroy(r->drag);
+    wl_data_source_destroy(r->src);
+    wlc_roundtrip(c);
+}
+
+static void s_toplevel_drag(struct wlc* c) {
+    td_manager = NULL;
+    td_dnd_surface = NULL;
+
+    wlc_phase("binding xdg_toplevel_drag_manager_v1");
+    struct wl_registry* reg = wl_display_get_registry(c->display);
+    wl_registry_add_listener(reg, &td_registry_listener, NULL);
+    wlc_roundtrip(c);
+    if (!td_manager)
+        wlc_die("compositor does not advertise xdg_toplevel_drag_manager_v1");
+    if (!c->data_device)
+        wlc_die("no wl_data_device_manager; a toplevel drag rides on a normal drag");
+    wl_data_device_add_listener(c->data_device, &td_dd_listener, NULL);
+
+    // --- torn off a tiled window: the tab joins the layout on drop ---
+    wlc_phase("tearing a tab off a tiled window");
+    struct win* parent = wlc_toplevel(c, 400, 300, "fenriz-test drag-parent");
+    wlc_map(parent, BLUE);
+    struct td_run t1 = td_tear_off(c, parent, "fenriz-test drag-tab", 200, 200, 400, 300);
+
+    if (!fe_is_floating("fenriz-test drag-tab"))
+        wlc_die("the attached window tiled mid-drag; it cannot follow the cursor from the layout");
+    // Control: same client, same app_id, not attached — proves the float comes from the drag.
+    if (fe_is_floating("fenriz-test drag-parent"))
+        wlc_die("the parent floated too; the float is not coming from the toplevel drag");
+    // The dragged window sits under the cursor, so it would swallow every drop target if the
+    // compositor let it. Reattaching a tab depends on the window behind it staying reachable.
+    if (td_dnd_surface == t1.tab->surface)
+        wlc_die("the dragged window became the drop target; it must not take part in that");
+    if (td_dnd_surface != parent->surface)
+        wlc_die("drop target is neither window; the drag lost its focus entirely");
+    wlc_hold_point(c);
+
+    wlc_phase("dropping the tab torn off a tiled window");
+    td_drop(c, &t1);
+    if (fe_is_floating("fenriz-test drag-tab"))
+        wlc_die("a tab torn off a tiled window stayed floating; it should land the way its parent lives");
+    wlc_log("tab torn off a tiled window joined the layout");
+
+    wlc_destroy(t1.tab);
+    wlc_destroy(parent);
+    wlc_roundtrip(c);
+
+    // --- torn off a floating window: the tab stays floating, where it was dropped ---
+    if (c->out_w <= 0 || c->out_h <= 0)
+        wlc_die("no output mode; cannot aim the pointer at a window the compositor centered");
+    wlc_phase("tearing a tab off a floating window");
+    struct win* fparent = wlc_toplevel(c, 400, 300, "fenriz-test drag-float-parent");
+    // Pinned to one size: fenriz auto-floats such a window and centers it, so the middle of
+    // the output is inside it without this test having to know where it was put.
+    xdg_toplevel_set_min_size(fparent->toplevel, 400, 300);
+    xdg_toplevel_set_max_size(fparent->toplevel, 400, 300);
+    wlc_map(fparent, GREY);
+    if (!fe_is_floating("fenriz-test drag-float-parent"))
+        wlc_die("the fixed-size parent did not float; this half of the test proves nothing");
+
+    struct td_run t2 = td_tear_off(c, fparent, "fenriz-test drag-float-tab", c->out_w / 2, c->out_h / 2, 200, 200);
+    wlc_hold_point(c);
+    wlc_phase("dropping the tab torn off a floating window");
+    td_drop(c, &t2);
+    if (!fe_is_floating("fenriz-test drag-float-tab"))
+        wlc_die("a tab torn off a floating window tiled; it should stay floating like its parent");
+
+    // The window is never told where it is, so ask the compositor by walking the pointer one
+    // pixel: the enter coordinates say exactly where the window ended up. It was dropped with
+    // the cursor at 200,200 holding it at offset 20,30, so 201,201 lands 21,31 into it.
+    c->enter_surface = NULL;
+    wlc_pointer_to(c, 201, 201);
+    wlc_pump(c, 100);
+    if (c->enter_surface != t2.tab->surface)
+        wlc_die("the pointer is not over the dragged window after the drop; it never followed");
+    if (c->enter_sx != 21 || c->enter_sy != 31)
+        wlc_die("dragged window is %d,%d from the cursor; expected the 20,30 offset it asked for",
+                c->enter_sx,
+                c->enter_sy);
+    wlc_log("window tracked the cursor to its requested offset and stayed there");
+
+    wlc_destroy(t2.tab);
+    wlc_destroy(fparent);
+    wlc_roundtrip(c);
+}
+
 const struct scenario scenarios[] = {
     {"popup", s_popup, "toplevel -> popup -> nested popup, grab, reposition, off-screen anchor"},
     {"layer-popup", s_layer_popup, "corner-anchored popup and submenu on a full-output layer surface"},
@@ -1669,6 +1869,7 @@ const struct scenario scenarios[] = {
     {"dialog", s_dialog, "xdg-dialog-v1: a modal dialog holds focus against its parent"},
     {"icon", s_icon, "xdg-toplevel-icon-v1: icon name reaches the feed; buffer-only and unset clear it"},
     {"foreign", s_foreign, "xdg-foreign: export a toplevel, import it, parent a second window to it"},
+    {"toplevel-drag", s_toplevel_drag, "xdg-toplevel-drag-v1: a tab torn out follows the cursor to the drop"},
     {"evil", s_evil, "stale acks, commits between configures, self-resize, destroy/recreate"},
     {NULL, NULL, NULL},
 };

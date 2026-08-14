@@ -11,6 +11,7 @@
 #include "ipc.hpp"
 #include "server.hpp"
 #include "tiling.hpp"
+#include "toplevel_drag.hpp"
 #include "wlr.hpp"
 
 namespace fenriz {
@@ -190,6 +191,8 @@ namespace fenriz {
             // Window rules run before the scene tree is built (it branches on floating) and
             // before tiling/focus below.
             const bool no_focus = apply_window_rules(server, view);
+            // A window mapping into an in-flight toplevel drag belongs under the cursor.
+            toplevel_drag::adopt(view);
 
             // Build the scene nodes: a container tree holding the border rect (below), the
             // xdg surface subtree (inset by the border in place_view_nodes), and the popup
@@ -697,11 +700,10 @@ namespace fenriz {
         return {a.x, a.y, a.width, a.height};
     }
 
-    void toggle_floating(Server& server) {
-        View* v = server.focused_view;
-        if (!v)
+    void set_floating(Server& server, View* v, bool on) {
+        if (!v || v->floating == on)
             return;
-        v->floating = !v->floating;
+        v->floating = on;
         set_tiled(v, !v->floating); // floating -> normal (own size + shadow); tiled -> honor ours
         if (v->floating) {
             // Leave the tree (its slot is reclaimed by the sibling). Move to the list tail so it
@@ -742,6 +744,11 @@ namespace fenriz {
         }
         restack_view(server, v);
         tiling::arrange(server);
+    }
+
+    void toggle_floating(Server& server) {
+        if (View* v = server.focused_view)
+            set_floating(server, v, !v->floating);
     }
 
     void toggle_pin(Server& server) {

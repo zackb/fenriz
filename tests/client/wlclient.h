@@ -11,6 +11,7 @@
 #include "fractional-scale-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
+#include "wlr-virtual-pointer-unstable-v1-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
@@ -35,11 +36,22 @@ struct wlc {
     struct wp_viewporter* viewporter;
     struct wp_fractional_scale_manager_v1* frac_scale;
     struct zwlr_layer_shell_v1* layer_shell;
+    struct zwlr_virtual_pointer_manager_v1* vpm;
+    struct zwlr_virtual_pointer_v1* vp; // created by wlc_pointer_init
 
     // Last serial seen on any input event; xdg_popup grabs and start_drag need a real one.
     uint32_t last_serial;
+    // Last wl_pointer.enter, so a scenario can assert where the pointer landed and how far
+    // into that surface — which is how a window's on-screen position becomes observable to a
+    // client that is never told its own coordinates.
+    struct wl_surface* enter_surface;
+    int enter_sx, enter_sy;
+    int enters;
+    // Cursor position the injected pointer has been walked to, in layout coordinates.
+    int px, py;
     struct wl_output* outputs[8];
     int n_outputs;
+    int out_w, out_h; // first output's current mode
 };
 
 struct win {
@@ -100,6 +112,12 @@ void wlc_wait_configure(struct win* w);
 void wlc_map(struct win* w, uint32_t argb);
 
 struct wl_buffer* wlc_buffer(struct wlc* c, int w, int h, uint32_t argb);
+
+// Injected pointer, via the virtual-pointer protocol: the headless backend has no input
+// devices, so without this nothing can produce the button press that a drag grab.
+void wlc_pointer_init(struct wlc* c);
+void wlc_pointer_to(struct wlc* c, int x, int y);
+void wlc_pointer_button(struct wlc* c, uint32_t button, bool pressed);
 
 // Run an outright protocol violation in a throwaway child on its own connection. The
 // child is expected to be killed; the assertion is that `c` is still live afterwards.

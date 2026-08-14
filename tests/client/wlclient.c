@@ -294,10 +294,12 @@ static const struct wl_surface_listener surface_listener = {
 static void
     pointer_enter(void* d, struct wl_pointer* p, uint32_t serial, struct wl_surface* s, wl_fixed_t x, wl_fixed_t y) {
     (void)p;
-    (void)s;
-    (void)x;
-    (void)y;
-    ((struct wlc*)d)->last_serial = serial;
+    struct wlc* c = d;
+    c->last_serial = serial;
+    c->enter_surface = s;
+    c->enter_sx = wl_fixed_to_int(x);
+    c->enter_sy = wl_fixed_to_int(y);
+    c->enters++;
 }
 static void pointer_leave(void* d, struct wl_pointer* p, uint32_t serial, struct wl_surface* s) {
     (void)p;
@@ -374,6 +376,62 @@ static void seat_name(void* d, struct wl_seat* s, const char* n) {
 }
 static const struct wl_seat_listener seat_listener = {.capabilities = seat_caps, .name = seat_name};
 
+// --- outputs --------------------------------------------------------------------------
+
+// Only the first output's size is kept, and only so a scenario can aim the injected pointer
+// at a window the compositor placed (a centered float) without knowing where that is.
+static void output_geometry(void* d,
+                            struct wl_output* o,
+                            int32_t x,
+                            int32_t y,
+                            int32_t pw,
+                            int32_t ph,
+                            int32_t sp,
+                            const char* m,
+                            const char* mo,
+                            int32_t t) {
+    (void)d;
+    (void)o;
+    (void)x;
+    (void)y;
+    (void)pw;
+    (void)ph;
+    (void)sp;
+    (void)m;
+    (void)mo;
+    (void)t;
+}
+static void output_mode(void* d, struct wl_output* o, uint32_t flags, int32_t w, int32_t h, int32_t refresh) {
+    (void)refresh;
+    struct wlc* c = d;
+    if ((flags & WL_OUTPUT_MODE_CURRENT) && c->n_outputs > 0 && c->outputs[0] == o) {
+        c->out_w = w;
+        c->out_h = h;
+    }
+}
+static void output_done(void* d, struct wl_output* o) {
+    (void)d;
+    (void)o;
+}
+static void output_scale(void* d, struct wl_output* o, int32_t f) {
+    (void)d;
+    (void)o;
+    (void)f;
+}
+static void output_str(void* d, struct wl_output* o, const char* s) {
+    (void)d;
+    (void)o;
+    (void)s;
+}
+static const struct wl_output_listener output_listener = {
+    .geometry = output_geometry,
+    .mode = output_mode,
+    .done = output_done,
+    .scale = output_scale,
+    .name = output_str,
+    .description = output_str,
+};
+
 // --- registry -------------------------------------------------------------------------
 
 static uint32_t cap(uint32_t have, uint32_t want) { return have < want ? have : want; }
@@ -403,10 +461,14 @@ static void registry_global(void* data, struct wl_registry* reg, uint32_t name, 
         c->viewporter = wl_registry_bind(reg, name, &wp_viewporter_interface, 1);
     else if (!strcmp(iface, wp_fractional_scale_manager_v1_interface.name))
         c->frac_scale = wl_registry_bind(reg, name, &wp_fractional_scale_manager_v1_interface, 1);
+    else if (!strcmp(iface, zwlr_virtual_pointer_manager_v1_interface.name))
+        c->vpm = wl_registry_bind(reg, name, &zwlr_virtual_pointer_manager_v1_interface, cap(version, 2));
     else if (!strcmp(iface, zwlr_layer_shell_v1_interface.name))
         c->layer_shell = wl_registry_bind(reg, name, &zwlr_layer_shell_v1_interface, cap(version, 4));
-    else if (!strcmp(iface, wl_output_interface.name) && c->n_outputs < 8)
+    else if (!strcmp(iface, wl_output_interface.name) && c->n_outputs < 8) {
         c->outputs[c->n_outputs++] = wl_registry_bind(reg, name, &wl_output_interface, cap(version, 4));
+        wl_output_add_listener(c->outputs[c->n_outputs - 1], &output_listener, c);
+    }
 }
 static void registry_remove(void* data, struct wl_registry* reg, uint32_t name) {
     (void)data;
@@ -440,6 +502,48 @@ void wlc_finish(struct wlc* c) {
     wlc_roundtrip(c);
     wl_display_disconnect(c->display);
     free(c);
+}
+
+// --- injected pointer -----------------------------------------------------------------
+
+// Event timestamps, in ms. Only ever compared to each other, so start from zero.
+static uint32_t vp_time = 1;
+
+static void vp_frame(struct wlc* c) {
+    zwlr_virtual_pointer_v1_frame(c->vp);
+    wlc_roundtrip(c);
+}
+
+void wlc_pointer_init(struct wlc* c) {
+    if (!c->vpm)
+        wlc_die("compositor does not advertise zwlr_virtual_pointer_manager_v1");
+    if (c->vp)
+        return;
+    c->vp = zwlr_virtual_pointer_manager_v1_create_virtual_pointer(c->vpm, c->seat);
+    wlc_roundtrip(c);
+    // wlr_cursor clamps a warp to the output layout, so one enormous negative step parks the
+    // cursor on the layout's top-left corner whatever the outputs are. Everything after this
+    // is a known delta from a known origin.
+    zwlr_virtual_pointer_v1_motion(c->vp, vp_time++, wl_fixed_from_int(-1000000), wl_fixed_from_int(-1000000));
+    vp_frame(c);
+    c->px = c->py = 0;
+}
+
+void wlc_pointer_to(struct wlc* c, int x, int y) {
+    if (!c->vp)
+        wlc_pointer_init(c);
+    zwlr_virtual_pointer_v1_motion(c->vp, vp_time++, wl_fixed_from_int(x - c->px), wl_fixed_from_int(y - c->py));
+    c->px = x;
+    c->py = y;
+    vp_frame(c);
+}
+
+void wlc_pointer_button(struct wlc* c, uint32_t button, bool pressed) {
+    if (!c->vp)
+        wlc_pointer_init(c);
+    zwlr_virtual_pointer_v1_button(
+        c->vp, vp_time++, button, pressed ? WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED);
+    vp_frame(c);
 }
 
 // --- windows --------------------------------------------------------------------------

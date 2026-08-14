@@ -14,6 +14,7 @@
 #include "lock.hpp"
 #include "output.hpp"
 #include "tiling.hpp"
+#include "toplevel_drag.hpp"
 #include "view.hpp"
 #include "wlr.hpp"
 #include "workspace_protocol.hpp"
@@ -288,6 +289,8 @@ namespace fenriz {
                 return;
             }
             wlr_seat_start_pointer_drag(seat, ev->drag, ev->serial);
+            // xdg-toplevel-drag rides on this drag
+            toplevel_drag::begin(*sl->server, ev->drag, ev->origin);
             // Render the drag icon: wire it into the scene above windows and let cursor motion
             // (process_motion) track it. wlroots frees the node when the icon is destroyed.
             if (ev->drag->icon) {
@@ -585,6 +588,8 @@ namespace fenriz {
             l_set_primary_selection.listener, seat->events.request_set_primary_selection, on_set_primary_selection);
         l_start_drag.server = this;
         add_listener(l_start_drag.listener, seat->events.request_start_drag, on_request_start_drag);
+        // xdg-toplevel-drag-v1 window rides along with a drag
+        toplevel_drag::init(*this);
         wlr_primary_selection_v1_device_manager_create(display);
         wlr_data_control_manager_v1_create(display);
         wlr_ext_data_control_manager_v1_create(display, 1);
