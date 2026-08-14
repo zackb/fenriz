@@ -2352,6 +2352,44 @@ static void s_background_effect(struct wlc* c) {
     ext_background_effect_surface_v1_destroy(fx3); // the object outlives its surface
     wlc_roundtrip(c);
 
+    // A popup is in neither the view list nor the layer list, so it reaches its blur nodes
+    // by a path of its own. This is what a GTK menu on the desktop shell does.
+    wlc_phase("blurring a popup");
+    struct win* menu = wlc_popup(w, 40, 40, 220, 160, false);
+    struct ext_background_effect_surface_v1* fx4 =
+        ext_background_effect_manager_v1_get_background_effect(be_manager, menu->surface);
+    r = wl_compositor_create_region(c->compositor);
+    wl_region_add(r, 0, 0, 4000, 4000); // clipped to the popup by the compositor
+    ext_background_effect_surface_v1_set_blur_region(fx4, r);
+    wl_region_destroy(r);
+    wlc_map(menu, 0x40202020u);
+    wlc_pump(c, 200);
+    wlc_hold_point(c);
+
+    // Nested submenus land in the same parent tree, so a second blurred popup must not
+    // disturb the first.
+    wlc_phase("blurring a nested popup");
+    struct win* submenu = wlc_popup(menu, 30, 30, 160, 110, false);
+    struct ext_background_effect_surface_v1* fx5 =
+        ext_background_effect_manager_v1_get_background_effect(be_manager, submenu->surface);
+    r = wl_compositor_create_region(c->compositor);
+    wl_region_add(r, 0, 0, 4000, 4000);
+    ext_background_effect_surface_v1_set_blur_region(fx5, r);
+    wl_region_destroy(r);
+    wlc_map(submenu, 0x40202020u);
+    wlc_pump(c, 200);
+
+    // Teardown is inner-first, the order a menu closes in. The blur nodes live inside each
+    // popup's own tree, so they have to go with it and leave nothing behind.
+    wlc_phase("tearing the blurred popups down");
+    ext_background_effect_surface_v1_destroy(fx5);
+    wlc_destroy(submenu);
+    wlc_roundtrip(c);
+    ext_background_effect_surface_v1_destroy(fx4);
+    wlc_destroy(menu);
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
+
     if (!wlc_abuse(c, "two background effects on one surface", be_double_effect))
         wlc_die("a second effect on one surface was accepted; background_effect_exists is not enforced");
 
@@ -2570,6 +2608,55 @@ static void s_pixels(struct wlc* c) {
 
     ext_background_effect_surface_v1_destroy(fx);
     wlc_destroy(top);
+    wlc_roundtrip(c);
+
+    // A popup asking for blur — a menu on a desktop shell. Popups are in neither the view
+    // list nor the layer list, so they reach their blur nodes their own way, and getting the
+    // offset wrong draws the blur somewhere the popup is not.
+    // The popup's own translucent buffer already tints the red behind it, so a single frame
+    // proves nothing. Shoot the same popup with and without a region and require the pixel
+    // to move: only the blur can account for the difference.
+    wlc_phase("blurring a popup over the window");
+    const int px = 100, py = 100, pw = 200, ph = 150;
+    struct win* menu = wlc_popup(bg, px, py, pw, ph, false);
+    wlc_map(menu, 0x30202020u);
+    wlc_pump(c, 300);
+
+    shot = wlc_capture(c, 0);
+    const uint32_t before = wlc_pixel(shot, px + pw / 2, py + ph / 2);
+    const uint32_t beside = wlc_pixel(shot, px + pw + 40, py + ph / 2);
+    wlc_shot_free(shot);
+
+    struct ext_background_effect_surface_v1* pfx =
+        ext_background_effect_manager_v1_get_background_effect(be_manager, menu->surface);
+    r = wl_compositor_create_region(c->compositor);
+    wl_region_add(r, 0, 0, pw, ph);
+    ext_background_effect_surface_v1_set_blur_region(pfx, r);
+    wl_region_destroy(r);
+    wlc_paint(menu, 0x30202020u);
+    wlc_roundtrip(c);
+    wlc_pump(c, 300);
+
+    shot = wlc_capture(c, 0);
+    const uint32_t after = wlc_pixel(shot, px + pw / 2, py + ph / 2);
+    if (wlc_color_near(before, after, 4))
+        wlc_die("the popup's centre is still %s after asking for blur; nothing was drawn for a popup",
+                wlc_color_str(after));
+    // Just past its right edge: unchanged, so the nodes are where the popup is and not off at
+    // the parent's origin.
+    const uint32_t beside_after = wlc_pixel(shot, px + pw + 40, py + ph / 2);
+    if (!wlc_color_near(beside, beside_after, 4))
+        wlc_die("pixel %d,%d went from %s to %s — the popup's blur is drawn outside it",
+                px + pw + 40,
+                py + ph / 2,
+                wlc_color_str(beside),
+                wlc_color_str(beside_after));
+    wlc_shot_free(shot);
+    wlc_log("a popup's blur is drawn, and only where the popup is");
+
+    ext_background_effect_surface_v1_destroy(pfx);
+    wlc_destroy(menu);
+    wlc_roundtrip(c);
     wlc_destroy(bg);
     wlc_roundtrip(c);
 }

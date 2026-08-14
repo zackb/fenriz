@@ -66,6 +66,7 @@ namespace fenriz::background_blur {
                     layer::place_blur(ls);
                     return;
                 }
+            popup_place_blur(surface);
         }
 
         void on_surface_commit(wl_listener* listener, void*) {

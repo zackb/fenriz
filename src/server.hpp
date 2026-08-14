@@ -34,6 +34,7 @@ struct wlr_output_manager_v1;
 struct wlr_scene;
 struct wlr_scene_output_layout;
 struct wlr_scene_tree;
+struct wlr_surface;
 struct wlr_xdg_popup;
 
 namespace fenriz {
@@ -78,6 +79,9 @@ namespace fenriz {
     // its initial commit with a configure, without one the client never maps it and the popup
     // is never drawn. Callers: the xdg-shell handler (server.cpp) and layer-shell (layer.cpp).
     void popup_create(Server& server, wlr_xdg_popup* popup, wlr_scene_tree* parent_tree);
+
+    // Re-place the blur nodes of the popup owning `surface`. False if no popup owns it.
+    bool popup_place_blur(wlr_surface* surface);
 
     // POD wrapper so wl_container_of recovers the owning Server without taking an
     // offsetof into a non-standard-layout class.

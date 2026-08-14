@@ -38,11 +38,27 @@ namespace fenriz {
         struct Popup {
             Server* server;
             wlr_xdg_popup* popup;
+            wlr_scene_node* surface_node;
+            wlr_scene_blur* blur[background_blur::RECTS_MAX];
             wl_listener commit;
             wl_listener destroy;
             wl_listener reposition;
             wl_listener tree_destroy;
         };
+
+        // Every live popup.
+        std::vector<Popup*> popups;
+
+        // Blur nodes go inside the popup's own tree rather than beside it.
+        void place_popup_blur(Popup& p) {
+            auto* tree = static_cast<wlr_scene_tree*>(p.popup->base->data);
+            if (!tree || !p.surface_node)
+                return;
+            const wlr_box geo = p.popup->base->geometry;
+            // The tree origin is the window-geometry top-left, so shifting by -geo lines the
+            // client's surface-local region coordinates up with it.
+            background_blur::place(p.popup->base->surface, tree, p.surface_node, -geo.x, -geo.y, geo, 0, p.blur);
+        }
 
         // Walk up through nested submenus to the xdg surface a popup chain hangs off.
         // Null ONLY when the chain escapes to a non-xdg surface
@@ -136,6 +152,7 @@ namespace fenriz {
         void on_popup_commit(wl_listener* listener, void* data) {
             Popup* p = wl_container_of(listener, p, commit);
             (void)data;
+            place_popup_blur(*p); // the popup may have resized
             if (!p->popup->base->initial_commit)
                 return;
             // The initial commit must be answered with a configure or the client never maps the
@@ -152,6 +169,7 @@ namespace fenriz {
         void on_popup_reposition(wl_listener* listener, void* data) {
             Popup* p = wl_container_of(listener, p, reposition);
             (void)data;
+            place_popup_blur(*p);
             unconstrain_popup(*p->server, p->popup);
             wlr_xdg_surface_schedule_configure(p->popup->base);
         }
@@ -162,6 +180,8 @@ namespace fenriz {
             Popup* p = wl_container_of(listener, p, tree_destroy);
             (void)data;
             p->popup->base->data = nullptr;
+            p->surface_node = nullptr;
+            background_blur::forget(p->blur); // the tree took the blur nodes with it
             wl_list_remove(&p->tree_destroy.link);
             wl_list_init(&p->tree_destroy.link); // on_popup_destroy removes it again
         }
@@ -169,6 +189,7 @@ namespace fenriz {
         void on_popup_destroy(wl_listener* listener, void* data) {
             Popup* p = wl_container_of(listener, p, destroy);
             (void)data;
+            popups.erase(std::remove(popups.begin(), popups.end(), p), popups.end());
             wl_list_remove(&p->commit.link);
             wl_list_remove(&p->destroy.link);
             wl_list_remove(&p->reposition.link);
@@ -400,7 +421,11 @@ namespace fenriz {
     void popup_create(Server& server, wlr_xdg_popup* popup, wlr_scene_tree* parent_tree) {
         wlr_scene_tree* tree = wlr_scene_xdg_surface_create(parent_tree, popup->base);
         popup->base->data = tree;
-        Popup* p = new Popup{&server, popup, {}, {}, {}, {}};
+        wlr_scene_node* surface_node = nullptr;
+        if (tree && !wl_list_empty(&tree->children))
+            surface_node = wl_container_of(tree->children.next, surface_node, link);
+        Popup* p = new Popup{&server, popup, surface_node, {}, {}, {}, {}, {}};
+        popups.push_back(p);
         add_listener(p->commit, popup->base->surface->events.commit, on_popup_commit);
         add_listener(p->destroy, popup->events.destroy, on_popup_destroy);
         add_listener(p->reposition, popup->events.reposition, on_popup_reposition);
@@ -408,6 +433,15 @@ namespace fenriz {
             add_listener(p->tree_destroy, tree->node.events.destroy, on_popup_tree_destroy);
         else
             wl_list_init(&p->tree_destroy.link); // on_popup_destroy removes it unconditionally
+    }
+
+    bool popup_place_blur(wlr_surface* surface) {
+        for (Popup* p : popups)
+            if (p->popup->base->surface == surface) {
+                place_popup_blur(*p);
+                return true;
+            }
+        return false;
     }
 
     void spawn(const std::string& cmd) {
