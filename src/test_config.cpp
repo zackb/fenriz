@@ -226,56 +226,83 @@ int main() {
     assert(margin_is(Config{}, 0, 0, 0, 0)); // off unless asked for
 
     // Window rules: name=value fields, any order; `name` is a label and ignored; a rule
-    // with neither class nor title is dropped.
+    // with no match field at all (class, title or tag) is dropped.
     Config wr = Config::parse("windowrule = class=^(org\\.pulseaudio\\.pavucontrol)$, float=true, center=true\n"
                               "windowrule = name=dialogs, title=^$, no_focus=true\n"
+                              "windowrule = tag=^settings$, float=true\n"
                               "windowrule = float=true\n"); // no match field -> dropped
-    assert(wr.window_rules.size() == 2);
+    assert(wr.window_rules.size() == 3);
     assert(wr.window_rules[0].app_id == "^(org\\.pulseaudio\\.pavucontrol)$");
     assert(wr.window_rules[0].floating && wr.window_rules[0].center);
     assert(!wr.window_rules[0].no_focus);
     assert(wr.window_rules[1].title == "^$" && wr.window_rules[1].no_focus);
     assert(!wr.window_rules[1].floating);
+    // A tag is a match field in its own right: a rule carrying only `tag=` must survive
+    // parsing, not be thrown away for having no class or title.
+    assert(wr.window_rules[2].tag == "^settings$" && wr.window_rules[2].floating);
+    assert(wr.window_rules[2].app_id.empty() && wr.window_rules[2].title.empty());
 
     // --- rule matching (what view.cpp does with the parsed rules at map time) ---
 
     // Every matching rule stacks, and an empty pattern means "any".
     {
         const std::vector<WindowRule> rules = {
-            {"^foot$", "", true, false, false},   // class only
-            {"", "^scratch$", false, true, false} // title only, matches any class
+            {"^foot$", "", "", true, false, false},   // class only
+            {"", "^scratch$", "", false, true, false} // title only, matches any class
         };
-        const RuleResult foot = match_rules(rules, "foot", "scratch");
+        const RuleResult foot = match_rules(rules, "foot", "scratch", "");
         assert(foot.floating && foot.center && !foot.no_focus); // both rules applied
-        assert(match_rules(rules, "foot", "vim").floating);
-        assert(!match_rules(rules, "foot", "vim").center);
-        assert(match_rules(rules, "alacritty", "scratch").center);
-        assert(!match_rules(rules, "alacritty", "vim").floating);
+        assert(match_rules(rules, "foot", "vim", "").floating);
+        assert(!match_rules(rules, "foot", "vim", "").center);
+        assert(match_rules(rules, "alacritty", "scratch", "").center);
+        assert(!match_rules(rules, "alacritty", "vim", "").floating);
+    }
+
+    // xdg-toplevel-tag-v1: the client's own name for the window. The point of matching on it is
+    // that it picks out one window of an app where class can't and title is unstable.
+    {
+        const std::vector<WindowRule> rules = {
+            {"", "", "^settings$", true, true, false},       // tag alone
+            {"^mail$", "", "^composer$", false, false, true} // class AND tag together
+        };
+        const RuleResult settings = match_rules(rules, "mail", "Preferences", "settings");
+        assert(settings.floating && settings.center);
+        // Same app, same (empty) title, different tag: the rule must not follow it.
+        assert(!match_rules(rules, "mail", "Preferences", "inbox").floating);
+        // An untagged window reads as "", which `^settings$` does not match.
+        assert(!match_rules(rules, "mail", "Preferences", "").floating);
+        assert(!match_rules(rules, "mail", "Preferences", nullptr).floating);
+        // Both halves of a class+tag rule have to hold.
+        assert(match_rules(rules, "mail", "", "composer").no_focus);
+        assert(!match_rules(rules, "chat", "", "composer").no_focus);
     }
 
     // A null app_id/title reads as "" so `^$` can deliberately target unset identity —
     // XWayland windows routinely map before they set WM_CLASS.
     {
-        const std::vector<WindowRule> anon = {{"^$", "", true, false, false}};
-        assert(match_rules(anon, nullptr, nullptr).floating);
-        assert(match_rules(anon, "", "x").floating);
-        assert(!match_rules(anon, "foot", nullptr).floating);
+        const std::vector<WindowRule> anon = {{"^$", "", "", true, false, false}};
+        assert(match_rules(anon, nullptr, nullptr, nullptr).floating);
+        assert(match_rules(anon, "", "x", "").floating);
+        assert(!match_rules(anon, "foot", nullptr, nullptr).floating);
 
         // An empty ruleset never matches anything, and a rule with two empty patterns
         // matches everything.
-        assert(!match_rules({}, "foot", "x").floating);
-        const std::vector<WindowRule> all = {{"", "", false, false, true}};
-        assert(match_rules(all, nullptr, nullptr).no_focus);
+        assert(!match_rules({}, "foot", "x", "").floating);
+        const std::vector<WindowRule> all = {{"", "", "", false, false, true}};
+        assert(match_rules(all, nullptr, nullptr, nullptr).no_focus);
     }
 
     // An invalid regex matches nothing rather than throwing out of the map handler — the
     // same swallow-don't-crash policy the rest of the parser uses. A typo'd rule must not
     // take the compositor down when a window opens.
     {
-        const std::vector<WindowRule> bad = {{"[", "", true, false, false}, {"^ok$", "", false, false, true}};
-        const RuleResult r = match_rules(bad, "ok", "");
+        const std::vector<WindowRule> bad = {{"[", "", "", true, false, false}, {"^ok$", "", "", false, false, true}};
+        const RuleResult r = match_rules(bad, "ok", "", "");
         assert(!r.floating); // the broken rule matched nothing...
         assert(r.no_focus);  // ...and did not stop the valid one after it
+        // Same policy on a broken tag pattern.
+        const std::vector<WindowRule> bad_tag = {{"", "", "(", true, false, false}};
+        assert(!match_rules(bad_tag, "ok", "", "anything").floating);
     }
 
     // Auto-float: a client-placed child (dialog/modal) or a window that declared a fixed

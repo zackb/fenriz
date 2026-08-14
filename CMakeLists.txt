@@ -82,6 +82,7 @@ wl_client_proto(xdg-foreign-unstable-v1
 wl_client_proto(xdg-foreign-unstable-v2
                                      ${WL_PROTO_DIR}/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml)
 wl_client_proto(xdg-toplevel-drag-v1 ${WL_PROTO_DIR}/staging/xdg-toplevel-drag/xdg-toplevel-drag-v1.xml)
+wl_client_proto(xdg-toplevel-tag-v1  ${WL_PROTO_DIR}/staging/xdg-toplevel-tag/xdg-toplevel-tag-v1.xml)
 wl_client_proto(wlr-layer-shell-unstable-v1
                                      ${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-layer-shell-unstable-v1.xml)
 # The headless backend has no input devices, so the test client injects pointer motion and
@@ -106,6 +107,7 @@ add_executable(fenriz
     src/ipc.cpp
     src/workspace_protocol.cpp
     src/toplevel_drag.cpp
+    src/toplevel_props.cpp
     src/xwayland.cpp
     ${LAYER_SHELL_HEADER}
     ${OUTPUT_POWER_HEADER}
@@ -192,7 +194,7 @@ add_test(NAME ctl     COMMAND fenrizctl_test)
 # fails when wlroots or wayland-protocols offers a protocol that is in neither src/ nor docs/PROTOCOLS.md.
 add_test(NAME protocols COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/protocol-audit.sh)
 
-foreach(s popup layer-popup resize fullscreen dnd grab subsurface scale destroy-parent hotplug workspace foreign dialog icon toplevel-drag evil)
+foreach(s popup layer-popup resize fullscreen dnd grab subsurface scale destroy-parent hotplug workspace foreign dialog icon toplevel-drag toplevel-tag evil)
     add_test(NAME wl-${s}
              COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/wltest.sh
                      --build-dir ${CMAKE_CURRENT_BINARY_DIR} ${s})

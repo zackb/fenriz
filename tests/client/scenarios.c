@@ -15,6 +15,7 @@
 #include "xdg-foreign-unstable-v2-client-protocol.h"
 #include "xdg-toplevel-drag-v1-client-protocol.h"
 #include "xdg-toplevel-icon-v1-client-protocol.h"
+#include "xdg-toplevel-tag-v1-client-protocol.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1611,6 +1612,22 @@ static void s_icon(struct wlc* c) {
     if (icon[0])
         wlc_die("a window that set no icon reports \"%s\"", icon);
 
+    // Nothing in the protocol says the icon has to wait for the window to map, and a toolkit
+    // that sets it up front is doing the normal thing.
+    wlc_phase("setting an icon before the window maps");
+    struct win* early = wlc_toplevel(c, 300, 200, "fenriz-test icon-early");
+    struct xdg_toplevel_icon_v1* early_icon = xdg_toplevel_icon_manager_v1_create_icon(fi_manager);
+    xdg_toplevel_icon_v1_set_name(early_icon, "web-browser");
+    xdg_toplevel_icon_manager_v1_set_icon(fi_manager, early->toplevel, early_icon);
+    wlc_map(early, GREEN);
+    wlc_pump(c, 150);
+    fi_icon_of("fenriz-test icon-early", icon, sizeof icon);
+    if (strcmp(icon, "web-browser"))
+        wlc_die("icon set before map did not reach the feed (got \"%s\")", icon);
+    xdg_toplevel_icon_v1_destroy(early_icon);
+    wlc_destroy(early);
+    wlc_roundtrip(c);
+
     wlc_phase("setting an icon name");
     struct xdg_toplevel_icon_v1* named = xdg_toplevel_icon_manager_v1_create_icon(fi_manager);
     xdg_toplevel_icon_v1_set_name(named, "text-editor");
@@ -1854,6 +1871,149 @@ static void s_toplevel_drag(struct wlc* c) {
     wlc_roundtrip(c);
 }
 
+// --- toplevel-tag ---------------------------------------------------------------------
+
+static struct xdg_toplevel_tag_manager_v1* tg_manager;
+
+static void tg_registry_global(void* d, struct wl_registry* reg, uint32_t name, const char* iface, uint32_t ver) {
+    (void)d;
+    (void)ver;
+    if (!strcmp(iface, xdg_toplevel_tag_manager_v1_interface.name))
+        tg_manager = wl_registry_bind(reg, name, &xdg_toplevel_tag_manager_v1_interface, 1);
+    else if (!strcmp(iface, xdg_toplevel_icon_manager_v1_interface.name))
+        fi_manager = wl_registry_bind(reg, name, &xdg_toplevel_icon_manager_v1_interface, 1);
+}
+static void tg_registry_remove(void* d, struct wl_registry* reg, uint32_t name) {
+    (void)d;
+    (void)reg;
+    (void)name;
+}
+static const struct wl_registry_listener tg_registry_listener = {
+    .global = tg_registry_global,
+    .global_remove = tg_registry_remove,
+};
+
+// The `tag` the compositor publishes for the window with this title.
+static void tg_tag_of(const char* title, char* out, size_t n) {
+    char snap[16384];
+    out[0] = 0;
+    if (!ipc_snapshot(snap, sizeof snap))
+        wlc_die("no control socket; cannot read the published tag");
+    const char* p = strstr(snap, title);
+    if (!p)
+        wlc_die("window \"%s\" is not in the state snapshot", title);
+    const char* t = strstr(p, "\"tag\":\"");
+    if (!t)
+        wlc_die("no tag field in the snapshot; the feed never grew one");
+    t += 7;
+    const char* end = strchr(t, '"');
+    if (!end || (size_t)(end - t) >= n)
+        return;
+    snprintf(out, n, "%.*s", (int)(end - t), t);
+}
+
+static void s_toplevel_tag(struct wlc* c) {
+    tg_manager = NULL;
+
+    wlc_phase("binding xdg_toplevel_tag_manager_v1");
+    struct wl_registry* reg = wl_display_get_registry(c->display);
+    wl_registry_add_listener(reg, &tg_registry_listener, NULL);
+    wlc_roundtrip(c);
+    if (!tg_manager)
+        wlc_die("compositor does not advertise xdg_toplevel_tag_manager_v1");
+
+    char tag[256];
+
+    // The case the protocol actually asks for: the tag is set as part of the initial commit,
+    // before the window maps. A compositor that only looks at mapped windows drops it here.
+    wlc_phase("tagging a window before it maps");
+    struct win* w = wlc_toplevel(c, 400, 300, "fenriz-test tag-window");
+    xdg_toplevel_tag_manager_v1_set_toplevel_tag(tg_manager, w->toplevel, "settings");
+    wlc_map(w, BLUE);
+    tg_tag_of("fenriz-test tag-window", tag, sizeof tag);
+    if (strcmp(tag, "settings"))
+        wlc_die("tag set before map did not reach the feed (got \"%s\")", tag);
+    // tests/config/toplevel-tag.conf floats anything tagged `settings`. This is the only check
+    // that the tag reaches the window rules at all — and, since that rule lives nowhere but the
+    // test config, that this instance is reading it instead of the user's.
+    if (!fe_is_floating("fenriz-test tag-window"))
+        wlc_die("the `tag=^settings$` window rule did not apply; the tag never reached the rules");
+
+    // Control: same client, same app_id, never tagged — proves the tag above is this window's
+    // own and not something the feed prints for everything.
+    struct win* plain = wlc_toplevel(c, 400, 300, "fenriz-test tag-untagged");
+    wlc_map(plain, GREEN);
+    tg_tag_of("fenriz-test tag-untagged", tag, sizeof tag);
+    if (tag[0])
+        wlc_die("a window that set no tag reports \"%s\"", tag);
+    // Control for the rule above: same client, same app_id, no tag — so it tiles.
+    if (fe_is_floating("fenriz-test tag-untagged"))
+        wlc_die("an untagged window floated too; the rule is not keyed on the tag");
+
+    // The protocol allows retagging at any time, "for example if the purpose of the toplevel
+    // changes". Window rules already ran, but the feed has to follow.
+    wlc_phase("retagging a mapped window");
+    xdg_toplevel_tag_manager_v1_set_toplevel_tag(tg_manager, w->toplevel, "composer");
+    wlc_roundtrip(c);
+    wlc_pump(c, 100);
+    tg_tag_of("fenriz-test tag-window", tag, sizeof tag);
+    if (strcmp(tag, "composer"))
+        wlc_die("retagging a mapped window did not reach the feed (got \"%s\")", tag);
+
+    // Tag and icon are two protocols kept in one per-window record, so setting one must not
+    // disturb the other.
+    wlc_phase("giving the same window an icon as well as a tag");
+    if (!fi_manager)
+        wlc_die("compositor does not advertise xdg_toplevel_icon_manager_v1");
+    struct xdg_toplevel_icon_v1* ic = xdg_toplevel_icon_manager_v1_create_icon(fi_manager);
+    xdg_toplevel_icon_v1_set_name(ic, "mail-client");
+    xdg_toplevel_icon_manager_v1_set_icon(fi_manager, w->toplevel, ic);
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
+    char icon[256];
+    fi_icon_of("fenriz-test tag-window", icon, sizeof icon);
+    if (strcmp(icon, "mail-client"))
+        wlc_die("icon on a tagged window did not reach the feed (got \"%s\")", icon);
+    tg_tag_of("fenriz-test tag-window", tag, sizeof tag);
+    if (strcmp(tag, "composer"))
+        wlc_die("setting an icon clobbered the tag (now \"%s\")", tag);
+    // ...and the other way round: retag now that an icon is set, and the icon must survive it.
+    xdg_toplevel_tag_manager_v1_set_toplevel_tag(tg_manager, w->toplevel, "inbox");
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
+    fi_icon_of("fenriz-test tag-window", icon, sizeof icon);
+    if (strcmp(icon, "mail-client"))
+        wlc_die("setting a tag clobbered the icon (now \"%s\")", icon);
+    tg_tag_of("fenriz-test tag-window", tag, sizeof tag);
+    if (strcmp(tag, "inbox"))
+        wlc_die("retagging a window that has an icon did not take (got \"%s\")", tag);
+    xdg_toplevel_icon_v1_destroy(ic);
+    wlc_roundtrip(c);
+
+    // A description is legal and fenriz ignores it; it must not upset anything.
+    xdg_toplevel_tag_manager_v1_set_toplevel_description(tg_manager, w->toplevel, "E-mail composer");
+    wlc_roundtrip(c);
+    wlc_hold_point(c);
+
+    // The tag outlives nothing: closing the window has to take its entry with it.
+    wlc_phase("destroying a tagged window");
+    wlc_destroy(w);
+    wlc_roundtrip(c);
+    wlc_pump(c, 100);
+
+    // A fresh window that sets no tag must not inherit the dead one's entry.
+    struct win* after = wlc_toplevel(c, 300, 200, "fenriz-test tag-after");
+    wlc_map(after, RED);
+    tg_tag_of("fenriz-test tag-after", tag, sizeof tag);
+    if (tag[0])
+        wlc_die("a new untagged window picked up \"%s\" from the destroyed one", tag);
+
+    wlc_destroy(after);
+    wlc_destroy(plain);
+    xdg_toplevel_tag_manager_v1_destroy(tg_manager);
+    wlc_roundtrip(c);
+}
+
 const struct scenario scenarios[] = {
     {"popup", s_popup, "toplevel -> popup -> nested popup, grab, reposition, off-screen anchor"},
     {"layer-popup", s_layer_popup, "corner-anchored popup and submenu on a full-output layer surface"},
@@ -1869,6 +2029,9 @@ const struct scenario scenarios[] = {
     {"dialog", s_dialog, "xdg-dialog-v1: a modal dialog holds focus against its parent"},
     {"icon", s_icon, "xdg-toplevel-icon-v1: icon name reaches the feed; buffer-only and unset clear it"},
     {"foreign", s_foreign, "xdg-foreign: export a toplevel, import it, parent a second window to it"},
+    {"toplevel-tag",
+     s_toplevel_tag,
+     "xdg-toplevel-tag-v1: a tag set before map reaches the feed and dies with the window"},
     {"toplevel-drag", s_toplevel_drag, "xdg-toplevel-drag-v1: a tab torn out follows the cursor to the drop"},
     {"evil", s_evil, "stale acks, commits between configures, self-resize, destroy/recreate"},
     {NULL, NULL, NULL},

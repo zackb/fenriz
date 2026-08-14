@@ -8,10 +8,16 @@
 #     their real desktop.
 #   * FENRIZ_LOG is always set to the run's own file. Otherwise the throwaway instance
 #     rotates and clobbers ~/.local/state/fenriz/fenriz.log on startup.
+#   * XDG_CONFIG_HOME is always set to a directory this function fills in. Otherwise the
+#     instance reads the user's ~/.config/fenriz/fenriz.conf — and hot-reloads it mid-run —
+#     so a test's result depends on whose machine it runs on. A user windowrule that floats
+#     or unfocuses a window is enough to fail an unrelated scenario.
 #
 # fenriz_boot <log> <backend> <launcher...>
 #   backend: headless (no host session needed) | nested (host wayland session)
 #   launcher: the command to run, with the fenriz binary LAST (so `valgrind ... fenriz` works)
+#   $FENRIZ_TEST_CONFIG: optional config file to run with; unset means the compiled-in
+#     defaults, which is the baseline every scenario is written against.
 # Sets: FENRIZ_SOCK, FENRIZ_DISPLAY, FENRIZ_PID, FENRIZ_LAUNCH_PID
 
 fenriz_boot() {
@@ -34,6 +40,19 @@ fenriz_boot() {
         *) echo "unknown backend: $backend"; return 1 ;;
     esac
     export FENRIZ_LOG=$log
+
+    # An EMPTY config dir is not isolation: fenriz falls back to the installed
+    # /usr/share/fenriz/fenriz.conf, which on a machine with fenriz installed is a second
+    # source of truth. The file has to exist, even if it is empty — an empty one parses to the
+    # struct defaults in config.hpp.
+    local cfgdir=${log%.log}.config
+    mkdir -p "$cfgdir/fenriz"
+    if [ -n "${FENRIZ_TEST_CONFIG:-}" ]; then
+        cp "$FENRIZ_TEST_CONFIG" "$cfgdir/fenriz/fenriz.conf"
+    else
+        : >"$cfgdir/fenriz/fenriz.conf"
+    fi
+    export XDG_CONFIG_HOME=$cfgdir
 
     "${launch[@]}" >"${log%.log}.stdout" 2>"${log%.log}.stderr" &
     FENRIZ_LAUNCH_PID=$!

@@ -216,7 +216,6 @@ namespace fenriz {
         SignalListener l_output_power;
         SignalListener l_new_idle_inhibitor;
         SignalListener l_activation_request;
-        SignalListener l_set_icon;
         SignalListener l_new_virtual_keyboard;
         SignalListener l_new_inhibitor;
         SignalListener l_keyboard_focus_change;

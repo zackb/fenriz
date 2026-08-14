@@ -260,7 +260,7 @@ Not configurable:
 ### Window rules
 
 ```
-windowrule = class=REGEX, title=REGEX, float=true, center=true, no_focus=true
+windowrule = class=REGEX, title=REGEX, tag=REGEX, float=true, center=true, no_focus=true
 ```
 
 Fields are `name=value`, comma-separated, any order. All matching rules stack.
@@ -269,12 +269,13 @@ Fields are `name=value`, comma-separated, any order. All matching rules stack.
 |---|---|
 | `class` / `app_id` | regex on xdg app_id (Wayland) or WM_CLASS (XWayland); `^$` matches unset |
 | `title` | regex on the window title |
+| `tag` | regex on the tag the client set for the window (xdg-toplevel-tag-v1); `^$` matches untagged |
 | `float` | open floating |
 | `center` | center on screen (pair with `float`) |
 | `no_focus` | don't focus when it opens |
 | `name` | a label for you; ignored by the compositor |
 
-A rule needs a non-empty `class`/`app_id` or `title` to match. Fields split on commas, so a
+A rule needs a non-empty `class`/`app_id`, `title` or `tag` to match. Fields split on commas, so a
 comma inside a regex quantifier (`{2,4}`) won't work.
 
 ```

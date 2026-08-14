@@ -12,6 +12,7 @@
 #include "server.hpp"
 #include "tiling.hpp"
 #include "toplevel_drag.hpp"
+#include "toplevel_props.hpp"
 #include "wlr.hpp"
 
 namespace fenriz {
@@ -484,6 +485,14 @@ namespace fenriz {
         return view->kind == View::Kind::Xdg ? view->toplevel->title : view->xwl->title;
     }
 
+    const char* view_tag(View* view) {
+        return view->kind == View::Kind::Xdg ? toplevel_props::tag_of(view->toplevel) : "";
+    }
+
+    const char* view_icon(View* view) {
+        return view->kind == View::Kind::Xdg ? toplevel_props::icon_of(view->toplevel) : "";
+    }
+
     void view_min_size(const View* view, int& w, int& h) {
         // Client's minimum content size (window-geometry units, CSD excluded); 0 = no minimum.
         // X11 hints are optional (size_hints may be null before the client sets WM_NORMAL_HINTS,
@@ -794,7 +803,8 @@ namespace fenriz {
         }
         // The matching itself is pure and lives in config.cpp, where it can be unit-tested
         // without a compositor (see test_config.cpp).
-        const RuleResult r = match_rules(server.config.window_rules, view_app_id(view), view_title(view));
+        const RuleResult r =
+            match_rules(server.config.window_rules, view_app_id(view), view_title(view), view_tag(view));
         if (r.floating)
             view->floating = true;
         if (r.center)

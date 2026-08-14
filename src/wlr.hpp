@@ -94,6 +94,7 @@ extern "C" {
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/types/wlr_xdg_toplevel_icon_v1.h>
+#include <wlr/types/wlr_xdg_toplevel_tag_v1.h>
 #include <xcb/xcb.h>
 #include <xcb/xcb_ewmh.h>
 #include <xcb/xcb_icccm.h>

@@ -58,9 +58,6 @@ namespace fenriz {
         bool float_self_sized = true;
         bool urgent = false; // asked to be activated while unfocused; cleared on focus
 
-        // xdg-toplevel-icon-v1: the XDG icon-theme name the client asked for, empty if none.
-        std::string icon;
-
         int req_w = 0, req_h = 0;
         bool acked = false;
 
@@ -127,6 +124,10 @@ namespace fenriz {
     wlr_surface* view_surface(View* view);
     const char* view_app_id(View* view); // xdg app_id, or X11 WM_CLASS
     const char* view_title(View* view);
+    // xdg-toplevel-tag-v1: the client's stable name for this window, "" if it set none (XWayland).
+    const char* view_tag(View* view);
+    // xdg-toplevel-icon-v1: the XDG icon-theme name the client asked for, same rules.
+    const char* view_icon(View* view);
     // Client's minimum content size (geometry units, CSD excluded); 0 = no minimum.
     void view_min_size(const View* view, int& w, int& h);
     // Client's maximum content size, 0 = no maximum

@@ -88,9 +88,7 @@ namespace fenriz {
             return fallback;
         }
 
-        // Mirror WLR_MODIFIER_* bit values (wlr/types/wlr_keyboard.h) so the config
-        // parser stays free of a wlroots include and its test needs no wlroots.
-        // ponytail: 4 constants beats dragging wlr headers into the pure-logic unit.
+        // Mirror WLR_MODIFIER_* bit values (wlr/types/wlr_keyboard.h)
         uint32_t mod_from_token(const std::string& t) {
             std::string u = t;
             std::transform(u.begin(), u.end(), u.begin(), [](unsigned char c) { return std::toupper(c); });
@@ -107,7 +105,8 @@ namespace fenriz {
 
     } // namespace
 
-    RuleResult match_rules(const std::vector<WindowRule>& rules, const char* app_id, const char* title) {
+    RuleResult
+        match_rules(const std::vector<WindowRule>& rules, const char* app_id, const char* title, const char* tag) {
         auto matches = [](const std::string& pat, const char* value) {
             if (pat.empty())
                 return true;
@@ -119,7 +118,7 @@ namespace fenriz {
         };
         RuleResult out;
         for (const WindowRule& r : rules) {
-            if (!matches(r.app_id, app_id) || !matches(r.title, title))
+            if (!matches(r.app_id, app_id) || !matches(r.title, title) || !matches(r.tag, tag))
                 continue;
             out.floating |= r.floating;
             out.center |= r.center;
@@ -228,7 +227,7 @@ namespace fenriz {
             }
 
             if (key == "windowrule") {
-                // name=value fields, comma-separated, any order: class/app_id, title
+                // name=value fields, comma-separated, any order: class/app_id, title, tag
                 // (regexes), float/center/no_focus (bools), name (label, ignored).
                 // ponytail: split on ',' — a regex with a comma in a quantifier ({2,4})
                 // would break; the common cases don't, upgrade to a smarter tokenizer if needed.
@@ -243,6 +242,8 @@ namespace fenriz {
                         r.app_id = v;
                     else if (k == "title")
                         r.title = v;
+                    else if (k == "tag")
+                        r.tag = v;
                     else if (k == "float")
                         r.floating = parse_bool(v, false);
                     else if (k == "center")
@@ -251,7 +252,7 @@ namespace fenriz {
                         r.no_focus = parse_bool(v, false);
                     // `name` and unknown fields: ignored (label only).
                 }
-                if (!r.app_id.empty() || !r.title.empty())
+                if (!r.app_id.empty() || !r.title.empty() || !r.tag.empty())
                     cfg.window_rules.push_back(r);
                 continue;
             }
