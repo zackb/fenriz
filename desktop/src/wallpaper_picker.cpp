@@ -6,7 +6,6 @@
 
 #include "blur.hpp"
 #include "spawn.hpp"
-#include "theme.hpp"
 #include "wallpaper.hpp"
 
 namespace fenriz::desktop {
@@ -286,7 +285,7 @@ namespace fenriz::desktop {
         gtk_window_set_child(window_, root);
         if (search_)
             gtk_search_entry_set_key_capture_widget(GTK_SEARCH_ENTRY(search_), GTK_WIDGET(window_));
-        blur::attach(GTK_NATIVE(window_), root, blur::Mode::Widget, theme::CARD_RADIUS);
+        blur::attach(GTK_NATIVE(window_));
     }
 
     void WallpaperPicker::toggle(GtkApplication* app) {

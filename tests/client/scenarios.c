@@ -2613,6 +2613,38 @@ static void s_pixels(struct wlc* c) {
     // A popup asking for blur — a menu on a desktop shell. Popups are in neither the view
     // list nor the layer list, so they reach their blur nodes their own way, and getting the
     // offset wrong draws the blur somewhere the popup is not.
+    // The blur node is masked by the client's own buffer, so blur is only drawn where the
+    // client drew something. A surface that painted nothing must therefore leave the pixels
+    // behind it untouched, even though it asked for blur across the whole of itself. Without
+    // the mask this is a blurred rectangle, and every rounded card gets square blur corners.
+    wlc_phase("blurring a surface that painted nothing");
+    struct win* ghost = wlc_toplevel(c, 300, 220, "fenriz-test pixels-float");
+    struct ext_background_effect_surface_v1* gfx =
+        ext_background_effect_manager_v1_get_background_effect(be_manager, ghost->surface);
+    r = wl_compositor_create_region(c->compositor);
+    wl_region_add(r, 0, 0, 300, 220);
+    ext_background_effect_surface_v1_set_blur_region(gfx, r);
+    wl_region_destroy(r);
+    wlc_map(ghost, 0x00000000u); // premultiplied: nothing at all
+    wlc_pump(c, 300);
+
+    shot = wlc_capture(c, 0);
+    const uint32_t ghost_mid = wlc_pixel(shot, W / 2, H / 2);
+    if (!wlc_color_near(ghost_mid, RED, 6))
+        wlc_die("pixel %d,%d is %s, expected %s — blur was drawn under a surface that painted "
+                "nothing, so the transparency mask is not being applied",
+                W / 2,
+                H / 2,
+                wlc_color_str(ghost_mid),
+                wlc_color_str(RED));
+    wlc_shot_free(shot);
+    wlc_log("blur follows what the client actually painted");
+
+    ext_background_effect_surface_v1_destroy(gfx);
+    wlc_destroy(ghost);
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
+
     // The popup's own translucent buffer already tints the red behind it, so a single frame
     // proves nothing. Shoot the same popup with and without a region and require the pixel
     // to move: only the blur can account for the difference.

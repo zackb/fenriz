@@ -8,10 +8,6 @@
 
 namespace fenriz::desktop::theme {
 
-    // Corner radius of the shell's cards.
-    constexpr int CARD_RADIUS = 12;
-    constexpr int PILL_RADIUS = 27;
-
     // The whole sheet, config values already folded in.
     std::string sheet(const Config& cfg);
 

@@ -11,7 +11,7 @@
 //   preview fenriz-launcher /tmp/out.png
 //   preview osd-pill /tmp/pill.png --in fenriz-osd --content pill --size 340x110
 //
-// It also prints the card's natural size, which is where PILL_RADIUS comes from.
+// It also prints the card's natural size, which is what you need when a style depends on it.
 
 #include <gtk/gtk.h>
 
@@ -94,8 +94,8 @@ namespace {
         return G_SOURCE_REMOVE;
     }
 
-    // The OSD's pill is the one card whose natural height is load-bearing (theme::PILL_RADIUS
-    // is half of it), so it can be filled with the same children osd.cpp gives it.
+    // The pill can be filled with the same children osd.cpp gives it, so its reported natural
+    // height is the real one.
     void add_pill_content(GtkWidget* box) {
         GtkWidget* image = gtk_image_new_from_icon_name("audio-volume-high-symbolic");
         gtk_image_set_pixel_size(GTK_IMAGE(image), 24);

@@ -14,7 +14,7 @@ namespace fenriz {
     // ext-background-effect-v1 and org_kde_kwin_blur
     namespace background_blur {
 
-        constexpr int RECTS_MAX = 16;
+        constexpr int RECTS_MAX = 8;
 
         void init(Server& server);
 

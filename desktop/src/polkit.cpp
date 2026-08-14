@@ -8,7 +8,6 @@
 #include <unistd.h>
 
 #include "blur.hpp"
-#include "theme.hpp"
 
 namespace {
 
@@ -156,7 +155,7 @@ namespace {
 
         gtk_window_set_child(req->window, box);
         gtk_window_set_focus(req->window, req->entry);
-        blur::attach(GTK_NATIVE(req->window), box, blur::Mode::Widget, fenriz::desktop::theme::CARD_RADIUS);
+        blur::attach(GTK_NATIVE(req->window));
         gtk_window_present(req->window);
     }
 

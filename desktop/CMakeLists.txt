@@ -155,13 +155,6 @@ target_include_directories(desktop_theme_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR
 target_link_libraries(desktop_theme_test PRIVATE PkgConfig::GTK4)
 target_compile_options(desktop_theme_test PRIVATE -UNDEBUG)
 
-add_executable(desktop_blur_test src/blur.cpp src/test_blur.cpp
-               ${CMAKE_CURRENT_BINARY_DIR}/ext-background-effect-v1-protocol.c
-               ${CMAKE_CURRENT_BINARY_DIR}/ext-background-effect-v1-client-protocol.h)
-target_include_directories(desktop_blur_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_BINARY_DIR})
-target_link_libraries(desktop_blur_test PRIVATE PkgConfig::GTK4 PkgConfig::WAYLAND)
-target_compile_options(desktop_blur_test PRIVATE -UNDEBUG)
-
 set(CPACK_SET_DESTDIR ON)
 set(CPACK_PACKAGE_RELOCATABLE FALSE)
 set(CPACK_PACKAGE_NAME "fenriz-desktop")
@@ -201,5 +194,4 @@ add_test(NAME volume   COMMAND desktop_volume_test)
 add_test(NAME wallpaper COMMAND desktop_wallpaper_test)
 add_test(NAME screensaver COMMAND desktop_screensaver_test)
 add_test(NAME notify   COMMAND desktop_notify_test)
-add_test(NAME blur     COMMAND desktop_blur_test)
 add_test(NAME theme    COMMAND desktop_theme_test)

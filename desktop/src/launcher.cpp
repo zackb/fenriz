@@ -7,7 +7,6 @@
 
 #include "blur.hpp"
 #include "spawn.hpp"
-#include "theme.hpp"
 
 namespace fenriz::desktop {
 
@@ -234,7 +233,7 @@ namespace fenriz::desktop {
 
         gtk_window_set_child(window_, root);
         gtk_window_set_focus(window_, search_);
-        blur::attach(GTK_NATIVE(window_), root, blur::Mode::Widget, theme::CARD_RADIUS);
+        blur::attach(GTK_NATIVE(window_));
     }
 
     void Launcher::prewarm(GtkApplication* app) {

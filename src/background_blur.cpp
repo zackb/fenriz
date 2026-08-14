@@ -53,6 +53,28 @@ namespace fenriz::background_blur {
             return nullptr;
         }
 
+        struct MaskSearch {
+            const wlr_surface* surface;
+            wlr_scene_buffer* found;
+        };
+
+        void mask_iterator(wlr_scene_buffer* buffer, int, int, void* data) {
+            auto* search = static_cast<MaskSearch*>(data);
+            if (search->found)
+                return;
+            wlr_scene_surface* scene_surface = wlr_scene_surface_try_from_buffer(buffer);
+            if (scene_surface && scene_surface->surface == search->surface)
+                search->found = buffer;
+        }
+
+        // The scene buffer that draws `surface`, searched from `root`.
+        wlr_scene_buffer* mask_source(wlr_scene_node* root, const wlr_surface* surface) {
+            MaskSearch search = {surface, nullptr};
+            if (root)
+                wlr_scene_node_for_each_buffer(root, mask_iterator, &search);
+            return search.found;
+        }
+
         // The window or layer surface owning this surface re-places its blur nodes.
         void replace_nodes(wlr_surface* surface) {
             Server& server = *state.server;
@@ -306,6 +328,7 @@ namespace fenriz::background_blur {
                int radius,
                wlr_scene_blur* nodes[RECTS_MAX]) {
         const Effect* e = state.server && state.server->config.blur ? drawn_effect(surface) : nullptr;
+        wlr_scene_buffer* mask = e ? mask_source(below, surface) : nullptr;
 
         // surface-local coordinates
         pixman_region32_t clipped;
@@ -345,6 +368,7 @@ namespace fenriz::background_blur {
                     continue;
             }
             wlr_scene_blur_set_size(nodes[i], w, h);
+            wlr_scene_blur_set_transparency_mask_source(nodes[i], mask);
             // Round only the corners this rectangle shares with the window itself.
             fx_corner_radii corners = corner_radii_none();
             if (radius > 0) {
