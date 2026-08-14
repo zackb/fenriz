@@ -38,6 +38,12 @@ namespace {
         assert(socket_path(nullptr, dir, nullptr) == one);
         assert(socket_path(nullptr, dir, "") == one); // empty display counts as unset
 
+        // The event socket lives in the same directory. It must not end in .sock, or the
+        // discovery above would see two candidates and give up.
+        const std::string ev = std::string(dir) + "/fenriz-wayland-0.events";
+        touch(ev);
+        assert(socket_path(nullptr, dir, nullptr) == one);
+
         // Two compositors running: guessing would talk to the wrong session.
         const std::string two = std::string(dir) + "/fenriz-wayland-1.sock";
         touch(two);
@@ -45,7 +51,24 @@ namespace {
 
         unlink(one.c_str());
         unlink(two.c_str());
+        unlink(ev.c_str());
         rmdir(dir);
+    }
+
+    void test_event_socket_path() {
+        // FENRIZ_EVENT_SOCKET wins, even over a state path that would resolve.
+        assert(event_socket_path("/run/explicit.events", "/run/fenriz-wayland-0.sock") == "/run/explicit.events");
+
+        // Otherwise derived from the state path by swapping the suffix.
+        assert(event_socket_path(nullptr, "/run/fenriz-wayland-0.sock") == "/run/fenriz-wayland-0.events");
+        assert(event_socket_path("", "/run/fenriz-wayland-0.sock") == "/run/fenriz-wayland-0.events");
+
+        // FENRIZ_SOCKET can point anywhere; a path with no .sock suffix just gains .events.
+        assert(event_socket_path(nullptr, "/run/weird") == "/run/weird.events");
+        assert(event_socket_path(nullptr, ".sock") == ".sock.events"); // suffix, not whole name
+
+        // No state socket to derive from and no override: nothing to connect to.
+        assert(event_socket_path(nullptr, "").empty());
     }
 
     // The sent line, without its trailing newline.
@@ -62,6 +85,7 @@ int main() {
     // Read commands don't send anything.
     assert(run({"state"}).mode == Mode::State);
     assert(run({"watch"}).mode == Mode::Watch);
+    assert(run({"events"}).mode == Mode::Events);
 
     // Every command documented in docs/IPC.md.
     assert(sent({"workspace", "3"}) == R"({"cmd":"workspace","n":3})");
@@ -101,6 +125,7 @@ int main() {
     assert(run({"killactiv"}).mode == Mode::None); // typo, not silently ignored
 
     test_socket_path();
+    test_event_socket_path();
 
     printf("fenrizctl tests passed\n");
     return 0;

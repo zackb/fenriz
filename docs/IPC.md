@@ -11,6 +11,7 @@ one-line JSON commands. Implemented in `src/ipc.cpp`.
 ```
 fenrizctl state                    # current state, one JSON line
 fenrizctl watch                    # stream state changes (NDJSON)
+fenrizctl events                   # stream events, e.g. the bell (NDJSON)
 
 fenrizctl workspace 3
 fenrizctl dpms off                 # or: dpms on DP-1
@@ -31,6 +32,7 @@ Read commands print the raw feed
 fenrizctl state | jq -r .activeWindow.title
 fenrizctl state | jq '.windows[] | select(.floating)'
 fenrizctl watch | while read -r line; do …; done
+fenrizctl events | while read -r _; do paplay /usr/share/sounds/…/bell.oga; done
 ```
 
 Exit status is `0` on success, `1` for a bad argument, `2` when the socket is unreachable
@@ -38,25 +40,27 @@ Exit status is `0` on success, `1` for a bad argument, `2` when the socket is un
 
 The rest of this document is the wire protocol, for writing a client directly.
 
-## Socket
+## Sockets
 
-On startup fenriz binds a Unix stream socket at
+On startup fenriz binds two Unix stream sockets and exports both paths. Child processes
+(including `exec-once` clients) inherit them, so read the environment rather than
+reconstructing a path.
 
-```
-$XDG_RUNTIME_DIR/fenriz-$WAYLAND_DISPLAY.sock
-```
+| | Path | Env | Direction |
+|---|---|---|---|
+| State + commands | `$XDG_RUNTIME_DIR/fenriz-$WAYLAND_DISPLAY.sock` | `FENRIZ_SOCKET` | read/write |
+| Events | `$XDG_RUNTIME_DIR/fenriz-$WAYLAND_DISPLAY.events` | `FENRIZ_EVENT_SOCKET` | read-only |
 
-and exports its path as `FENRIZ_SOCKET`. Child processes (including `exec-once`
-clients) inherit it, so read `FENRIZ_SOCKET` rather than reconstructing the path.
-If `XDG_RUNTIME_DIR` or `WAYLAND_DISPLAY` is unset, no socket is created.
 
-`fenrizctl` resolves it in that order: `FENRIZ_SOCKET`, then the path above.
+`fenrizctl` resolves the control socket in that order: `FENRIZ_SOCKET`, then the path above.
 When neither is in the environment (a TTY, a bare ssh session), the only
 `$XDG_RUNTIME_DIR/fenriz-*.sock` present. If more than one of those it refuses rather
-than picking a session for you.
+than picking a session for you. The event socket is `FENRIZ_EVENT_SOCKET`, else whatever
+that resolution produced with `.events` in place of `.sock`.
 
 ```
 socat - UNIX-CONNECT:$FENRIZ_SOCKET
+socat - UNIX-CONNECT:$FENRIZ_EVENT_SOCKET
 ```
 
 ## State feed (server → client)
@@ -89,7 +93,7 @@ means something changed.
 | `cursor.x/y` | int | Pointer position in layout coordinates (same space as `outputs[].x/y`). **Only current at connect time** — see below. |
 | `workspaces.active` | int | The **focused output's** workspace, 1-indexed. Unchanged meaning on a single screen. |
 | `workspaces.occupied` | int[] | Sorted 1-indexed workspaces with mapped windows, plus whatever each output is showing. |
-| `workspaces.urgent` | int[] | Sorted 1-indexed workspaces holding a window that asked to be activated (xdg-activation) while unfocused. Cleared when the window is focused. Usually empty. |
+| `workspaces.urgent` | int[] | Sorted 1-indexed workspaces holding a window that asked for attention — an xdg-activation request while unfocused, or a system bell. |
 | `windows` | object[] | Every mapped window, across all workspaces, in stacking order (bottom → top). |
 | `windows[].appId` | string | xdg app id, or the X11 `WM_CLASS` for XWayland windows. |
 | `windows[].title` | string | Window title. |
@@ -128,6 +132,29 @@ so a shell with per-screen surfaces (quickshell's `Variants`, or anything that b
 `wl_output`) tears down and rebuilds on its own through the ordinary Wayland registry events.
 The `outputs` array is for *displaying* state (which workspace is on which screen), not for
 driving your shell's lifecycle.
+
+## Event feed (server → client)
+
+A second, read-only socket (`FENRIZ_EVENT_SOCKET`) sending things that happen, as opposed
+to the state feed's description of how things *are*. NDJSON again, one object per line.
+
+```
+$ fenrizctl events
+{"event":"bell","appId":"kitty","title":"~","workspace":3}
+{"event":"bell"}
+```
+
+### `bell`
+
+An `xdg-system-bell-v1` ring — a terminal's `\a`, or anything else asking for attention.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `event` | string | `"bell"`. |
+| `appId` | string | The ringing window's app id. **Absent** if the ring named no window. |
+| `title` | string | The ringing window's title. Absent under the same conditions. |
+| `workspace` | int | The ringing window's workspace, 1-indexed. Absent likewise. |
+
 
 ## Commands (client → server)
 

@@ -27,13 +27,19 @@ namespace fenriz::ipc {
             wl_event_source* src; // its readable source in the loop; removed on disconnect
         };
 
+        // One listening socket and the clients attached to it.
+        struct Feed {
+            wl_event_source* listen_src = nullptr;
+            std::string path;
+            std::vector<Client> clients;
+        };
+
         // One instance per compositor. Set in init(); publish()/callbacks reach it here.
         struct IpcState {
             Server* server = nullptr;
             wl_event_loop* loop = nullptr;
-            wl_event_source* listen_src = nullptr;
-            std::string path;
-            std::vector<Client> clients;
+            Feed state;
+            Feed events;
             std::string last;             // last broadcast snapshot; skip re-sending if unchanged
             bool publish_pending = false; // an idle broadcast is already queued this iteration
         };
@@ -172,8 +178,8 @@ namespace fenriz::ipc {
             return s;
         }
 
-        void drop_client(int fd) {
-            auto& c = g->clients;
+        void drop_client(Feed& feed, int fd) {
+            auto& c = feed.clients;
             for (auto it = c.begin(); it != c.end(); ++it) {
                 if (it->fd == fd) {
                     // wl_event_source_remove closes the fd it owns
@@ -201,6 +207,16 @@ namespace fenriz::ipc {
                 return false; // EPIPE/ECONNRESET or n == 0: client is gone
             }
             return true;
+        }
+
+        void broadcast(Feed& feed, const std::string& line) {
+            // snapshot the fds first: send_line may drop clients (EPIPE) and mutate the vector.
+            std::vector<int> fds;
+            for (const Client& c : feed.clients)
+                fds.push_back(c.fd);
+            for (int fd : fds)
+                if (!send_line(fd, line))
+                    drop_client(feed, fd);
         }
 
         // Pull a "key":"value" string out of a command line, undoing \" and \\ escapes. Same
@@ -285,42 +301,94 @@ namespace fenriz::ipc {
             }
         }
 
-        int on_client_readable(int fd, uint32_t mask, void* data) {
+        // Read one chunk from a client, or drop it. Returns the bytes read, or -1 when the
+        // client is gone (already dropped) or the wakeup was spurious.
+        ssize_t read_or_drop(Feed& feed, int fd, char* buf, size_t cap) {
+            ssize_t n = recv(fd, buf, cap, 0);
+            if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
+                return -1; // spurious wakeup, not a disconnect
+            if (n <= 0) {  // error, or orderly EOF -> client gone
+                drop_client(feed, fd);
+                return -1;
+            }
+            return n;
+        }
+
+        int on_state_readable(int fd, uint32_t mask, void* data) {
             (void)mask;
-            auto* st = static_cast<IpcState*>(data);
+            auto* feed = static_cast<Feed*>(data);
             char buf[4096];
-            ssize_t n = recv(fd, buf, sizeof(buf), 0);
-            if (n < 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-                    return 0; // spurious wakeup, not a disconnect
-                drop_client(fd);
+            ssize_t n = read_or_drop(*feed, fd, buf, sizeof(buf));
+            if (n < 0)
                 return 0;
-            }
-            if (n == 0) { // orderly EOF -> client gone
-                drop_client(fd);
-                return 0;
-            }
             std::string chunk(buf, n);
             size_t start = 0, nl;
             while ((nl = chunk.find('\n', start)) != std::string::npos) {
-                handle_command_line(*st->server, chunk.substr(start, nl - start));
+                handle_command_line(*g->server, chunk.substr(start, nl - start));
                 start = nl + 1;
             }
             return 0;
         }
 
-        int on_listen_readable(int fd, uint32_t mask, void* data) {
+        // The event feed takes no commands; this exists only so EOF drops the client.
+        int on_events_readable(int fd, uint32_t mask, void* data) {
             (void)mask;
-            auto* st = static_cast<IpcState*>(data);
-            int cfd = accept4(fd, nullptr, nullptr, SOCK_CLOEXEC | SOCK_NONBLOCK);
-            if (cfd < 0)
-                return 0;
-            wl_event_source* src = wl_event_loop_add_fd(st->loop, cfd, WL_EVENT_READABLE, on_client_readable, st);
-            st->clients.push_back({cfd, src});
-            send_line(cfd, snapshot(*st->server));
+            char buf[4096];
+            read_or_drop(*static_cast<Feed*>(data), fd, buf, sizeof(buf));
             return 0;
         }
 
+        int accept_client(Feed& feed, int fd, wl_event_loop_fd_func_t on_readable) {
+            int cfd = accept4(fd, nullptr, nullptr, SOCK_CLOEXEC | SOCK_NONBLOCK);
+            if (cfd < 0)
+                return -1;
+            wl_event_source* src = wl_event_loop_add_fd(g->loop, cfd, WL_EVENT_READABLE, on_readable, &feed);
+            feed.clients.push_back({cfd, src});
+            return cfd;
+        }
+
+        int on_state_listen(int fd, uint32_t mask, void* data) {
+            (void)mask;
+            auto* feed = static_cast<Feed*>(data);
+            if (int cfd = accept_client(*feed, fd, on_state_readable); cfd >= 0)
+                send_line(cfd, snapshot(*g->server)); // greet with the current state
+            return 0;
+        }
+
+        // No greeting: the event feed has no backlog, only what happens from now on.
+        int on_events_listen(int fd, uint32_t mask, void* data) {
+            (void)mask;
+            accept_client(*static_cast<Feed*>(data), fd, on_events_readable);
+            return 0;
+        }
+
+    } // namespace
+
+    namespace {
+        // Bind and listen on a Unix stream socket, replacing any stale file left by a prior
+        // run. Returns the fd, or -1 with the reason already logged.
+        int bind_socket(const std::string& path) {
+            int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+            if (fd < 0) {
+                wlr_log(WLR_ERROR, "fenriz ipc: socket() failed");
+                return -1;
+            }
+            sockaddr_un addr = {};
+            addr.sun_family = AF_UNIX;
+            if (path.size() >= sizeof(addr.sun_path)) {
+                wlr_log(WLR_ERROR, "fenriz ipc: socket path too long: %s", path.c_str());
+                close(fd);
+                return -1;
+            }
+            std::strcpy(addr.sun_path, path.c_str());
+            unlink(path.c_str());
+            if (bind(fd, (sockaddr*)&addr, sizeof(addr)) < 0 || listen(fd, 8) < 0) {
+                wlr_log(WLR_ERROR, "fenriz ipc: bind/listen failed on %s", path.c_str());
+                close(fd);
+                return -1;
+            }
+            return fd;
+        }
     } // namespace
 
     void init(Server& server) {
@@ -330,34 +398,21 @@ namespace fenriz::ipc {
             wlr_log(WLR_ERROR, "fenriz ipc: XDG_RUNTIME_DIR/WAYLAND_DISPLAY unset, no control socket");
             return;
         }
+        // The event socket deliberately does NOT end in .sock: fenrizctl falls back to globbing
+        // fenriz-*.sock from a TTY and refuses when that matches more than one file.
         std::string path = std::string(xdg) + "/fenriz-" + disp + ".sock";
+        std::string event_path = std::string(xdg) + "/fenriz-" + disp + ".events";
 
-        int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
-        if (fd < 0) {
-            wlr_log(WLR_ERROR, "fenriz ipc: socket() failed");
+        int fd = bind_socket(path);
+        if (fd < 0)
             return;
-        }
-        sockaddr_un addr = {};
-        addr.sun_family = AF_UNIX;
-        if (path.size() >= sizeof(addr.sun_path)) {
-            wlr_log(WLR_ERROR, "fenriz ipc: socket path too long: %s", path.c_str());
-            close(fd);
-            return;
-        }
-        std::strcpy(addr.sun_path, path.c_str());
-        unlink(path.c_str()); // clear a stale socket from a prior run
-        if (bind(fd, (sockaddr*)&addr, sizeof(addr)) < 0 || listen(fd, 8) < 0) {
-            wlr_log(WLR_ERROR, "fenriz ipc: bind/listen failed on %s", path.c_str());
-            close(fd);
-            return;
-        }
 
         g = new IpcState{};
         g->server = &server;
         g->loop = wl_display_get_event_loop(server.display);
-        g->path = path;
-        g->listen_src = wl_event_loop_add_fd(g->loop, fd, WL_EVENT_READABLE, on_listen_readable, g);
-        if (!g->listen_src) {
+        g->state.path = path;
+        g->state.listen_src = wl_event_loop_add_fd(g->loop, fd, WL_EVENT_READABLE, on_state_listen, &g->state);
+        if (!g->state.listen_src) {
             close(fd);
             delete g;
             g = nullptr;
@@ -367,6 +422,25 @@ namespace fenriz::ipc {
 
         setenv("FENRIZ_SOCKET", path.c_str(), true);
         wlr_log(WLR_INFO, "fenriz ipc: listening on FENRIZ_SOCKET=%s", path.c_str());
+
+        // The event feed is a bonus channel: if it can't be brought up, the compositor and
+        // every existing command still work, so warn and carry on.
+        int efd = bind_socket(event_path);
+        if (efd < 0) {
+            wlr_log(WLR_ERROR, "fenriz ipc: no event socket; bells and other events won't be published");
+            return;
+        }
+        g->events.path = event_path;
+        g->events.listen_src = wl_event_loop_add_fd(g->loop, efd, WL_EVENT_READABLE, on_events_listen, &g->events);
+        if (!g->events.listen_src) {
+            close(efd);
+            g->events.path.clear();
+            wlr_log(WLR_ERROR, "fenriz ipc: could not register the event socket");
+            return;
+        }
+
+        setenv("FENRIZ_EVENT_SOCKET", event_path.c_str(), true);
+        wlr_log(WLR_INFO, "fenriz ipc: listening on FENRIZ_EVENT_SOCKET=%s", event_path.c_str());
     }
 
     namespace {
@@ -377,19 +451,13 @@ namespace fenriz::ipc {
         void do_publish() {
             g->publish_pending = false;
             workspace_protocol::sync(*g->server);
-            if (g->clients.empty()) // nobody listening: don't build the snapshot at all
+            if (g->state.clients.empty()) // nobody listening: don't build the snapshot at all
                 return;
             std::string s = snapshot(*g->server);
             if (s == g->last)
                 return;
             g->last = s;
-            // Snapshot the fds first: send_line may drop clients (EPIPE) and mutate g->clients.
-            std::vector<int> fds;
-            for (const Client& c : g->clients)
-                fds.push_back(c.fd);
-            for (int fd : fds)
-                if (!send_line(fd, s))
-                    drop_client(fd);
+            broadcast(g->state, s);
         }
 
         void publish_idle(void* data) {
@@ -406,14 +474,43 @@ namespace fenriz::ipc {
         wl_event_loop_add_idle(g->loop, publish_idle, nullptr);
     }
 
+    void bell(Server& server, wlr_surface* surface) {
+        if (!g || g->events.clients.empty())
+            return;
+
+        // Naming a surface is optional, and the one named may belong to no view at all (a layer
+        // surface, or a window already gone). Anything unattributable rings without window keys.
+        View* rang = nullptr;
+        if (surface)
+            for (View* v : server.views)
+                if (view_surface(v) == surface) {
+                    rang = v;
+                    break;
+                }
+
+        std::string s = "{\"event\":\"bell\"";
+        if (rang) {
+            s += ",\"appId\":\"";
+            json_escape(s, view_app_id(rang));
+            s += "\",\"title\":\"";
+            json_escape(s, view_title(rang));
+            s += "\",\"workspace\":" + std::to_string(rang->workspace + 1);
+        }
+        s += "}\n";
+        broadcast(g->events, s);
+    }
+
     void shutdown() {
         if (!g)
             return;
-        for (const Client& c : g->clients)
-            wl_event_source_remove(c.src);
-        wl_event_source_remove(g->listen_src);
-        if (!g->path.empty())
-            unlink(g->path.c_str());
+        for (Feed* f : {&g->state, &g->events}) {
+            for (const Client& c : f->clients)
+                wl_event_source_remove(c.src);
+            if (f->listen_src)
+                wl_event_source_remove(f->listen_src);
+            if (!f->path.empty())
+                unlink(f->path.c_str());
+        }
         delete g;
         g = nullptr;
     }

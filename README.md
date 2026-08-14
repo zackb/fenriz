@@ -139,12 +139,14 @@ fenriz sets `XDG_CURRENT_DESKTOP=fenriz:wlroots` and installs
 ## IPC
 
 fenriz exposes a Unix socket (`FENRIZ_SOCKET`) that streams workspace/window/output state
-as newline-delimited JSON and accepts one-line commands — for status bars and shells.
-`fenrizctl` is the CLI for it:
+as newline-delimited JSON and accepts one-line commands, plus a read-only event socket
+(`FENRIZ_EVENT_SOCKET`) for things that happen, like the system bell — for status bars and
+shells. `fenrizctl` is the CLI for both:
 
 ```
 fenrizctl state | jq       # current outputs, workspaces, and windows
 fenrizctl watch            # stream every change
+fenrizctl events           # stream events
 fenrizctl workspace 3      # ...and any keybind action: fenrizctl killactive
 ```
 
@@ -166,7 +168,7 @@ src/
   layer.*         wlr-layer-shell (bars/panels/wallpapers) + idle-notify
   decoration.*    force server-side decoration (xdg-decoration); fenriz draws the border
   lock.*          session lock (ext-session-lock)
-  ipc.*           FENRIZ_SOCKET control socket (see docs/IPC.md)
+  ipc.*           FENRIZ_SOCKET control socket + FENRIZ_EVENT_SOCKET event feed (see docs/IPC.md)
   fenrizctl.*     the `fenrizctl` CLI for that socket
   config.*        Hyprland-style config parser
   xwayland.*      XWayland support (X11 apps)

@@ -1,15 +1,16 @@
 #pragma once
 
+struct wlr_surface;
+
 namespace fenriz {
 
     class Server;
 
     namespace ipc {
 
-        // Create the native fenriz control socket ($XDG_RUNTIME_DIR/fenriz-<disp>.sock,
-        // exported as FENRIZ_SOCKET) and register it on the compositor event loop.
-        // Streams newline-delimited JSON state snapshots and accepts one-line commands.
-        // Call before spawning exec-once clients so they inherit FENRIZ_SOCKET.
+        // Create the two native fenriz sockets and register them on the compositor event loop:
+        // the control socket ($XDG_RUNTIME_DIR/fenriz-<disp>.sock, exported as FENRIZ_SOCKET),
+        // and the read-only event socket (.events, FENRIZ_EVENT_SOCKET).
         void init(Server& server);
 
         // Rebuild the state snapshot and, if it changed, broadcast it to every connected
@@ -17,7 +18,10 @@ namespace fenriz {
         // switch, view map/unmap/destroy).
         void publish(Server& server);
 
-        // Close the control socket, drop every connected client, and remove the socket file.
+        // Ring: broadcast one line on the event feed.
+        void bell(Server& server, wlr_surface* surface);
+
+        // Close both sockets, drop every connected client, and remove the socket files.
         void shutdown();
 
     } // namespace ipc

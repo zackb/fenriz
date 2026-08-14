@@ -18,6 +18,7 @@ namespace {
                         "\n"
                         "  state                 print the current state as one JSON line\n"
                         "  watch                 stream state changes as newline-delimited JSON\n"
+                        "  events                stream events (bell) as newline-delimited JSON\n"
                         "\n"
                         "  workspace N           show workspace N (1-32)\n"
                         "  dpms on|off [OUTPUT]  power displays on/off (all, or one connector)\n"
@@ -34,6 +35,8 @@ namespace {
                         "Reads $FENRIZ_SOCKET, falling back to\n"
                         "$XDG_RUNTIME_DIR/fenriz-$WAYLAND_DISPLAY.sock, and from a TTY (no\n"
                         "WAYLAND_DISPLAY) to the only $XDG_RUNTIME_DIR/fenriz-*.sock present.\n"
+                        "`events` reads $FENRIZ_EVENT_SOCKET, defaulting to that path with\n"
+                        ".events in place of .sock.\n"
                         "\n"
                         "  fenrizctl state | jq .windows      # the window list\n"
                         "  fenrizctl movetoworkspace 3\n";
@@ -72,6 +75,14 @@ namespace {
         }
     }
 
+    // Copy every line through to stdout until the compositor closes the socket.
+    void stream(int fd, std::string& buf) {
+        for (std::string line; !(line = read_line(fd, buf)).empty();) {
+            fputs(line.c_str(), stdout);
+            fflush(stdout); // line-buffer for `fenrizctl watch | while read`
+        }
+    }
+
     bool write_all(int fd, const std::string& s) {
         for (size_t off = 0; off < s.size();) {
             ssize_t n = send(fd, s.data() + off, s.size() - off, MSG_NOSIGNAL);
@@ -102,7 +113,8 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::string path = fenrizctl::socket_path();
+    const bool events = cmd.mode == fenrizctl::Mode::Events;
+    std::string path = events ? fenrizctl::event_socket_path() : fenrizctl::socket_path();
     if (path.empty()) {
         fprintf(stderr,
                 "fenrizctl: no socket. Set FENRIZ_SOCKET, or WAYLAND_DISPLAY, e.g.\n"
@@ -116,9 +128,16 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    // Every connection gets the current state, so there is always one line to
-    // read before anything else happens.
     std::string buf;
+
+    // The event feed has no backlog and sends nothing until something happens
+    if (events) {
+        stream(fd, buf);
+        return 0;
+    }
+
+    // Every connection to the state socket gets the current state, so there is always one line
+    // to read before anything else happens.
     std::string snapshot = read_line(fd, buf);
     if (snapshot.empty()) {
         fprintf(stderr, "fenrizctl: connection closed before any state arrived\n");
@@ -132,10 +151,7 @@ int main(int argc, char** argv) {
     if (cmd.mode == fenrizctl::Mode::Watch) {
         fputs(snapshot.c_str(), stdout);
         fflush(stdout);
-        for (std::string line; !(line = read_line(fd, buf)).empty();) {
-            fputs(line.c_str(), stdout);
-            fflush(stdout); // line-buffer for `fenrizctl watch | while read`
-        }
+        stream(fd, buf);
         return 0;
     }
 

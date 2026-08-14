@@ -386,6 +386,8 @@ namespace fenriz {
             // A bell with no surface is not attributable to a window; there is nothing to flag.
             if (ev->surface)
                 mark_urgent(*sl->server, ev->surface, false);
+            // The event fires for every ring, including one on the focused window and one with no surface.
+            ipc::bell(*sl->server, ev->surface);
         }
 
         // idle-inhibit-v1: a client holding an inhibitor (video/fullscreen) keeps the

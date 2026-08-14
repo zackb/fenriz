@@ -31,10 +31,25 @@ namespace fenrizctl {
         return socket_path(getenv("FENRIZ_SOCKET"), getenv("XDG_RUNTIME_DIR"), getenv("WAYLAND_DISPLAY"));
     }
 
+    // The event socket .events
+    inline std::string event_socket_path(const char* env_socket, const std::string& state) {
+        if (env_socket && *env_socket)
+            return env_socket;
+        if (state.empty())
+            return "";
+        const std::string sock = ".sock";
+        if (state.size() > sock.size() && state.compare(state.size() - sock.size(), sock.size(), sock) == 0)
+            return state.substr(0, state.size() - sock.size()) + ".events";
+        return state + ".events";
+    }
+
+    inline std::string event_socket_path() { return event_socket_path(getenv("FENRIZ_EVENT_SOCKET"), socket_path()); }
+
     enum class Mode {
         None,
         State,
         Watch,
+        Events,
         Send,
     };
 
@@ -108,6 +123,8 @@ namespace fenrizctl {
             return {Mode::State, "", "", ""};
         if (cmd == "watch")
             return {Mode::Watch, "", "", ""};
+        if (cmd == "events")
+            return {Mode::Events, "", "", ""};
 
         if (cmd == "unlock" || cmd == "reload")
             return send("{\"cmd\":\"" + cmd + "\"}");

@@ -21,6 +21,7 @@
 #include "xdg-toplevel-icon-v1-client-protocol.h"
 #include "xdg-toplevel-tag-v1-client-protocol.h"
 
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -49,20 +50,7 @@ static void remap(struct win* w, uint32_t argb) {
     wlc_map(w, argb);
 }
 
-// Talk to the compositor's own control socket, the same one fenrizctl uses. Lets a
-// scenario drive output/lid churn without the runner having to coordinate.
-static int ipc_connect(void) {
-    char path[256];
-    const char* sock = getenv("FENRIZ_SOCKET");
-    if (sock)
-        snprintf(path, sizeof path, "%s", sock);
-    else {
-        const char* xdg = getenv("XDG_RUNTIME_DIR");
-        const char* disp = getenv("WAYLAND_DISPLAY");
-        if (!xdg || !disp)
-            return -1;
-        snprintf(path, sizeof path, "%s/fenriz-%s.sock", xdg, disp);
-    }
+static int connect_unix(const char* path) {
     int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (fd < 0)
         return -1;
@@ -75,12 +63,76 @@ static int ipc_connect(void) {
     return fd;
 }
 
+// Resolve the state socket the way fenrizctl does. Returns false when there is none.
+static bool ipc_path(char* out, size_t n) {
+    const char* sock = getenv("FENRIZ_SOCKET");
+    if (sock) {
+        snprintf(out, n, "%s", sock);
+        return true;
+    }
+    const char* xdg = getenv("XDG_RUNTIME_DIR");
+    const char* disp = getenv("WAYLAND_DISPLAY");
+    if (!xdg || !disp)
+        return false;
+    snprintf(out, n, "%s/fenriz-%s.sock", xdg, disp);
+    return true;
+}
+
+// Talk to the compositor's own control socket, the same one fenrizctl uses. Lets a
+// scenario drive output/lid churn without the runner having to coordinate.
+static int ipc_connect(void) {
+    char path[256];
+    if (!ipc_path(path, sizeof path))
+        return -1;
+    return connect_unix(path);
+}
+
+// The read-only event feed. Nothing arrives until something happens, so connect before
+// provoking the event you want to observe.
+static int ipc_event_connect(void) {
+    char path[256];
+    const char* sock = getenv("FENRIZ_EVENT_SOCKET");
+    if (sock)
+        snprintf(path, sizeof path, "%s", sock);
+    else {
+        if (!ipc_path(path, sizeof path))
+            return -1;
+        // Same name as the state socket with .events in place of .sock.
+        size_t len = strlen(path);
+        if (len > 5 && !strcmp(path + len - 5, ".sock"))
+            path[len - 5] = 0;
+        snprintf(path + strlen(path), sizeof path - strlen(path), ".events");
+    }
+    return connect_unix(path);
+}
+
 static void ipc_send(const char* line) {
     int fd = ipc_connect();
     if (fd < 0)
         return;
     dprintf(fd, "%s\n", line);
     close(fd);
+}
+
+// Collect everything the event feed has to say, stopping once it goes quiet for `ms`.
+// Bounded so a compositor that never publishes fails the assertion instead of hanging.
+static void ipc_event_drain(int fd, char* buf, size_t n, int ms) {
+    size_t used = 0;
+    struct pollfd p = {.fd = fd, .events = POLLIN};
+    while (used + 1 < n && poll(&p, 1, ms) > 0) {
+        ssize_t got = read(fd, buf + used, n - 1 - used);
+        if (got <= 0)
+            break;
+        used += (size_t)got;
+    }
+    buf[used] = 0;
+}
+
+static int count_substr(const char* hay, const char* needle) {
+    int n = 0;
+    for (const char* p = hay; (p = strstr(p, needle)); p += strlen(needle))
+        n++;
+    return n;
 }
 
 // Every connection is greeted with a state snapshot, so one read is a complete query.
@@ -2083,6 +2135,17 @@ static bool sm_is_urgent(const char* title) {
     return !strncmp(u + 9, "true", 4);
 }
 
+// Ring, let the compositor settle, and return what the event feed reported. `ev` may be -1
+// when there is no event socket, in which case the checks are skipped rather than failed.
+static void sm_ring(struct wlc* c, int ev, struct wl_surface* surface, char* out, size_t n) {
+    out[0] = 0;
+    xdg_system_bell_v1_ring(sm_bell, surface);
+    wlc_roundtrip(c);
+    wlc_pump(c, 150);
+    if (ev >= 0)
+        ipc_event_drain(ev, out, n, 200);
+}
+
 static void s_bell(struct wlc* c) {
     sm_bind(c);
     if (!sm_bell)
@@ -2098,33 +2161,63 @@ static void s_bell(struct wlc* c) {
     if (sm_is_urgent("fenriz-test bell-window"))
         wlc_die("a window nobody rang is already urgent");
 
+    // The event feed carries no backlog, so subscribe before ringing anything.
+    int ev = ipc_event_connect();
+    if (ev < 0)
+        wlc_log("no event socket; checking the urgent flag only");
+    char feed[8192];
+
     // The bell's whole point is the window you are NOT typing into: it is on screen, so an
     // xdg-activation request would be ignored, but a bell there is exactly what to flag.
     wlc_phase("ringing the bell on the unfocused window");
-    xdg_system_bell_v1_ring(sm_bell, bg->surface);
-    wlc_roundtrip(c);
-    wlc_pump(c, 150);
+    sm_ring(c, ev, bg->surface, feed, sizeof feed);
     if (!sm_is_urgent("fenriz-test bell-window"))
         wlc_die("ringing the bell on an unfocused window did not flag it");
     // Control: the bell is attributed to one window, not sprayed across the client.
     if (sm_is_urgent("fenriz-test bell-focused"))
         wlc_die("the bell flagged the focused window too; it is not attributed to a surface");
+    if (ev >= 0) {
+        if (count_substr(feed, "\"event\":\"bell\"") != 1)
+            wlc_die("expected exactly one bell event, got: %s", feed);
+        if (!strstr(feed, "fenriz-test bell-window"))
+            wlc_die("the bell event does not name the window that rang: %s", feed);
+    }
 
-    // A bell in the window you are already looking at has nothing to demand.
+    // A bell in the window you are already looking at has nothing to demand of the urgent
+    // flag, but it is still a bell: the event has to fire where the flag cannot.
     wlc_phase("ringing the bell on the focused window");
-    xdg_system_bell_v1_ring(sm_bell, fg->surface);
-    wlc_roundtrip(c);
-    wlc_pump(c, 150);
+    sm_ring(c, ev, fg->surface, feed, sizeof feed);
     if (sm_is_urgent("fenriz-test bell-focused"))
         wlc_die("the focused window was flagged urgent; focus is what clears that flag");
+    if (ev >= 0 && count_substr(feed, "\"event\":\"bell\"") != 1)
+        wlc_die("a bell on the focused window published no event; urgent is not the only channel: %s", feed);
+
+    // Two rings with nothing else changing. The state feed suppresses identical snapshots, so
+    // this is exactly the case an event channel exists to carry.
+    wlc_phase("ringing the same window twice");
+    xdg_system_bell_v1_ring(sm_bell, bg->surface);
+    sm_ring(c, ev, bg->surface, feed, sizeof feed);
+    if (ev >= 0 && count_substr(feed, "\"event\":\"bell\"") != 2)
+        wlc_die("two rings did not produce two events; they were deduplicated: %s", feed);
 
     // A surfaceless bell is legal ("not tied to a particular window") and must not upset it.
     wlc_phase("ringing a surfaceless bell");
-    xdg_system_bell_v1_ring(sm_bell, NULL);
-    wlc_roundtrip(c);
-    wlc_pump(c, 100);
+    sm_ring(c, ev, NULL, feed, sizeof feed);
+    if (ev >= 0) {
+        if (count_substr(feed, "\"event\":\"bell\"") != 1)
+            wlc_die("a surfaceless bell published no event: %s", feed);
+        if (strstr(feed, "\"appId\""))
+            wlc_die("a bell tied to no surface named a window anyway: %s", feed);
+    }
     wlc_hold_point(c);
 
+    // The event feed is a separate channel: the state socket must carry state and nothing else.
+    char snap[16384];
+    if (ev >= 0 && ipc_snapshot(snap, sizeof snap) && strstr(snap, "\"event\""))
+        wlc_die("an event leaked into the state feed: %s", snap);
+
+    if (ev >= 0)
+        close(ev);
     xdg_system_bell_v1_destroy(sm_bell);
     wlc_destroy(fg);
     wlc_destroy(bg);
