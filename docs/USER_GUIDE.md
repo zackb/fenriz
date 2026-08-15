@@ -112,7 +112,7 @@ Colors are `0xRRGGBBAA` hex.
 | `border_width` | `2` | border thickness, px |
 | `border_active` | `0x16b8f3cc` | focused window border |
 | `border_inactive` | `0x44444488` | unfocused window border |
-| `border_gradient` | unset | focused border fades from `border_active` (top-left) to this (bottom-right) at 45°; unset = flat |
+| `border_gradient` | `0xff2090ff` | focused border fades from `border_active` (top-left) to this (bottom-right) at 45°; `0` = flat |
 | `border_gradient_ease` | `1.0` | how long the ramp holds its endpoint colors. `0` = straight linear sweep, `1` = smoothstep |
 | `shadow` | `on` | soft glow behind the focused window |
 | `shadow_color` | `0x00000055` | glow intensity: only the alpha is used |
