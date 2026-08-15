@@ -578,16 +578,11 @@ namespace fenriz {
             if (drm_fd >= 0 && renderer->features.timeline && backend->features.timeline)
                 wlr_linux_drm_syncobj_manager_v1_create(display, 1, drm_fd);
         }
-        // deliberately NOT wlr_scene_set_linux_dmabuf_v1(scene, dmabuf) — that opts into
-        // per-surface scanout feedback, and wlr_scene re-mints a format-table shm fd for every
-        // scene_buffer on any scene change (e.g. a workspace switch), including surfaces that
-        // never scan out (bars, wallpapers). A client that only drains its per-surface event
-        // queue on swapbuffers never reads those events, so a static surface leaks the fd until
-        // it hits RLIMIT_NOFILE and libwayland kills the connection. Cost of leaving this off is
-        // fullscreen direct scanout; re-enable once clients stop leaking.
+        // deliberately NOT wlr_scene_set_linux_dmabuf_v1(scene, dmabuf)
         wlr_presentation_create(display, backend, 2);
         wlr_single_pixel_buffer_manager_v1_create(display);
         wlr_content_type_manager_v1_create(display, 1);
+        tearing_control = wlr_tearing_control_manager_v1_create(display, 1);
 
         // Seed workspace homes before any output shows up, so the first monitor to appear
         // already claims the workspaces configured for it.

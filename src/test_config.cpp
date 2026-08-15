@@ -20,6 +20,7 @@ int main() {
                        "shadow_color = 0xaabbcc80\n"
                        "shadow_blur = 24\n"
                        "border_gradient = 0xff00aacc\n"
+                       "tearing = on\n"
                        "exec-once = waybar --config /etc/x\n"
                        "env = QT_QPA_PLATFORMTHEME,qt6ct\n"
                        "env = FOO,a,b,c\n" // value keeps commas; only the first splits
@@ -47,9 +48,12 @@ int main() {
     assert(c.shadow_color == 0xaabbcc80u);
     assert(c.shadow_blur == 24);
     assert(c.border_gradient == 0xff00aaccu);
+    assert(c.tearing == true);
 
     // unset leaves the border flat
     assert(Config::parse("").border_gradient == 0u);
+    // tearing is opt-in: artifacts must never appear without the user asking
+    assert(Config::parse("").tearing == false);
 
     assert(u32_mix(0x16b8f3ffu, 0x16b8f3ffu) == 0x16b8f3ffu);    // identity
     assert(u32_mix(0x000000ffu, 0xffffffffu) == 0xbcbcbcffu);    // linear grey, not 0x80

@@ -112,6 +112,7 @@ wl_client_proto(wlr-layer-shell-unstable-v1
                                      ${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-layer-shell-unstable-v1.xml)
 # test client only
 wl_client_proto(ext-session-lock-v1  ${WL_PROTO_DIR}/staging/ext-session-lock/ext-session-lock-v1.xml)
+wl_client_proto(tearing-control-v1   ${WL_PROTO_DIR}/staging/tearing-control/tearing-control-v1.xml)
 wl_client_proto(virtual-keyboard-unstable-v1
                                      ${CMAKE_CURRENT_SOURCE_DIR}/protocols/virtual-keyboard-unstable-v1.xml)
 wl_client_proto(wlr-screencopy-unstable-v1
@@ -233,7 +234,7 @@ add_test(NAME ipc     COMMAND fenriz_ipc_test)
 # fails when wlroots or wayland-protocols offers a protocol that is in neither src/ nor docs/PROTOCOLS.md.
 add_test(NAME protocols COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/protocol-audit.sh)
 
-foreach(s popup layer-popup resize fullscreen dnd grab subsurface scale destroy-parent hotplug workspace foreign dialog icon toplevel-drag toplevel-tag bell alpha fixes background-effect kde-blur pixels layer-blur blur-off lock ipc keybind evil)
+foreach(s popup layer-popup resize fullscreen dnd grab subsurface scale destroy-parent hotplug workspace foreign dialog icon toplevel-drag toplevel-tag bell alpha tearing fixes background-effect kde-blur pixels layer-blur blur-off lock ipc keybind evil)
     add_test(NAME wl-${s}
              COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/wltest.sh
                      --build-dir ${CMAKE_CURRENT_BINARY_DIR} ${s})

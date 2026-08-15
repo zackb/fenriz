@@ -13,6 +13,7 @@
 #include "ext-background-effect-v1-client-protocol.h"
 #include "ext-workspace-v1-client-protocol.h"
 #include "kde-blur-client-protocol.h"
+#include "tearing-control-v1-client-protocol.h"
 #include "xdg-dialog-v1-client-protocol.h"
 #include "xdg-foreign-unstable-v1-client-protocol.h"
 #include "xdg-foreign-unstable-v2-client-protocol.h"
@@ -2356,6 +2357,136 @@ static void s_fixes(struct wlc* c) {
     wlc_roundtrip(c);
 }
 
+// --- tearing --------------------------------------------------------------------------
+
+// Runs with tests/config/tearing.conf, so `tearing = true` and the compositor's policy gate
+// is genuinely open — without that config the whole feature is off and every assertion below
+// would be vacuous.
+//
+// The headless backend silently IGNORES wlr_output_state.tearing_page_flip (only the DRM
+// backend reads it), so nothing here can observe a tear, and the "backend rejected the async
+// flip, re-commit without it" fallback in output_handle_frame is NOT exercised — that branch
+// only runs on real hardware missing DRM_CAP_ATOMIC_ASYNC_PAGE_FLIP. What this does cover is
+// the half that a bad policy gate would break on every machine: a fullscreen surface holding
+// an async hint must keep being composited and must keep getting frame callbacks.
+
+static struct wp_tearing_control_manager_v1* tc_manager;
+
+static void tc_registry_global(void* d, struct wl_registry* reg, uint32_t name, const char* iface, uint32_t ver) {
+    (void)d;
+    (void)ver;
+    if (!strcmp(iface, wp_tearing_control_manager_v1_interface.name))
+        tc_manager = wl_registry_bind(reg, name, &wp_tearing_control_manager_v1_interface, 1);
+}
+static void tc_registry_remove(void* d, struct wl_registry* reg, uint32_t name) {
+    (void)d;
+    (void)reg;
+    (void)name;
+}
+static const struct wl_registry_listener tc_registry_listener = {
+    .global = tc_registry_global,
+    .global_remove = tc_registry_remove,
+};
+
+static int tc_frames;
+
+static void tc_frame_done(void* d, struct wl_callback* cb, uint32_t t) {
+    (void)d;
+    (void)t;
+    tc_frames++;
+    wl_callback_destroy(cb);
+}
+static const struct wl_callback_listener tc_frame_listener = {.done = tc_frame_done};
+
+// Paint and ask for a frame callback, the way a game's swap loop does. Frame callbacks are
+// what stop arriving if the output stops committing, which is the failure this scenario hunts.
+static void tc_swap(struct win* w, uint32_t argb) {
+    struct wl_callback* cb = wl_surface_frame(w->surface);
+    wl_callback_add_listener(cb, &tc_frame_listener, NULL);
+    wlc_paint(w, argb);
+}
+
+// Drive `n` swaps and insist the compositor answered at least one of them.
+static void tc_drive(struct wlc* c, struct win* w, int n, const char* what) {
+    tc_frames = 0;
+    for (int i = 0; i < n; i++) {
+        tc_swap(w, i % 2 ? BLUE : GREEN);
+        wlc_pump(c, 40);
+    }
+    if (tc_frames == 0)
+        wlc_die("no frame callbacks came back while %s: the output stopped committing", what);
+    wlc_log("%s: %d frame callbacks over %d swaps", what, tc_frames, n);
+}
+
+static void s_tearing(struct wlc* c) {
+    tc_manager = NULL;
+    struct wl_registry* reg = wl_display_get_registry(c->display);
+    wl_registry_add_listener(reg, &tc_registry_listener, NULL);
+    wlc_roundtrip(c);
+    if (!tc_manager)
+        wlc_die("compositor does not advertise wp_tearing_control_manager_v1");
+
+    wlc_phase("mapping a fullscreen window that wants to tear");
+    struct win* w = wlc_toplevel(c, 400, 300, "fenriz-test tearing");
+    wlc_map(w, BLUE);
+    struct wp_tearing_control_v1* tc = wp_tearing_control_manager_v1_get_tearing_control(tc_manager, w->surface);
+    wp_tearing_control_v1_set_presentation_hint(tc, WP_TEARING_CONTROL_V1_PRESENTATION_HINT_ASYNC);
+    xdg_toplevel_set_fullscreen(w->toplevel, NULL);
+    wlc_roundtrip(c);
+    tc_drive(c, w, 10, "fullscreen with an async hint");
+    wlc_hold_point(c);
+
+    // Windowed with the same hint: the policy gate must refuse to tear, but must not refuse
+    // to draw. A gate that confuses "may not tear" with "may not commit" dies here.
+    wlc_phase("same hint, windowed");
+    xdg_toplevel_unset_fullscreen(w->toplevel);
+    wlc_roundtrip(c);
+    tc_drive(c, w, 10, "windowed with an async hint");
+
+    wlc_phase("walking the hint while fullscreen");
+    xdg_toplevel_set_fullscreen(w->toplevel, NULL);
+    wlc_roundtrip(c);
+    for (int i = 0; i < 10; i++) {
+        wp_tearing_control_v1_set_presentation_hint(
+            tc, i % 2 ? WP_TEARING_CONTROL_V1_PRESENTATION_HINT_VSYNC : WP_TEARING_CONTROL_V1_PRESENTATION_HINT_ASYNC);
+        tc_swap(w, RED);
+        wlc_pump(c, 30);
+    }
+    // A hint set but never committed must not be latched: the compositor reads committed state.
+    wp_tearing_control_v1_set_presentation_hint(tc, WP_TEARING_CONTROL_V1_PRESENTATION_HINT_ASYNC);
+    wlc_roundtrip(c);
+    tc_drive(c, w, 5, "after an uncommitted hint");
+
+    // Destroying the controller reverts the surface to vsync per the spec; the surface must
+    // outlive it and keep drawing.
+    wlc_phase("destroying the controller under a live fullscreen surface");
+    wp_tearing_control_v1_destroy(tc);
+    wlc_roundtrip(c);
+    tc_drive(c, w, 5, "after the controller was destroyed");
+
+    // The other order: a controller outliving its surface. The compositor's per-surface addon
+    // has to come down with the surface without leaving the manager pointing at freed memory.
+    wlc_phase("destroying the surface under a live controller");
+    struct win* v = wlc_toplevel(c, 300, 200, "fenriz-test tearing-orphan");
+    wlc_map(v, GREEN);
+    struct wp_tearing_control_v1* orphan = wp_tearing_control_manager_v1_get_tearing_control(tc_manager, v->surface);
+    wp_tearing_control_v1_set_presentation_hint(orphan, WP_TEARING_CONTROL_V1_PRESENTATION_HINT_ASYNC);
+    xdg_toplevel_set_fullscreen(v->toplevel, NULL);
+    wlc_roundtrip(c);
+    wlc_destroy(v);
+    wlc_roundtrip(c);
+    wp_tearing_control_v1_destroy(orphan);
+    wlc_roundtrip(c);
+
+    // The original window is still fullscreen and still the compositor's tearing candidate;
+    // it must have survived a sibling's teardown.
+    tc_drive(c, w, 5, "after a sibling tearing surface went away");
+
+    wp_tearing_control_manager_v1_destroy(tc_manager);
+    wlc_destroy(w);
+    wlc_roundtrip(c);
+}
+
 // --- background-effect ----------------------------------------------------------------
 
 static struct ext_background_effect_manager_v1* be_manager;
@@ -3354,6 +3485,7 @@ const struct scenario scenarios[] = {
     {"toplevel-drag", s_toplevel_drag, "xdg-toplevel-drag-v1: a tab torn out follows the cursor to the drop"},
     {"bell", s_bell, "xdg-system-bell-v1: a bell flags the window it names, not the focused one"},
     {"alpha", s_alpha, "alpha-modifier-v1: per-surface opacity accepted across its whole range"},
+    {"tearing", s_tearing, "tearing-control-v1: an async hint on a fullscreen window keeps frames flowing"},
     {"fixes", s_fixes, "wl_fixes: registries can be destroyed and the compositor keeps serving"},
     {"background-effect", s_background_effect, "ext-background-effect-v1: capabilities, region latching, teardown"},
     {"kde-blur", s_kde_blur, "org_kde_kwin_blur: whole-surface default, regions, replace, unset"},

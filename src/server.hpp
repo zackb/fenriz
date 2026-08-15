@@ -31,6 +31,7 @@ struct wlr_output_power_manager_v1;
 struct wlr_xdg_activation_v1;
 struct wlr_virtual_keyboard_manager_v1;
 struct wlr_keyboard_shortcuts_inhibit_manager_v1;
+struct wlr_tearing_control_manager_v1;
 struct wlr_ext_foreign_toplevel_list_v1;
 struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1;
 struct wlr_output_manager_v1;
@@ -179,15 +180,12 @@ namespace fenriz {
         wlr_xdg_activation_v1* xdg_activation = nullptr;
         wlr_virtual_keyboard_manager_v1* virtual_keyboard_manager = nullptr;
         wlr_keyboard_shortcuts_inhibit_manager_v1* shortcuts_inhibit_manager = nullptr;
-        // ext-foreign-toplevel-list: the standardized taskbar protocol. List-only (no
-        // activate/close), so it supplements foreign_toplevel_manager rather than replacing
-        // it — both globals are live and every view carries a handle for each.
+        wlr_tearing_control_manager_v1* tearing_control = nullptr;
+        // ext-foreign-toplevel-list: the standardized taskbar protocol
         wlr_ext_foreign_toplevel_list_v1* ext_foreign_toplevel_list = nullptr;
-        // ext-image-copy-capture per-window source: portals capture a single window through
-        // this (plain screencopy is output-only). Handler maps the request to a View.
+        // ext-image-copy-capture per-window source: portals capture a single window through this
         wlr_ext_foreign_toplevel_image_capture_source_manager_v1* ext_toplevel_capture = nullptr;
         // wlr-output-management: kanshi/wlr-randr. An apply is folded into config.outputs
-        // (see store_head in output.cpp), so there's no second source of truth to reconcile.
         wlr_output_manager_v1* output_manager = nullptr;
         wlr_cursor* cursor = nullptr;
 
