@@ -55,6 +55,18 @@ namespace fenriz::output {
                     place_view_nodes(view);
                 }
             }
+
+            // Ease the workspace-switch fade up to full.
+            if (output->ws_fade < 1.0) {
+                output->ws_fade = 1.0 - (1.0 - output->ws_fade) * factor;
+                if (output->ws_fade > 0.99)
+                    output->ws_fade = 1.0;
+                else
+                    animating = true;
+                for (View* view : server.views)
+                    if (view_visible(server, view) && view_output(server, view) == output)
+                        place_view_nodes(view);
+            }
             return animating;
         }
 
@@ -184,7 +196,8 @@ namespace fenriz::output {
 
             // Only commit when the scene needs a repaint, a gamma LUT change is pending, or a
             // zoom is active/animating/just-ended here. An idle, unchanged output commits nothing.
-            if (wlr_scene_output_needs_frame(so) || output->gamma_dirty || zoomed || zoom_animating || exiting_zoom) {
+            if (wlr_scene_output_needs_frame(so) || output->gamma_dirty || zoomed || zoom_animating || exiting_zoom ||
+                output->ws_fade < 1.0) {
                 // (Re)apply SceneFX per-window effects right before rendering. scenefx re-syncs
                 // each surface buffer during its own commit handling (after our commit handler), resetting opacity
                 // to 1.0

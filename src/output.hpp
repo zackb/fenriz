@@ -22,16 +22,13 @@ namespace fenriz {
             int x, y, width, height;
         };
 
-        // Per-output state. Standard-layout, so wl_container_of recovers it cleanly from the
-        // embedded wl_listeners — keep it that way (no virtuals, no private sections).
+        // Per-output state
         struct Output {
             Server* server = nullptr;
             wlr_output* handle = nullptr;
             wlr_scene_rect* bg = nullptr; // full-output backdrop in the background tree
 
-            // Which workspace is shown here; -1 = none (no workspace assigned to this output).
-            // A workspace can *live* on an output (Workspace::output) without being the one
-            // shown — that's this field.
+            // Which workspace is shown here; -1 = none. A workspace can live on an output without being the one shown.
             int active_ws = -1;
 
             // Tiling region left after this output's layer-shell exclusive zones (bars) are
@@ -45,6 +42,10 @@ namespace fenriz {
             wl_listener request_state;
             wl_listener destroy;
             timespec last_frame{}; // for frame-rate-independent animation decay
+
+            // Workspace-switch fade: alpha multiplier for this output's windows, eased 0 -> 1 after a switch. 1.0 =
+            // settled, no fade in progress.
+            double ws_fade = 1.0;
 
             // Offscreen buffers the scene renders into while this output is zoomed; the frame
             // is then blitted scaled to fill the output. Null unless zoom is/was active here.
