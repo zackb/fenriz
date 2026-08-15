@@ -67,11 +67,29 @@ wlroots 0.20, scenefx 0.5, wayland-server, xkbcommon, pixman, libinput, EGL, GLE
 On Arch:
 
 ```
-sudo pacman -S wlroots wayland xkbcommon pixman libinput mesa
+sudo pacman -S wlroots0.20 wayland wayland-protocols libxkbcommon pixman libinput mesa libxcb xcb-util-wm
 yay -S scenefx0.5
 ```
 
 Also needs `cmake` (>= 3.19) and `ninja`.
+
+### Other distributions
+
+Nothing packages either of the two dependencies that matter: wlroots 0.20 is in no Fedora or Debian
+release, and scenefx 0.5 exists only in the AUR. `scripts/ci-deps.sh` installs what the
+distro does have and builds the rest (wayland, wayland-protocols, wlroots, scenefx) from
+pinned upstream tags.
+
+```
+sudo ./scripts/ci-deps.sh
+```
+
+It installs into `/usr`, over the top of the package manager. Run it in a container, a VM,
+or a machine you don't mind, not on a desktop you care about.
+
+On Debian this needs unstable.
+
+Fedora is current enough that only wayland, wlroots and scenefx get built.
 
 ## Build
 

@@ -1,0 +1,56 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pipx install clang-format==22.1.8
+      - run: make fmt-check
+
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [archlinux:base-devel, fedora:latest, debian:unstable]
+    container: ${{ matrix.image }}
+    steps:
+      - name: bootstrap git
+        run: |
+          . /etc/os-release
+          case ${ID_LIKE:-$ID} in
+            *arch*|arch)   pacman -Sy --noconfirm --needed git ;;
+            *fedora*)      dnf install -y git ;;
+            *debian*|*ubuntu*) apt-get update && apt-get install -y --no-install-recommends git ca-certificates ;;
+          esac
+
+      - uses: actions/checkout@v4
+
+      - name: dependencies
+        run: ./scripts/ci-deps.sh
+
+      - name: build (debug)
+        run: |
+          cmake --preset debug
+          cmake --build --preset debug
+
+      # `make test-wl` is deliberately absent. Runners have no /dev/dri
+      #     docker run --device /dev/dri ... ./scripts/wltest.sh
+      - name: unit tests
+        run: ctest --test-dir build/debug --output-on-failure -LE integration
+
+      - name: build (release)
+        if: startsWith(matrix.image, 'archlinux')
+        run: |
+          cmake --preset release
+          cmake --build --preset release
