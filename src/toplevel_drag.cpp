@@ -59,7 +59,7 @@ namespace fenriz::toplevel_drag {
         // Pull the attached window out of the tiling tree
         void engage(Server& server) {
             View* v = attached(server);
-            if (v && !v->floating) {
+            if (v && !v->floating && !v->fullscreen) {
                 state.restore_tiled = true;
                 set_floating(server, v, true);
             }
@@ -214,7 +214,6 @@ namespace fenriz::toplevel_drag {
         if (view->kind != View::Kind::Xdg || !state.active || state.active->toplevel != view->toplevel)
             return;
         Server& server = *view->server;
-        // Whatever the window rules just decided is what the drop restores it to.
         state.restore_tiled = !view->floating;
         view->floating = true;
         view->want_center = false; // under cursor, not middle screen

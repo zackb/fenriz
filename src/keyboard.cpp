@@ -115,21 +115,6 @@ namespace fenriz {
             wl_event_source_timer_update(server.repeat_timer, server.config.repeat_delay);
         }
 
-        // Does the focused surface hold an active keyboard-shortcuts inhibitor?
-        bool shortcuts_inhibited(Server& server) {
-            if (!server.shortcuts_inhibit_manager)
-                return false;
-            wlr_surface* focused = server.seat->keyboard_state.focused_surface;
-            if (!focused)
-                return false;
-            wlr_keyboard_shortcuts_inhibitor_v1* inhibitor;
-            wl_list_for_each(inhibitor, &server.shortcuts_inhibit_manager->inhibitors, link) {
-                if (inhibitor->surface == focused && inhibitor->active)
-                    return true;
-            }
-            return false;
-        }
-
         void keyboard_handle_key(wl_listener* listener, void* data) {
             Keyboard* keyboard = wl_container_of(listener, keyboard, key);
             auto* event = static_cast<wlr_keyboard_key_event*>(data);
@@ -141,6 +126,10 @@ namespace fenriz {
             const uint32_t keycode = event->keycode + 8; // libinput -> xkb keycode
             const uint32_t mods = wlr_keyboard_get_modifiers(kb);
 
+            // A fresh press supersedes whatever the last one on this key decided.
+            if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED)
+                server.bound_keys.erase({kb, event->keycode});
+
             // Releasing (or locking on) the held key ends its repeat.
             if (server.locked || (event->state == WL_KEYBOARD_KEY_STATE_RELEASED && keycode == server.repeat_keycode))
                 stop_repeat(server);
@@ -151,7 +140,7 @@ namespace fenriz {
                 for (int i = 0; i < n; i++) {
                     if (const unsigned vt = vt_for_keysym(syms[i])) {
                         stop_repeat(server);
-                        server.bound_keys.insert(event->keycode);
+                        server.bound_keys.insert({kb, event->keycode});
                         if (server.session) // null when nested: no VT to switch to
                             wlr_session_change_vt(server.session, vt);
                         return;
@@ -183,7 +172,7 @@ namespace fenriz {
                 for (int i = 0; i < nsyms; i++) {
                     if (const Bind* b = handle_keybind(server, mods, syms[i])) {
                         handled = true;
-                        server.bound_keys.insert(event->keycode);
+                        server.bound_keys.insert({kb, event->keycode});
                         // A repeating bind arms the timer; any other bind cancels a stale repeat.
                         if (b->repeat)
                             start_repeat(server, *b, keycode);
@@ -195,7 +184,7 @@ namespace fenriz {
             }
 
             // The press went to a bind, drop the matching release so the client sees neither half.
-            if (event->state == WL_KEYBOARD_KEY_STATE_RELEASED && server.bound_keys.erase(event->keycode))
+            if (event->state == WL_KEYBOARD_KEY_STATE_RELEASED && server.bound_keys.erase({kb, event->keycode}))
                 return;
 
             if (!handled) {
@@ -207,7 +196,8 @@ namespace fenriz {
         void keyboard_handle_destroy(wl_listener* listener, void* data) {
             Keyboard* keyboard = wl_container_of(listener, keyboard, destroy);
             (void)data;
-            keyboard->server->bound_keys.clear();
+            stop_repeat(*keyboard->server);
+            std::erase_if(keyboard->server->bound_keys, [&](const auto& e) { return e.first == keyboard->kb; });
             wl_list_remove(&keyboard->key.link);
             wl_list_remove(&keyboard->modifiers.link);
             wl_list_remove(&keyboard->destroy.link);
@@ -284,6 +274,20 @@ namespace fenriz {
         }
 
     } // namespace
+
+    bool shortcuts_inhibited(Server& server) {
+        if (!server.shortcuts_inhibit_manager)
+            return false;
+        wlr_surface* focused = server.seat->keyboard_state.focused_surface;
+        if (!focused)
+            return false;
+        wlr_keyboard_shortcuts_inhibitor_v1* inhibitor;
+        wl_list_for_each(inhibitor, &server.shortcuts_inhibit_manager->inhibitors, link) {
+            if (inhibitor->surface == focused && inhibitor->active)
+                return true;
+        }
+        return false;
+    }
 
     void init_keyboard(Server& server) {
         // virtual-keyboard: wtype/ydotool/wayvnc and on-screen keyboards synthesize keys.

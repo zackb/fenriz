@@ -76,7 +76,7 @@ for s in "${SCENARIOS[@]}"; do
         continue
     fi
 
-    WAYLAND_DISPLAY=$FENRIZ_DISPLAY FENRIZ_SOCKET=$FENRIZ_SOCK \
+    WAYLAND_DISPLAY=$FENRIZ_DISPLAY FENRIZ_SOCKET=$FENRIZ_SOCK FENRIZ_EVENT_SOCKET=$FENRIZ_EVENT_SOCK \
         "$CLIENT" "$s" --timeout "$TIMEOUT" --loop "$LOOP" $VERBOSE \
         >"$OUT/$s.client" 2>&1
     rc=$?

@@ -142,6 +142,11 @@ namespace fenriz {
             return r;
         }
 
+        // The content area inside a tile's border: `tile` inset by `bw` on every side.
+        inline Rect inner_box(Rect tile, int bw) {
+            return {tile.x + bw, tile.y + bw, std::max(0, tile.w - 2 * bw), std::max(0, tile.h - 2 * bw)};
+        }
+
         // A size the client will actually accept
         inline int clamp_size(int want, int min, int max) {
             if (max > 0)

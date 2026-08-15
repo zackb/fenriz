@@ -147,6 +147,11 @@ int main() {
             for (View* v : {tag(1), tag(2), tag(3)}) {
                 const Rect r = box(root, v);
                 assert(r.w >= 0 && r.h >= 0);
+                for (const int bw : {0, 2, 40}) {
+                    const Rect in = inner_box(r, bw);
+                    assert(in.w >= 0 && in.h >= 0);
+                    assert(in.w <= r.w && in.h <= r.h);
+                }
             }
         }
     }

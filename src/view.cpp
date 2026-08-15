@@ -309,6 +309,8 @@ namespace fenriz {
                 wlr_ext_foreign_toplevel_handle_v1_destroy(view->ext_foreign_handle);
                 view->ext_foreign_handle = nullptr;
             }
+            // Both halves, or they disagree
+            view->focused = false;
             if (server.focused_view == view)
                 server.focused_view = nullptr;
             if (server.nav_return == view) // don't leave a dangling round-trip target
@@ -317,9 +319,8 @@ namespace fenriz {
                 if (ws.last_focused == view) // don't leave a dangling pointer to freed memory
                     ws.last_focused = nullptr;
             tiling::arrange(server);
-            // Move focus to another visible window so the keyboard isn't left dangling.
             if (!server.focused_view)
-                focus_view(server, topmost_visible(server));
+                focus_topmost_visible(server);
             ipc::publish(server);
         }
 
@@ -583,7 +584,7 @@ namespace fenriz {
         uint32_t keys[WLR_KEYBOARD_KEYS_CAP];
         size_t n = 0;
         for (size_t i = 0; i < kb->num_keycodes; i++)
-            if (!server.bound_keys.count(kb->keycodes[i]))
+            if (!server.bound_keys.count({kb, kb->keycodes[i]}))
                 keys[n++] = kb->keycodes[i];
         wlr_seat_keyboard_notify_enter(server.seat, surface, keys, n, &kb->modifiers);
     }
@@ -674,6 +675,10 @@ namespace fenriz {
     }
 
     void clear_focus(Server& server) {
+
+        if (server.locked)
+            return;
+
         if (server.focused_view) {
             View* prev = server.focused_view;
             view_set_activated(prev, false);
@@ -700,22 +705,30 @@ namespace fenriz {
         return false;
     }
 
+    static wlr_box view_area(Server& server, View* view); // defined below
+
     void set_fullscreen(Server& server, View* view, bool on) {
         if (!view || view->fullscreen == on)
             return;
         if (on)
             view->saved_box = view->box;
-        else if (view->floating)
+        else if (view->floating) {
             // arrange() re-sizes tiles from their tree slot but deliberately never touches a
             // float's box (that's what preserves free move/resize), so a float's pre-fullscreen
             // geometry has to be put back here, once.
-            view->box = view->saved_box;
+            if (view->saved_box.width > 0 && view->saved_box.height > 0) {
+                view->box = view->saved_box;
+            } else if (view->float_box.width > 0) {
+                view->box = view->float_box;
+            } else if (const wlr_box a = view_area(server, view); a.width > 0) {
+                view->box = {0, 0, a.width * 7 / 10, a.height * 7 / 10};
+                center_view(server, view);
+            }
+        }
         view->fullscreen = on; // before view_configure: it insets by the border only when not fullscreen
         view_set_fullscreen(view, on);
         if (!on && view->floating)
             view_configure(view); // tell the restored float its geometry (fullscreen flag now cleared)
-        // Fullscreen views sit above the top layer (below the overlay/lock); restore to the
-        // tile/float tree when cleared. arrange() re-lays out the box + border.
         restack_view(server, view);
         tiling::arrange(server);
     }
@@ -1070,23 +1083,25 @@ namespace fenriz {
         // already hugs the geometry, never runs past what the client drew. A client that
         // declares a geometry it isn't actually drawing to slices its own content here.
         // Fullscreen wants the whole buffer (and no clip, to keep direct scanout eligible).
+        const tiling::Rect inner = tiling::inner_box({box.x, box.y, box.width, box.height}, bw);
         if (view->fullscreen) {
             wlr_scene_subsurface_tree_set_clip(&view->surface_tree->node, nullptr);
         } else {
-            wlr_box clip = {geo.x, geo.y, std::max(1, box.width - 2 * bw), std::max(1, box.height - 2 * bw)};
+            wlr_box clip = {geo.x, geo.y, std::max(1, inner.w), std::max(1, inner.h)};
             wlr_scene_subsurface_tree_set_clip(&view->surface_tree->node, &clip);
         }
 
         const struct clipped_region hole = {
-            .area = {bw, bw, box.width - 2 * bw, box.height - 2 * bw},
+            .area = {bw, bw, inner.w, inner.h},
             .corners = corner_radii_all(std::max(0, server.config.rounding - bw)),
         };
 
         // The gradient ring replaces the flat rect rather than tinting it, so border_active and
         // border_gradient read as the two ends of one border instead of stacking alphas.
         const bool show_border = bw > 0;
-        const bool grad = show_border && server.config.border_gradient != 0 && view == server.focused_view;
         const int W = box.width, H = box.height;
+        const bool grad =
+            show_border && server.config.border_gradient != 0 && view == server.focused_view && W > 0 && H > 0;
 
         wlr_scene_node_set_enabled(&view->border->node, show_border && !grad);
         if (show_border && !grad) {

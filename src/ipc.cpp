@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <vector>
 
+#include "ipc_json.hpp"
 #include "keyboard.hpp"
 #include "lock.hpp"
 #include "output.hpp"
@@ -25,13 +26,21 @@ namespace fenriz::ipc {
         struct Client {
             int fd;
             wl_event_source* src; // its readable source in the loop; removed on disconnect
+            std::string in;       // partial command
+            std::string out;      // unwritten tail of a broadcast
         };
+
+        // How much a slow client may fall behind before it is dropped.
+        constexpr size_t OUT_MAX = 1 << 20;
+
+        // Connections one feed will hold.
+        constexpr size_t CLIENTS_MAX = 32;
 
         // One listening socket and the clients attached to it.
         struct Feed {
             wl_event_source* listen_src = nullptr;
             std::string path;
-            std::vector<Client> clients;
+            std::vector<Client*> clients; // pointers: a Client is held across callbacks
         };
 
         // One instance per compositor. Set in init(); publish()/callbacks reach it here.
@@ -44,22 +53,6 @@ namespace fenriz::ipc {
             bool publish_pending = false; // an idle broadcast is already queued this iteration
         };
         IpcState* g = nullptr;
-
-        void json_escape(std::string& out, const char* s) {
-            if (!s)
-                return;
-            for (; *s; ++s) {
-                unsigned char c = *s;
-                if (c == '"' || c == '\\')
-                    out += '\\', out += (char)c;
-                else if (c == '\n')
-                    out += "\\n";
-                else if (c < 0x20)
-                    ; // drop other control chars
-                else
-                    out += (char)c;
-            }
-        }
 
         std::string snapshot(Server& server) {
             output::Output* focus = output::focused(server);
@@ -178,68 +171,70 @@ namespace fenriz::ipc {
             return s;
         }
 
-        void drop_client(Feed& feed, int fd) {
-            auto& c = feed.clients;
-            for (auto it = c.begin(); it != c.end(); ++it) {
-                if (it->fd == fd) {
+        void drop_client(Feed& feed, Client* client) {
+            for (auto it = feed.clients.begin(); it != feed.clients.end(); ++it) {
+                if (*it == client) {
                     // wl_event_source_remove closes the fd it owns
-                    wl_event_source_remove(it->src);
-                    c.erase(it);
+                    wl_event_source_remove(client->src);
+                    feed.clients.erase(it);
+                    delete client;
                     return;
                 }
             }
         }
 
-        // Send one line, looping partial writes. False means the client is unusable and the
-        // caller should drop it
-        bool send_line(int fd, const std::string& line) {
-            size_t off = 0;
-            while (off < line.size()) {
-                ssize_t n = send(fd, line.data() + off, line.size() - off, MSG_NOSIGNAL);
+        int on_client_writable(int fd, uint32_t mask, void* data);
+
+        // Push whatever is queued for `client`. False means it is unusable and the caller should drop it.
+        bool flush_client(Client* client) {
+            while (!client->out.empty()) {
+                ssize_t n = send(client->fd, client->out.data(), client->out.size(), MSG_NOSIGNAL);
                 if (n > 0) {
-                    off += (size_t)n;
+                    client->out.erase(0, (size_t)n);
                     continue;
                 }
                 if (n < 0 && errno == EINTR)
                     continue;
-                if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
-                    return off == 0;
+                if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                    // falling far enough behind means it has stopped reading for good
+                    if (client->out.size() > OUT_MAX)
+                        return false;
+                    wl_event_source_fd_update(client->src, WL_EVENT_READABLE | WL_EVENT_WRITABLE);
+                    return true;
+                }
                 return false; // EPIPE/ECONNRESET or n == 0: client is gone
             }
+            wl_event_source_fd_update(client->src, WL_EVENT_READABLE);
             return true;
         }
 
-        void broadcast(Feed& feed, const std::string& line) {
-            // snapshot the fds first: send_line may drop clients (EPIPE) and mutate the vector.
-            std::vector<int> fds;
-            for (const Client& c : feed.clients)
-                fds.push_back(c.fd);
-            for (int fd : fds)
-                if (!send_line(fd, line))
-                    drop_client(feed, fd);
+        bool send_line(Client* client, const std::string& line) {
+            client->out += line;
+            return flush_client(client);
         }
 
-        // Pull a "key":"value" string out of a command line, undoing \" and \\ escapes. Same
-        // substring approach as the rest of the parser; the escapes matter because a dispatch
-        // `exec` arg is an arbitrary shell command that may quote.
-        std::string extract_string(const std::string& line, const char* key) {
-            const std::string pat = std::string("\"") + key + "\":\"";
-            size_t p = line.find(pat);
+        void broadcast(Feed& feed, const std::string& line) {
+            // Copy first: a failed send drops the client and mutates the vector underneath us.
+            std::vector<Client*> targets = feed.clients;
+            for (Client* c : targets)
+                if (!send_line(c, line))
+                    drop_client(feed, c);
+        }
+
+        // True when this line's "cmd" field is exactly `name`.
+        bool cmd_is(const std::string& line, const char* name) { return extract_string(line, "cmd") == name; }
+
+        // True when a boolean field is present and true
+        bool flag_is_true(const std::string& line, const char* key) {
+            const std::string pat = std::string("\"") + key + "\":";
+            const size_t p = line.find(pat);
             if (p == std::string::npos)
-                return "";
-            std::string out;
-            for (p += pat.size(); p < line.size(); ++p) {
-                if (line[p] == '"')
-                    return out;
-                if (line[p] == '\\' && p + 1 < line.size())
-                    ++p;
-                out += line[p];
-            }
-            return "";
+                return false;
+            return line.compare(p + pat.size(), 4, "true") == 0;
         }
 
         void handle_command_line(Server& server, const std::string& line) {
-            if (line.find("\"cmd\":\"workspace\"") != std::string::npos) {
+            if (cmd_is(line, "workspace")) {
                 size_t p = line.find("\"n\":");
                 if (p == std::string::npos)
                     return;
@@ -248,7 +243,7 @@ namespace fenriz::ipc {
                     set_workspace(server, n - 1);
                 return;
             }
-            if (line.find("\"cmd\":\"dispatch\"") != std::string::npos) {
+            if (cmd_is(line, "dispatch")) {
                 Bind b;
                 b.action = action_from_string(extract_string(line, "action"));
                 b.arg = extract_string(line, "arg");
@@ -256,102 +251,141 @@ namespace fenriz::ipc {
                     execute_bind(server, b);
                 return;
             }
-            if (line.find("\"cmd\":\"reload\"") != std::string::npos) {
+            if (cmd_is(line, "reload")) {
                 reload_config(server);
                 return;
             }
-            if (line.find("\"cmd\":\"unlock\"") != std::string::npos) {
+            if (cmd_is(line, "unlock")) {
                 lock::force_unlock(server);
                 return;
             }
-            if (line.find("\"cmd\":\"exit\"") != std::string::npos) {
+            if (cmd_is(line, "exit")) {
                 // {"cmd":"exit"} — quit the compositor, same as the `exit` keybind action.
                 // Under a session manager (greetd) that ends the session, i.e. log out.
                 server.stop();
                 return;
             }
-            if (line.find("\"cmd\":\"dpms\"") != std::string::npos) {
+            if (cmd_is(line, "dpms")) {
                 // {"cmd":"dpms","on":true} powers on; anything else (e.g. "on":false) powers
                 // off. An optional "name" targets one screen; without it, all of them.
                 output::Output* o = nullptr;
                 if (std::string n = extract_string(line, "name"); !n.empty())
                     o = output::by_name(server, n);
-                output::set_dpms(server, o, line.find("\"on\":true") != std::string::npos);
+                output::set_dpms(server, o, flag_is_true(line, "on"));
                 return;
             }
-            if (line.find("\"cmd\":\"output\"") != std::string::npos) {
+            if (cmd_is(line, "output")) {
                 // {"cmd":"output","name":"eDP-1","enabled":false} — enable/disable a screen.
                 std::string n = extract_string(line, "name");
                 if (n.empty())
                     return;
                 if (output::Output* o = output::by_name(server, n)) {
-                    output::set_enabled(server, o, line.find("\"enabled\":true") != std::string::npos);
+                    output::set_enabled(server, o, flag_is_true(line, "enabled"));
                     // refresh, not apply_layout: disabling the external with the lid shut has
                     // to bring the panel back, which is the lid policy's call.
                     output::refresh(server);
                 }
                 return;
             }
-            if (line.find("\"cmd\":\"lid\"") != std::string::npos) {
+            if (cmd_is(line, "lid")) {
                 // {"cmd":"lid","closed":true} — drives the same policy a real lid switch does,
                 // so clamshell behavior is testable in a nested session with no hardware.
-                server.lid_closed = line.find("\"closed\":true") != std::string::npos;
+                server.lid_closed = flag_is_true(line, "closed");
                 output::refresh(server);
                 return;
             }
         }
 
-        // Read one chunk from a client, or drop it. Returns the bytes read, or -1 when the
-        // client is gone (already dropped) or the wakeup was spurious.
-        ssize_t read_or_drop(Feed& feed, int fd, char* buf, size_t cap) {
-            ssize_t n = recv(fd, buf, cap, 0);
+        // Read one chunk from a client into its accumulator, or drop it. False means the client is gone.
+        bool read_or_drop(Feed& feed, Client* client) {
+            char buf[4096];
+            ssize_t n = recv(client->fd, buf, sizeof(buf), 0);
             if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
-                return -1; // spurious wakeup, not a disconnect
-            if (n <= 0) {  // error, or orderly EOF -> client gone
-                drop_client(feed, fd);
-                return -1;
+                return false; // spurious wakeup, not a disconnect
+            if (n <= 0) {     // error, or orderly EOF -> client gone
+                drop_client(feed, client);
+                return false;
             }
-            return n;
+            client->in.append(buf, (size_t)n);
+            return true;
+        }
+
+        // Locate the Client for an fd on this feed.
+        Client* client_for(Feed& feed, int fd) {
+            for (Client* c : feed.clients)
+                if (c->fd == fd)
+                    return c;
+            return nullptr;
         }
 
         int on_state_readable(int fd, uint32_t mask, void* data) {
-            (void)mask;
             auto* feed = static_cast<Feed*>(data);
-            char buf[4096];
-            ssize_t n = read_or_drop(*feed, fd, buf, sizeof(buf));
-            if (n < 0)
+            Client* client = client_for(*feed, fd);
+            if (!client)
                 return 0;
-            std::string chunk(buf, n);
-            size_t start = 0, nl;
-            while ((nl = chunk.find('\n', start)) != std::string::npos) {
-                handle_command_line(*g->server, chunk.substr(start, nl - start));
-                start = nl + 1;
+            if ((mask & WL_EVENT_WRITABLE) && !flush_client(client)) {
+                drop_client(*feed, client);
+                return 0;
+            }
+            if (!(mask & WL_EVENT_READABLE) || !read_or_drop(*feed, client))
+                return 0;
+
+            if (!take_lines(client->in, [&](const std::string& line) { handle_command_line(*g->server, line); }))
+                drop_client(*feed, client); // no newline in LINE_MAX bytes
+
+            return 0;
+        }
+
+        int on_events_readable(int fd, uint32_t mask, void* data) {
+            auto* feed = static_cast<Feed*>(data);
+            Client* client = client_for(*feed, fd);
+            if (!client)
+                return 0;
+            if ((mask & WL_EVENT_WRITABLE) && !flush_client(client)) {
+                drop_client(*feed, client);
+                return 0;
+            }
+            if (mask & WL_EVENT_READABLE) {
+                if (read_or_drop(*feed, client))
+                    client->in.clear(); // nothing to say to us; don't accumulate it
             }
             return 0;
         }
 
-        // The event feed takes no commands; this exists only so EOF drops the client.
-        int on_events_readable(int fd, uint32_t mask, void* data) {
-            (void)mask;
-            char buf[4096];
-            read_or_drop(*static_cast<Feed*>(data), fd, buf, sizeof(buf));
-            return 0;
-        }
-
-        int accept_client(Feed& feed, int fd, wl_event_loop_fd_func_t on_readable) {
+        // Take one pending connection. Null means none was taken, and the connection (if there was one) has already
+        // been closed.
+        Client* accept_client(Feed& feed, int fd, wl_event_loop_fd_func_t on_readable) {
             int cfd = accept4(fd, nullptr, nullptr, SOCK_CLOEXEC | SOCK_NONBLOCK);
-            if (cfd < 0)
-                return -1;
+            if (cfd < 0) {
+                if (errno != EAGAIN && errno != EWOULDBLOCK)
+                    wlr_log(WLR_ERROR, "fenriz ipc: accept failed: %s", std::strerror(errno));
+                return nullptr;
+            }
+            if (feed.clients.size() >= CLIENTS_MAX) {
+                wlr_log(WLR_ERROR, "fenriz ipc: refusing connection, %zu already attached", feed.clients.size());
+                close(cfd);
+                return nullptr;
+            }
             wl_event_source* src = wl_event_loop_add_fd(g->loop, cfd, WL_EVENT_READABLE, on_readable, &feed);
-            feed.clients.push_back({cfd, src});
-            return cfd;
+            if (!src) {
+                close(cfd);
+                return nullptr;
+            }
+            Client* client = new Client{cfd, src, {}, {}};
+            feed.clients.push_back(client);
+            return client;
         }
 
         int on_state_listen(int fd, uint32_t mask, void* data) {
             (void)mask;
             auto* feed = static_cast<Feed*>(data);
-            if (int cfd = accept_client(*feed, fd, on_state_readable); cfd >= 0)
-                send_line(cfd, snapshot(*g->server)); // greet with the current state
+            Client* client = accept_client(*feed, fd, on_state_readable);
+            if (!client)
+                return 0;
+
+            if (!send_line(client, snapshot(*g->server)))
+                client->out.clear();
+
             return 0;
         }
 
@@ -451,13 +485,13 @@ namespace fenriz::ipc {
         void do_publish() {
             g->publish_pending = false;
             workspace_protocol::sync(*g->server);
-            if (g->state.clients.empty()) // nobody listening: don't build the snapshot at all
-                return;
+
             std::string s = snapshot(*g->server);
             if (s == g->last)
                 return;
             g->last = s;
-            broadcast(g->state, s);
+            if (!g->state.clients.empty())
+                broadcast(g->state, s);
         }
 
         void publish_idle(void* data) {
@@ -504,8 +538,10 @@ namespace fenriz::ipc {
         if (!g)
             return;
         for (Feed* f : {&g->state, &g->events}) {
-            for (const Client& c : f->clients)
-                wl_event_source_remove(c.src);
+            for (Client* c : f->clients) {
+                wl_event_source_remove(c->src);
+                delete c;
+            }
             if (f->listen_src)
                 wl_event_source_remove(f->listen_src);
             if (!f->path.empty())

@@ -111,6 +111,9 @@ wl_client_proto(kde-blur             ${CMAKE_CURRENT_SOURCE_DIR}/protocols/kde-b
 wl_client_proto(wlr-layer-shell-unstable-v1
                                      ${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-layer-shell-unstable-v1.xml)
 # test client only
+wl_client_proto(ext-session-lock-v1  ${WL_PROTO_DIR}/staging/ext-session-lock/ext-session-lock-v1.xml)
+wl_client_proto(virtual-keyboard-unstable-v1
+                                     ${CMAKE_CURRENT_SOURCE_DIR}/protocols/virtual-keyboard-unstable-v1.xml)
 wl_client_proto(wlr-screencopy-unstable-v1
                                      ${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-screencopy-unstable-v1.xml)
 wl_client_proto(wlr-virtual-pointer-unstable-v1
@@ -201,6 +204,9 @@ target_link_libraries(fenriz_keybind_test PRIVATE PkgConfig::XKBCOMMON)
 add_executable(fenrizctl_test src/test_fenrizctl.cpp)
 target_include_directories(fenrizctl_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+add_executable(fenriz_ipc_test src/test_ipc.cpp)
+target_include_directories(fenriz_ipc_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
 # Wayland client tests for integration testing
 add_executable(fenriz-test
     tests/client/main.c
@@ -209,9 +215,10 @@ add_executable(fenriz-test
     ${WL_CLIENT_PROTO_SRC}
 )
 target_include_directories(fenriz-test PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-target_link_libraries(fenriz-test PRIVATE PkgConfig::WAYLAND_CLIENT rt)
+# xkbcommon: the headless backend has no input devices
+target_link_libraries(fenriz-test PRIVATE PkgConfig::WAYLAND_CLIENT PkgConfig::XKBCOMMON rt)
 
-foreach(t fenriz_config_test fenriz_tiling_test fenriz_keybind_test fenriz_output_test fenrizctl_test fenriz-test)
+foreach(t fenriz_config_test fenriz_tiling_test fenriz_keybind_test fenriz_output_test fenrizctl_test fenriz_ipc_test fenriz-test)
     target_compile_options(${t} PRIVATE -UNDEBUG)
 endforeach()
 
@@ -221,11 +228,12 @@ add_test(NAME tiling  COMMAND fenriz_tiling_test)
 add_test(NAME keybind COMMAND fenriz_keybind_test)
 add_test(NAME output  COMMAND fenriz_output_test)
 add_test(NAME ctl     COMMAND fenrizctl_test)
+add_test(NAME ipc     COMMAND fenriz_ipc_test)
 
 # fails when wlroots or wayland-protocols offers a protocol that is in neither src/ nor docs/PROTOCOLS.md.
 add_test(NAME protocols COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/protocol-audit.sh)
 
-foreach(s popup layer-popup resize fullscreen dnd grab subsurface scale destroy-parent hotplug workspace foreign dialog icon toplevel-drag toplevel-tag bell alpha fixes background-effect kde-blur pixels layer-blur blur-off evil)
+foreach(s popup layer-popup resize fullscreen dnd grab subsurface scale destroy-parent hotplug workspace foreign dialog icon toplevel-drag toplevel-tag bell alpha fixes background-effect kde-blur pixels layer-blur blur-off lock ipc keybind evil)
     add_test(NAME wl-${s}
              COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/wltest.sh
                      --build-dir ${CMAKE_CURRENT_BINARY_DIR} ${s})

@@ -5,6 +5,7 @@
 #include <linux/input-event-codes.h>
 #include <string>
 
+#include "keyboard.hpp"
 #include "layer.hpp"
 #include "server.hpp"
 #include "tiling.hpp"
@@ -202,7 +203,10 @@ namespace fenriz::cursor {
                 } else {
                     v->box.height = std::max(min_h, v->box.height + (int)dy);
                 }
-                view_configure(v); // size the client to the new inner box (shell-agnostic)
+                // Don't configure here: this runs once per motion event. Flag it and let the
+                // frame handler send one configure per frame.
+                v->configure_pending = true;
+                server.layout_dirty = true;
                 return true;
             }
             case Grab::ResizeTile:
@@ -431,6 +435,12 @@ namespace fenriz::cursor {
             if (c->grab == Grab::None)
                 process_motion(c, event->time_msec);
 
+            // Locked: forward to the seat and stop.
+            if (server.locked) {
+                wlr_seat_pointer_notify_button(server.seat, event->time_msec, event->button, event->state);
+                return;
+            }
+
             if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
                 // End an interactive drag. A tiled move resolves into a swap with the tile the
                 // window is dropped on.
@@ -448,8 +458,13 @@ namespace fenriz::cursor {
                     const bool was_resize_float = c->grab == Grab::ResizeFloat;
                     c->grab = Grab::None;
                     c->grabbed = nullptr;
-                    if (was_resize_float && ended)
+                    if (was_resize_float && ended) {
+                        if (ended->configure_pending) {
+                            ended->configure_pending = false;
+                            view_configure(ended);
+                        }
                         view_adopt_float_size(ended);
+                    }
                     process_motion(c, event->time_msec); // restore the passthrough cursor image
                     return;                              // swallow the release that ended the drag
                 }
@@ -520,20 +535,24 @@ namespace fenriz::cursor {
 
             process_motion(c, event->time_msec); // rebase pointer focus; see cursor_button
 
-            // zoom_mod + scroll = screen zoom
+            // zoom_mod + scroll = screen zoom.
             const uint32_t zmod = server.config.zoom_mod;
             wlr_keyboard* kb = wlr_seat_get_keyboard(server.seat);
             const uint32_t mods = kb ? wlr_keyboard_get_modifiers(kb) : 0;
-            if (zmod != 0 && (mods & zmod) && event->delta != 0) {
+            if (zmod != 0 && mods == zmod && event->delta != 0 && !shortcuts_inhibited(server)) {
                 const float step = server.config.zoom_step;
                 // zoom scrolling up/away always zooms in regardless of natural_scroll
                 float delta = event->delta;
                 if (device_natural_scroll(&event->pointer->base))
                     delta = -delta;
                 float f = delta < 0 ? (1.0f + step) : (1.0f / (1.0f + step));
-                server.zoom_target = std::clamp(server.zoom_target * f, 1.0f, server.config.zoom_max);
-                schedule_frame_at_cursor(c);
-                return;
+                const float want = std::clamp(server.zoom_target * f, 1.0f, server.config.zoom_max);
+                // Only swallow the scroll if it actually moved the zoom
+                if (want != server.zoom_target) {
+                    server.zoom_target = want;
+                    schedule_frame_at_cursor(c);
+                    return;
+                }
             }
 
             wlr_seat_pointer_notify_axis(c->server->seat,
@@ -638,6 +657,7 @@ namespace fenriz::cursor {
         if (g_cursor && g_cursor->grabbed == view) {
             g_cursor->grab = Grab::None;
             g_cursor->grabbed = nullptr;
+            g_cursor->preview_partner = nullptr;
         }
     }
 

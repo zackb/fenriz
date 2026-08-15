@@ -8,8 +8,10 @@
 #include <stdint.h>
 #include <wayland-client.h>
 
+#include "ext-session-lock-v1-client-protocol.h"
 #include "fractional-scale-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
+#include "virtual-keyboard-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "wlr-screencopy-unstable-v1-client-protocol.h"
 #include "wlr-virtual-pointer-unstable-v1-client-protocol.h"
@@ -30,6 +32,8 @@ struct wlc {
     struct wl_shm* shm;
     struct wl_seat* seat;
     struct wl_pointer* pointer;
+    struct wl_keyboard* keyboard;
+    struct ext_session_lock_manager_v1* lock_manager;
     struct wl_data_device_manager* ddm;
     struct wl_data_device* data_device;
     struct xdg_wm_base* wm_base;
@@ -40,6 +44,8 @@ struct wlc {
     struct zwlr_screencopy_manager_v1* screencopy;
     struct zwlr_virtual_pointer_manager_v1* vpm;
     struct zwlr_virtual_pointer_v1* vp; // created by wlc_pointer_init
+    struct zwp_virtual_keyboard_manager_v1* vkm;
+    struct zwp_virtual_keyboard_v1* vk; // created by wlc_keyboard_init
 
     // Last serial seen on any input event; xdg_popup grabs and start_drag need a real one.
     uint32_t last_serial;
@@ -49,6 +55,11 @@ struct wlc {
     struct wl_surface* enter_surface;
     int enter_sx, enter_sy;
     int enters;
+    // Which surface holds the keyboard, per the last wl_keyboard.enter/leave. A client cannot
+    // otherwise observe the compositor's focus routing, and it is the whole assertion for the
+    // lock scenario: a locked session must not be typing into the desktop.
+    struct wl_surface* kb_focus;
+    int kb_enters, kb_leaves, kb_keys;
     // Cursor position the injected pointer has been walked to, in layout coordinates.
     int px, py;
     struct wl_output* outputs[8];
@@ -139,6 +150,13 @@ const char* wlc_color_str(uint32_t c);
 void wlc_pointer_init(struct wlc* c);
 void wlc_pointer_to(struct wlc* c, int x, int y);
 void wlc_pointer_button(struct wlc* c, uint32_t button, bool pressed);
+
+// Injected keyboard, same reason: headless has no keyboard either, so without one the seat
+// never has a wlr_keyboard and the compositor routes no wl_keyboard.enter to anybody —
+// which makes every focus assertion vacuous. Uploads a real compiled keymap and nudges the
+// seat into attaching it. `key` takes a raw evdev keycode (linux/input-event-codes.h).
+void wlc_keyboard_init(struct wlc* c);
+void wlc_keyboard_key(struct wlc* c, uint32_t key, bool pressed);
 
 // Run an outright protocol violation in a throwaway child on its own connection. The
 // child is expected to be killed; the assertion is that `c` is still live afterwards.

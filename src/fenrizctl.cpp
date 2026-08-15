@@ -59,6 +59,9 @@ namespace {
         return fd;
     }
 
+    // stops a peer that streams without ever sending a newline.
+    constexpr size_t READ_MAX = 8 << 20;
+
     // Read until `buf` holds a complete line and return it (including newline) or "" on EOF
     std::string read_line(int fd, std::string& buf) {
         for (;;) {
@@ -66,6 +69,10 @@ namespace {
                 std::string line = buf.substr(0, nl + 1);
                 buf.erase(0, nl + 1);
                 return line;
+            }
+            if (buf.size() > READ_MAX) {
+                fprintf(stderr, "fenrizctl: no newline in %zu bytes; giving up\n", buf.size());
+                return "";
             }
             char chunk[8192];
             ssize_t n = recv(fd, chunk, sizeof(chunk), 0);

@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
 
@@ -111,6 +112,24 @@ static void ipc_send(const char* line) {
     if (fd < 0)
         return;
     dprintf(fd, "%s\n", line);
+    close(fd);
+}
+
+// Same command, delivered in pieces with a pause between them, which is all a stream socket
+// promises. `fenrizctl` happens to write each command as one buffer, so the compositor was
+// only ever exercised on the easy case.
+static void ipc_send_split(const char* line, size_t at) {
+    int fd = ipc_connect();
+    if (fd < 0)
+        return;
+    const size_t len = strlen(line);
+    if (at > len)
+        at = len;
+    (void)!write(fd, line, at);
+    usleep(120 * 1000); // long enough that the compositor certainly read the first half
+    (void)!write(fd, line + at, len - at);
+    (void)!write(fd, "\n", 1); // and the newline in a write of its own
+    usleep(120 * 1000);
     close(fd);
 }
 
@@ -389,7 +408,47 @@ static void s_fullscreen(struct wlc* c) {
     wlc_map(early, GREEN);
     if (!early->fullscreen)
         wlc_log("note: pre-map set_fullscreen did not stick");
+
+    xdg_toplevel_unset_fullscreen(early->toplevel);
+    wlc_pump(c, 150);
     wlc_destroy(early);
+    wlc_roundtrip(c);
+
+    // ...and the same thing on a FLOATING window, which is where it bites. A tiled window gets
+    // its geometry back from arrange(); a float does not — arrange deliberately never touches a
+    // float's box, so whatever un-fullscreening restores is what the window keeps.
+    //
+    // The geometry saved on the way in was captured before the first commit, when the window
+    // had none. Restoring that zero box configures the client to 1x1 and nothing ever resizes
+    // it again: the window is invisible with no way back except re-fullscreening. A splash
+    // screen that opens fullscreen is exactly this shape.
+    //
+    // A transient child auto-floats (see apply_window_rules), and the parent has to be mapped
+    // first or wlroots drops the set_parent.
+    wlc_phase("un-fullscreening a FLOATING window that never had geometry to save");
+    struct win* parent = wlc_toplevel(c, 400, 300, "fenriz-test fullscreen-parent");
+    wlc_map(parent, BLUE);
+    wlc_pump(c, 100);
+
+    struct win* child = wlc_toplevel(c, 400, 300, "fenriz-test fullscreen-child");
+    xdg_toplevel_set_parent(child->toplevel, parent->toplevel);
+    xdg_toplevel_set_fullscreen(child->toplevel, NULL);
+    wl_surface_commit(child->surface);
+    wlc_map(child, GREEN);
+    wlc_pump(c, 150);
+
+    xdg_toplevel_unset_fullscreen(child->toplevel);
+    wl_surface_commit(child->surface);
+    wlc_pump(c, 300);
+    if (child->cfg_width <= 1 || child->cfg_height <= 1)
+        wlc_die("restored to a degenerate %dx%d: the pre-map fullscreen had no geometry to save, "
+                "and a float never gets one back",
+                child->cfg_width,
+                child->cfg_height);
+    wlc_log("float restored to %dx%d", child->cfg_width, child->cfg_height);
+
+    wlc_destroy(child);
+    wlc_destroy(parent);
     wlc_roundtrip(c);
 }
 
@@ -2902,6 +2961,350 @@ static void s_blur_off(struct wlc* c) {
     wlc_roundtrip(c);
 }
 
+// --- lock -----------------------------------------------------------------------------
+// ext-session-lock-v1. The assertion throughout is *where the keyboard is*: a locked session
+// that leaves keyboard focus on the desktop is typing the user's password into whatever was
+// on screen, and nothing else the client can observe would show it.
+
+struct lk {
+    struct ext_session_lock_v1* lock;
+    bool locked;   // the compositor confirmed the lock
+    bool finished; // it refused, or yanked it
+};
+
+static void lk_locked(void* d, struct ext_session_lock_v1* l) {
+    (void)l;
+    ((struct lk*)d)->locked = true;
+}
+static void lk_finished(void* d, struct ext_session_lock_v1* l) {
+    (void)l;
+    ((struct lk*)d)->finished = true;
+}
+static const struct ext_session_lock_v1_listener lk_listener = {.locked = lk_locked, .finished = lk_finished};
+
+// One lock surface: the compositor sizes it, we ack and paint. Kept raw (not struct win)
+// because a lock surface is neither an xdg surface nor a layer surface.
+struct lksurf {
+    struct wl_surface* surface;
+    struct ext_session_lock_surface_v1* handle;
+    int w, h;
+    bool configured;
+};
+
+static void lks_configure(void* d, struct ext_session_lock_surface_v1* s, uint32_t serial, uint32_t w, uint32_t h) {
+    struct lksurf* ls = d;
+    ls->w = (int)w;
+    ls->h = (int)h;
+    ls->configured = true;
+    ext_session_lock_surface_v1_ack_configure(s, serial);
+}
+static const struct ext_session_lock_surface_v1_listener lks_listener = {.configure = lks_configure};
+
+static bool lk_ready(void* arg) {
+    struct lk* s = arg;
+    return s->locked || s->finished;
+}
+
+static void s_lock(struct wlc* c) {
+    if (!c->lock_manager)
+        wlc_die("compositor does not advertise ext_session_lock_manager_v1");
+    if (!c->keyboard)
+        wlc_die("no wl_keyboard on the seat; this scenario cannot observe focus");
+    // Headless has no input devices, so the seat has no keyboard and the compositor routes no
+    // focus at all. Without this every assertion below would pass vacuously.
+    wlc_keyboard_init(c);
+
+    wlc_phase("mapping a window to hold the keyboard before the lock");
+    struct win* w = wlc_toplevel(c, 400, 300, "fenriz-test lock-victim");
+    wlc_map(w, BLUE);
+    wlc_pump(c, 150);
+    if (c->kb_focus != w->surface)
+        wlc_die("the mapped window never took keyboard focus; the rest of this proves nothing");
+
+    wlc_phase("locking the session");
+    struct lk st = {0};
+    st.lock = ext_session_lock_manager_v1_lock(c->lock_manager);
+    ext_session_lock_v1_add_listener(st.lock, &lk_listener, &st);
+    wlc_until(c, lk_ready, &st);
+    if (st.finished)
+        wlc_die("the compositor refused the lock");
+
+    // Create a surface for EVERY output *before* painting any of them. This is what real
+    // lockers (swaylock, hyprlock, gtklock) do, and it is the case that broke: with more than
+    // one surface outstanding, the compositor's "is this the first one?" test never fires, and
+    // the seat is left pointing at the desktop window above.
+    const int n = c->n_outputs > 0 ? c->n_outputs : 1;
+    wlc_phase("creating %d lock surface(s) before painting any", n);
+    struct lksurf ls[8] = {0};
+    for (int i = 0; i < n; i++) {
+        ls[i].surface = wl_compositor_create_surface(c->compositor);
+        ls[i].handle = ext_session_lock_v1_get_lock_surface(st.lock, ls[i].surface, c->outputs[i]);
+        ext_session_lock_surface_v1_add_listener(ls[i].handle, &lks_listener, &ls[i]);
+        // No commit yet: unlike xdg-shell, a lock surface is configured on creation and may
+        // never be committed without a buffer.
+    }
+    wlc_roundtrip(c);
+    for (int i = 0; i < n; i++) {
+        if (!ls[i].configured)
+            wlc_die("lock surface %d never got a configure", i);
+        wl_surface_attach(ls[i].surface, wlc_buffer(c, ls[i].w, ls[i].h, 0xff101010), 0, 0);
+        wl_surface_damage_buffer(ls[i].surface, 0, 0, ls[i].w, ls[i].h);
+        wl_surface_commit(ls[i].surface);
+    }
+    wlc_pump(c, 250);
+
+    // The assertion. Not "some lock surface has focus" first — "the desktop does not".
+    if (c->kb_focus == w->surface)
+        wlc_die("SESSION LOCKED BUT THE KEYBOARD IS STILL ON THE DESKTOP WINDOW: "
+                "every keystroke of the password goes to the unlocked application");
+    bool on_lock = false;
+    for (int i = 0; i < n; i++)
+        on_lock = on_lock || c->kb_focus == ls[i].surface;
+    if (!on_lock)
+        wlc_die("no lock surface holds the keyboard (focus=%p); the password field is dead", (void*)c->kb_focus);
+
+    // Desktop focus bookkeeping keeps running underneath a lock, and every path that finds
+    // nothing visible ends in clear_focus. Switching to an empty workspace is the cheapest way
+    // to get there; the lid events then take the same route through apply_layout. Neither may
+    // take the keyboard away from the lock UI — nothing would ever hand it back, and the
+    // password field is dead until a VT switch.
+#define LOCK_STILL_HAS_KEYBOARD(what)                                                                                  \
+    do {                                                                                                               \
+        on_lock = false;                                                                                               \
+        for (int i = 0; i < n; i++)                                                                                    \
+            on_lock = on_lock || c->kb_focus == ls[i].surface;                                                         \
+        if (!on_lock)                                                                                                  \
+            wlc_die("%s while locked took the keyboard off the lock UI (focus=%p); "                                   \
+                    "the password field goes dead and nothing hands it back",                                          \
+                    (what),                                                                                            \
+                    (void*)c->kb_focus);                                                                               \
+    } while (0)
+
+    wlc_phase("switching to an empty workspace while locked");
+    ipc_send("{\"cmd\":\"workspace\",\"n\":2}"); // empty: nothing is visible, so this reaches clear_focus
+    wlc_pump(c, 250);
+    LOCK_STILL_HAS_KEYBOARD("a workspace switch");
+
+    wlc_phase("driving output events while locked");
+    ipc_send("{\"cmd\":\"lid\",\"closed\":true}");
+    wlc_pump(c, 200);
+    ipc_send("{\"cmd\":\"lid\",\"closed\":false}");
+    wlc_pump(c, 250);
+    LOCK_STILL_HAS_KEYBOARD("an output event");
+
+    ipc_send("{\"cmd\":\"workspace\",\"n\":1}"); // back, so the unlock assertion below is about focus
+    wlc_pump(c, 200);
+
+    wlc_hold_point(c);
+
+    wlc_phase("unlocking");
+    ext_session_lock_v1_unlock_and_destroy(st.lock);
+    wl_display_flush(c->display);
+    wlc_pump(c, 250);
+    if (c->kb_focus != w->surface)
+        wlc_die("the keyboard did not return to the window that had it before the lock");
+
+    // unlock_and_destroy drops the lock object, but the role objects are still ours and must
+    // go before the surfaces they are attached to.
+    for (int i = 0; i < n; i++) {
+        ext_session_lock_surface_v1_destroy(ls[i].handle);
+        wl_surface_destroy(ls[i].surface);
+    }
+    wlc_destroy(w);
+    wlc_roundtrip(c);
+}
+
+// --- ipc ------------------------------------------------------------------------------
+// The control socket as an actual stream socket, rather than as "one write is one command".
+
+// The value of "workspaces":{"active":N} in a fresh snapshot, or -1.
+static int ipc_active_workspace(void) {
+    char snap[16384];
+    if (!ipc_snapshot(snap, sizeof snap))
+        return -1;
+    // outputs[] carries an "active" too, so anchor on the workspaces object.
+    const char* ws = strstr(snap, "\"workspaces\":");
+    const char* p = ws ? strstr(ws, "\"active\":") : NULL;
+    if (!p) {
+        wlc_log("no workspaces.active in snapshot: %s", snap);
+        return -1;
+    }
+    return atoi(p + 9);
+}
+
+static void s_ipc(struct wlc* c) {
+    struct win* w = wlc_toplevel(c, 300, 200, "fenriz-test ipc");
+    wlc_map(w, BLUE);
+    wlc_pump(c, 150);
+
+    if (ipc_active_workspace() < 0)
+        wlc_die("no control socket, or no workspaces.active in the snapshot");
+
+    // Baseline: the ordinary one-write path still works.
+    wlc_phase("workspace command in a single write");
+    ipc_send("{\"cmd\":\"workspace\",\"n\":3}");
+    wlc_pump(c, 250);
+    if (ipc_active_workspace() != 3)
+        wlc_die("a whole-line command did not take effect (active=%d)", ipc_active_workspace());
+
+    // The same command, split. Nothing about a stream socket says a command arrives in one
+    // piece; without a per-client accumulator the front half is discarded and the tail matches
+    // no command at all, so this silently did nothing.
+    wlc_phase("the same command split across three writes");
+    ipc_send_split("{\"cmd\":\"workspace\",\"n\":1}", 9);
+    wlc_pump(c, 250);
+    if (ipc_active_workspace() != 1)
+        wlc_die("a command split across writes was dropped (active=%d, expected 1)", ipc_active_workspace());
+
+    // A command longer than the compositor's read buffer, for the same reason.
+    wlc_phase("a command larger than one read");
+    char big[8192];
+    int n = snprintf(big, sizeof big, "{\"cmd\":\"dispatch\",\"action\":\"exec\",\"arg\":\"");
+    memset(big + n, 'x', 6000);
+    snprintf(big + n + 6000, sizeof big - n - 6000, "\",\"cmd2\":\"workspace\"}");
+    ipc_send(big); // must be parsed as ONE line and dispatched as `dispatch`, not `workspace`
+    wlc_pump(c, 250);
+    if (ipc_active_workspace() != 1)
+        wlc_die("an oversized command changed the workspace; its tail was re-parsed as a "
+                "separate command (active=%d)",
+                ipc_active_workspace());
+
+    // Many connections at once: the feed caps them, and must still serve the ones it took and
+    // stay responsive rather than spinning on a backlog it refuses to drain.
+    wlc_phase("opening many simultaneous connections");
+    int fds[64];
+    int opened = 0;
+    for (int i = 0; i < 64; i++) {
+        fds[i] = ipc_connect();
+        if (fds[i] >= 0)
+            opened++;
+    }
+    wlc_pump(c, 300);
+    for (int i = 0; i < 64; i++)
+        if (fds[i] >= 0)
+            close(fds[i]);
+    wlc_pump(c, 300);
+    wlc_log("opened %d simultaneous connections", opened);
+
+    // The compositor is still alive and still taking commands.
+    ipc_send("{\"cmd\":\"workspace\",\"n\":2}");
+    wlc_pump(c, 250);
+    if (ipc_active_workspace() != 2)
+        wlc_die("the control socket stopped working after a connection burst (active=%d)", ipc_active_workspace());
+
+    ipc_send("{\"cmd\":\"workspace\",\"n\":1}");
+    wlc_pump(c, 200);
+    wlc_destroy(w);
+    wlc_roundtrip(c);
+}
+
+// --- keybind --------------------------------------------------------------------------
+// Keys a bind consumed, and what happens to a held repeating bind when its keyboard vanishes.
+// Both need an injected keyboard (headless has none) and a config with known binds; see
+// tests/config/keybind.conf.
+
+// Raw evdev codes. The default keymap turns these into XF86Tools / XF86Launch5 /
+// XF86Launch6 — which is what tests/config/keybind.conf binds, not F13/F14.
+#define KEY_BOUND_RAW 183   // XF86Tools:   bound to `workspace, 2`
+#define KEY_REPEAT_RAW 184  // XF86Launch5: bound to `binde ... focusnext`
+#define KEY_UNBOUND_RAW 185 // XF86Launch6: deliberately not bound
+
+// windows[] entry for `title`: is it fullscreen? -1 when the window isn't in the feed.
+static int ipc_window_fullscreen(const char* title) {
+    char snap[16384];
+    if (!ipc_snapshot(snap, sizeof snap))
+        return -1;
+    char needle[128];
+    snprintf(needle, sizeof needle, "\"title\":\"%s\"", title);
+    const char* p = strstr(snap, needle);
+    if (!p)
+        return -1;
+    // Field order in the snapshot puts fullscreen after title, before the next window.
+    const char* f = strstr(p, "\"fullscreen\":");
+    return f ? (strncmp(f + 13, "true", 4) == 0) : -1;
+}
+
+// Bytes in the file the repeating bind appends to; 0 if it isn't there.
+static long repeat_file_size(void) {
+    struct stat st;
+    return stat("/tmp/fenriz-test-repeat", &st) == 0 ? (long)st.st_size : 0;
+}
+
+static void s_keybind(struct wlc* c) {
+    wlc_keyboard_init(c);
+    unlink("/tmp/fenriz-test-repeat");
+
+    struct win* a = wlc_toplevel(c, 300, 200, "fenriz-test kb-a");
+    wlc_map(a, BLUE);
+    struct win* b = wlc_toplevel(c, 300, 200, "fenriz-test kb-b");
+    wlc_map(b, GREEN);
+    wlc_pump(c, 200);
+    if (c->kb_focus != b->surface)
+        wlc_die("the last-mapped window does not hold the keyboard; nothing below is meaningful");
+    if (ipc_window_fullscreen("fenriz-test kb-b") != 0)
+        wlc_die("the focused window is already fullscreen, or is missing from the feed");
+
+    // A key a bind consumed must reach the client as NEITHER a press nor a release. Half of it
+    // leaking is worse than all of it: the client sees a key go down that never comes back up
+    // and holds it forever. The bind deliberately does not move focus, or the release would
+    // have no focused client to reach and this would pass without proving anything.
+    wlc_phase("a bound key reaches the compositor and not the client");
+    const int keys_before = c->kb_keys;
+    wlc_keyboard_key(c, KEY_BOUND_RAW, true);
+    wlc_pump(c, 200);
+    wlc_keyboard_key(c, KEY_BOUND_RAW, false);
+    wlc_pump(c, 250);
+
+    if (ipc_window_fullscreen("fenriz-test kb-b") != 1)
+        wlc_die("the bind on XF86Tools did not fire");
+    if (c->kb_focus != b->surface)
+        wlc_die("the bind moved keyboard focus; the key-leak check below would be vacuous");
+    if (c->kb_keys != keys_before)
+        wlc_die("the client received %d key event(s) for a key a bind consumed", c->kb_keys - keys_before);
+
+    // An unbound key still reaches the client, or the check above would pass by doing nothing.
+    wlc_phase("an unbound key still reaches the client");
+    const int keys_mid = c->kb_keys;
+    wlc_keyboard_key(c, KEY_UNBOUND_RAW, true);
+    wlc_pump(c, 150);
+    wlc_keyboard_key(c, KEY_UNBOUND_RAW, false);
+    wlc_pump(c, 200);
+    if (c->kb_keys != keys_mid + 2)
+        wlc_die("an unbound key produced %d client events, expected 2", c->kb_keys - keys_mid);
+
+    // A `binde` repeats while held; destroying the keyboard mid-hold must end it. The repeat
+    // timer re-arms itself until repeat_keycode clears, and only the held key's release clears
+    // it — so this pins the thing that makes that safe: wlroots synthesizes a release for held
+    // keys before the device destroy. If that ever stops being true, the bind re-fires at
+    // repeat_rate forever, which for an `exec` bind is a shell spawned ~15 times a second with
+    // no way to stop it short of killing the compositor. Hence a file that grows: focus, the
+    // obvious alternative, can cycle back to where it started and read as "stopped".
+    wlc_phase("holding a repeating bind, then destroying the keyboard");
+    wlc_keyboard_key(c, KEY_REPEAT_RAW, true);
+    wlc_pump(c, 900); // repeat_delay then several repeats
+    const long during = repeat_file_size();
+    if (during == 0)
+        wlc_die("the repeating bind never fired while held; the rest of this proves nothing");
+
+    zwp_virtual_keyboard_v1_destroy(c->vk);
+    c->vk = NULL;
+    wl_display_flush(c->display);
+    wlc_pump(c, 400); // let the teardown land and any in-flight repeat finish
+
+    const long settled = repeat_file_size();
+    wlc_pump(c, 900);
+    const long after = repeat_file_size();
+    if (after != settled)
+        wlc_die("the repeating bind is STILL firing %ld bytes later, with its keyboard destroyed "
+                "and no release ever coming; the repeat timer never stopped",
+                after - settled);
+
+    unlink("/tmp/fenriz-test-repeat");
+    wlc_destroy(b);
+    wlc_destroy(a);
+    wlc_roundtrip(c);
+}
+
 const struct scenario scenarios[] = {
     {"popup", s_popup, "toplevel -> popup -> nested popup, grab, reposition, off-screen anchor"},
     {"layer-popup", s_layer_popup, "corner-anchored popup and submenu on a full-output layer surface"},
@@ -2929,6 +3332,9 @@ const struct scenario scenarios[] = {
     {"pixels", s_pixels, "screenshot oracle: window geometry, rounded corners, blur stops at them"},
     {"layer-blur", s_layer_blur, "blur on a layer surface: layer changes, teardown, re-map"},
     {"blur-off", s_blur_off, "blur disabled: no capability advertised, nothing drawn"},
+    {"lock", s_lock, "ext-session-lock-v1: the keyboard leaves the desktop and stays on the lock UI"},
+    {"ipc", s_ipc, "control socket as a stream: split commands, oversized commands, many clients"},
+    {"keybind", s_keybind, "a bound key reaches neither half to the client; a held binde stops with its keyboard"},
     {"evil", s_evil, "stale acks, commits between configures, self-resize, destroy/recreate"},
     {NULL, NULL, NULL},
 };

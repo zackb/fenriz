@@ -3,6 +3,7 @@
 #include <list>
 #include <set>
 #include <string>
+#include <utility>
 #include <wayland-server-core.h>
 
 #include "config.hpp"
@@ -15,6 +16,7 @@ struct wlr_allocator;
 struct wlr_output;
 struct wlr_output_layout;
 struct wlr_seat;
+struct wlr_keyboard;
 struct wlr_compositor;
 struct wlr_xwayland;
 struct wlr_xdg_shell;
@@ -144,6 +146,9 @@ namespace fenriz {
         // Watches the config dir for hot-reload.
         wl_event_source* config_watch = nullptr;
 
+        // SIGTERM/SIGINT, so a session manager's logout exits normally.
+        wl_event_source* signal_sources[2] = {nullptr, nullptr};
+
         // Held-key repeat for `binde` binds. One timer for the seat.
         wl_event_source* repeat_timer = nullptr;
         Bind repeat_bind;
@@ -151,7 +156,7 @@ namespace fenriz {
         uint32_t repeat_keycode = 0;
 
         // Raw evdev keycodes whose press a keybind swallowed.
-        std::set<uint32_t> bound_keys;
+        std::set<std::pair<wlr_keyboard*, uint32_t>> bound_keys;
 
         wl_display* display = nullptr;
         wlr_backend* backend = nullptr;

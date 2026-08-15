@@ -18,7 +18,7 @@
 #   launcher: the command to run, with the fenriz binary LAST (so `valgrind ... fenriz` works)
 #   $FENRIZ_TEST_CONFIG: optional config file to run with; unset means the compiled-in
 #     defaults, which is the baseline every scenario is written against.
-# Sets: FENRIZ_SOCK, FENRIZ_DISPLAY, FENRIZ_PID, FENRIZ_LAUNCH_PID
+# Sets: FENRIZ_SOCK, FENRIZ_EVENT_SOCK, FENRIZ_DISPLAY, FENRIZ_PID, FENRIZ_LAUNCH_PID
 
 fenriz_boot() {
     local log=$1 backend=$2; shift 2
@@ -71,6 +71,7 @@ fenriz_boot() {
         return 1
     fi
     FENRIZ_DISPLAY=$(grep -o 'WAYLAND_DISPLAY=[^ ]*' "$log" | tail -1 | cut -d= -f2)
+    FENRIZ_EVENT_SOCK=$(grep -o 'FENRIZ_EVENT_SOCKET=[^ ]*' "$log" | tail -1 | cut -d= -f2)
     FENRIZ_PID=$(pgrep -f "^${bin}$" | head -1)
     [ -n "$FENRIZ_PID" ] || FENRIZ_PID=$FENRIZ_LAUNCH_PID
 }

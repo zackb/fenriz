@@ -12,6 +12,7 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#include <xkbcommon/xkbcommon.h>
 
 bool wlc_verbose = false;
 
@@ -362,11 +363,79 @@ static const struct wl_pointer_listener pointer_listener = {
     .axis_relative_direction = pointer_u32_u32,
 };
 
+// --- keyboard -------------------------------------------------------------------------
+// Only enter/leave are recorded. That is the whole point: which surface the compositor
+// routed the keyboard to is otherwise invisible to a client, and it is exactly what a lock
+// screen has to get right.
+
+static void kb_keymap(void* d, struct wl_keyboard* k, uint32_t fmt, int32_t fd, uint32_t size) {
+    (void)d;
+    (void)k;
+    (void)fmt;
+    (void)size;
+    close(fd); // we never compile it; leaking the fd would exhaust the client
+}
+static void kb_enter(void* d, struct wl_keyboard* k, uint32_t serial, struct wl_surface* s, struct wl_array* keys) {
+    struct wlc* c = d;
+    (void)k;
+    (void)keys;
+    c->last_serial = serial;
+    c->kb_focus = s;
+    c->kb_enters++;
+    wlc_log("keyboard enter surface=%p", (void*)s);
+}
+static void kb_leave(void* d, struct wl_keyboard* k, uint32_t serial, struct wl_surface* s) {
+    struct wlc* c = d;
+    (void)k;
+    (void)s;
+    c->last_serial = serial;
+    c->kb_focus = NULL;
+    c->kb_leaves++;
+    wlc_log("keyboard leave surface=%p", (void*)s);
+}
+static void kb_key(void* d, struct wl_keyboard* k, uint32_t serial, uint32_t t, uint32_t key, uint32_t state) {
+    struct wlc* c = d;
+    (void)k;
+    (void)t;
+    (void)key;
+    (void)state;
+    c->last_serial = serial;
+    c->kb_keys++;
+}
+static void
+    kb_modifiers(void* d, struct wl_keyboard* k, uint32_t serial, uint32_t a, uint32_t b, uint32_t g, uint32_t grp) {
+    (void)d;
+    (void)k;
+    (void)serial;
+    (void)a;
+    (void)b;
+    (void)g;
+    (void)grp;
+}
+static void kb_repeat_info(void* d, struct wl_keyboard* k, int32_t rate, int32_t delay) {
+    (void)d;
+    (void)k;
+    (void)rate;
+    (void)delay;
+}
+static const struct wl_keyboard_listener keyboard_listener = {
+    .keymap = kb_keymap,
+    .enter = kb_enter,
+    .leave = kb_leave,
+    .key = kb_key,
+    .modifiers = kb_modifiers,
+    .repeat_info = kb_repeat_info,
+};
+
 static void seat_caps(void* data, struct wl_seat* seat, uint32_t caps) {
     struct wlc* c = data;
     if ((caps & WL_SEAT_CAPABILITY_POINTER) && !c->pointer) {
         c->pointer = wl_seat_get_pointer(seat);
         wl_pointer_add_listener(c->pointer, &pointer_listener, c);
+    }
+    if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !c->keyboard) {
+        c->keyboard = wl_seat_get_keyboard(seat);
+        wl_keyboard_add_listener(c->keyboard, &keyboard_listener, c);
     }
 }
 static void seat_name(void* d, struct wl_seat* s, const char* n) {
@@ -467,6 +536,10 @@ static void registry_global(void* data, struct wl_registry* reg, uint32_t name, 
         c->vpm = wl_registry_bind(reg, name, &zwlr_virtual_pointer_manager_v1_interface, cap(version, 2));
     else if (!strcmp(iface, zwlr_layer_shell_v1_interface.name))
         c->layer_shell = wl_registry_bind(reg, name, &zwlr_layer_shell_v1_interface, cap(version, 4));
+    else if (!strcmp(iface, ext_session_lock_manager_v1_interface.name))
+        c->lock_manager = wl_registry_bind(reg, name, &ext_session_lock_manager_v1_interface, 1);
+    else if (!strcmp(iface, zwp_virtual_keyboard_manager_v1_interface.name))
+        c->vkm = wl_registry_bind(reg, name, &zwp_virtual_keyboard_manager_v1_interface, 1);
     else if (!strcmp(iface, wl_output_interface.name) && c->n_outputs < 8) {
         c->outputs[c->n_outputs++] = wl_registry_bind(reg, name, &wl_output_interface, cap(version, 4));
         wl_output_add_listener(c->outputs[c->n_outputs - 1], &output_listener, c);
@@ -702,6 +775,60 @@ void wlc_pointer_button(struct wlc* c, uint32_t button, bool pressed) {
     zwlr_virtual_pointer_v1_button(
         c->vp, vp_time++, button, pressed ? WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED);
     vp_frame(c);
+}
+
+// --- injected keyboard ----------------------------------------------------------------
+
+static uint32_t vk_time = 1;
+
+void wlc_keyboard_init(struct wlc* c) {
+    if (!c->vkm)
+        wlc_die("compositor does not advertise zwp_virtual_keyboard_manager_v1");
+    if (c->vk)
+        return;
+    c->vk = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(c->vkm, c->seat);
+
+    // A virtual keyboard supplies its own keymap and is keymap-less until it does. The
+    // compositor cannot seat a keymap-less keyboard (it would broadcast an unmappable fd to
+    // every client), so nothing routes keyboard focus until this lands.
+    struct xkb_context* ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+    struct xkb_keymap* km = ctx ? xkb_keymap_new_from_names(ctx, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS) : NULL;
+    char* str = km ? xkb_keymap_get_as_string(km, XKB_KEYMAP_FORMAT_TEXT_V1) : NULL;
+    if (!str)
+        wlc_die("could not compile a keymap for the virtual keyboard");
+    const size_t size = strlen(str) + 1;
+
+    int fd = memfd_create("fenriz-test-keymap", MFD_CLOEXEC);
+    if (fd < 0 || ftruncate(fd, (off_t)size) < 0)
+        wlc_die("keymap memfd failed: %s", strerror(errno));
+    void* map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (map == MAP_FAILED)
+        wlc_die("keymap mmap failed: %s", strerror(errno));
+    memcpy(map, str, size);
+    munmap(map, size);
+
+    zwp_virtual_keyboard_v1_keymap(c->vk, WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1, fd, (uint32_t)size);
+    close(fd);
+    free(str);
+    xkb_keymap_unref(km);
+    xkb_context_unref(ctx);
+
+    // The compositor only attaches a keyboard to the seat when one produces an event. It has to
+    // be a *change* — wlroots drops a modifier update that matches the current state, so an
+    // all-zero one on a fresh keyboard emits nothing. Press shift and let it go: after this,
+    // wlr_seat_get_keyboard() is non-NULL and wl_keyboard.enter/leave actually gets routed.
+    zwp_virtual_keyboard_v1_modifiers(c->vk, 1 /* shift */, 0, 0, 0);
+    zwp_virtual_keyboard_v1_modifiers(c->vk, 0, 0, 0, 0);
+    wlc_roundtrip(c);
+    wlc_log("virtual keyboard created, keymap %zu bytes uploaded", size);
+}
+
+void wlc_keyboard_key(struct wlc* c, uint32_t key, bool pressed) {
+    if (!c->vk)
+        wlc_keyboard_init(c);
+    zwp_virtual_keyboard_v1_key(
+        c->vk, vk_time++, key, pressed ? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED);
+    wl_display_flush(c->display);
 }
 
 // --- windows --------------------------------------------------------------------------

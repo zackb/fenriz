@@ -192,6 +192,27 @@ int main() {
     assert(sh.exec_once.size() == 1 && sh.exec_once[0] == "swaybg -c #1a1a1a");
     assert(sh.binds[2].arg == "hyprpicker -f hex # trailing text is part of the command");
 
+    // A misspelled modifier is REJECTED, not silently treated as no modifier at all. A bind
+    // that parses with mods == 0 is a bare global key, and because a matched bind swallows both
+    // the press and the release, `bind = Supr, Return, exec, foot` would stop Return working in
+    // every application on the desktop while the config still appeared to load cleanly.
+    assert(Config::parse("bind = Supr, Return, exec, foot\n").binds.empty());
+    assert(Config::parse("bind = SUPER SHIFTT, q, killactive\n").binds.empty());
+    assert(Config::parse("bind = Meta, q, killactive\n").binds.empty()); // not a name we accept
+    // A good bind alongside a bad one still loads.
+    {
+        Config mix = Config::parse("bind = Supr, Return, exec, foot\n"
+                                   "bind = SUPER, q, killactive\n");
+        assert(mix.binds.size() == 1);
+        assert(mix.binds[0].action == Action::KillActive);
+    }
+    // ...and an EMPTY modifier field stays legal: that is how `binde` binds media keys.
+    {
+        Config bare = Config::parse("binde = , XF86AudioRaiseVolume, exec, wpctl x\n");
+        assert(bare.binds.size() == 1);
+        assert(bare.binds[0].mods == 0 && bare.binds[0].repeat);
+    }
+
     // ...but a non-command value still honors an inline comment (asserted for `rounding`
     // above) and a whole-line comment is still dropped even though it contains an `=`.
     Config cm = Config::parse("# gaps = 999\n"

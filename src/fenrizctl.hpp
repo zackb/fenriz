@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "config.hpp" // WS_MAX
+#include "ipc_json.hpp"
 
 namespace fenrizctl {
 
@@ -62,14 +63,7 @@ namespace fenrizctl {
 
     inline std::string escape(const std::string& s) {
         std::string out;
-        for (unsigned char c : s) {
-            if (c == '"' || c == '\\')
-                out += '\\', out += (char)c;
-            else if (c == '\n')
-                out += "\\n";
-            else if (c >= 0x20)
-                out += (char)c;
-        }
+        fenriz::ipc::json_escape(out, s.c_str());
         return out;
     }
 

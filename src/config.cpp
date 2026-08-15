@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <climits>
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <regex>
@@ -88,8 +89,11 @@ namespace fenriz {
             return fallback;
         }
 
-        // Mirror WLR_MODIFIER_* bit values (wlr/types/wlr_keyboard.h)
-        uint32_t mod_from_token(const std::string& t) {
+        // Mirror WLR_MODIFIER_* bit values (wlr/types/wlr_keyboard.h). `ok` reports whether the
+        // token was recognized at all.
+        uint32_t mod_from_token(const std::string& t, bool* ok = nullptr) {
+            if (ok)
+                *ok = true;
             std::string u = t;
             std::transform(u.begin(), u.end(), u.begin(), [](unsigned char c) { return std::toupper(c); });
             if (u == "SUPER" || u == "LOGO" || u == "MOD4")
@@ -100,6 +104,8 @@ namespace fenriz {
                 return 4;
             if (u == "ALT" || u == "MOD1")
                 return 8;
+            if (ok)
+                *ok = u.empty();
             return 0;
         }
 
@@ -192,13 +198,24 @@ namespace fenriz {
 
                 Bind b;
                 b.repeat = (key == "binde"); // `binde` re-fires while held (volume/brightness)
-                for (const std::string& tok : split(parts[0], ' '))
-                    b.mods |= mod_from_token(tok);
+                bool mods_ok = true;
+                for (const std::string& tok : split(parts[0], ' ')) {
+                    bool ok = true;
+                    b.mods |= mod_from_token(tok, &ok);
+                    if (!ok) {
+                        std::fprintf(stderr,
+                                     "fenriz: config: unknown modifier '%s' in `%s = %s`; ignoring this bind\n",
+                                     tok.c_str(),
+                                     key.c_str(),
+                                     raw.c_str());
+                        mods_ok = false;
+                    }
+                }
                 b.sym = xkb_keysym_from_name(parts[1].c_str(), XKB_KEYSYM_CASE_INSENSITIVE);
                 b.action = parts.size() > 2 ? action_from_string(parts[2]) : Action::None;
                 if (parts.size() > 3)
                     b.arg = parts[3];
-                if (b.sym != XKB_KEY_NoSymbol)
+                if (mods_ok && b.sym != XKB_KEY_NoSymbol)
                     cfg.binds.push_back(b);
                 continue;
             }
