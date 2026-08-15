@@ -25,14 +25,10 @@ namespace fenriz {
         struct Output;
     }
 
-    // A managed window: wraps an xdg_toplevel and its tiled geometry. Standard-layout
-    // (pointers + POD + wl_listener only) so wl_container_of recovers it cleanly.
+    // A managed window: wraps an xdg_toplevel and its tiled geometry.
     class View {
     public:
-        // Which shell this window came from. Xdg is a Wayland-native toplevel; Xwl is an
-        // XWayland (X11) surface. Exactly one of `toplevel`/`xwl` is set; the free functions
-        // below (view_surface/view_app_id/…) branch on this so the tiling/focus/render path
-        // stays shell-agnostic.
+        // Which shell this window came from. Xdg is a Wayland-native toplevel; Xwl is an XWayland (X11) surface.
         enum class Kind { Xdg, Xwl };
 
         View(Server& server, wlr_xdg_toplevel* toplevel);
@@ -65,10 +61,10 @@ namespace fenriz {
 
         bool configure_pending = false;
 
-        // Render offset from box, in logical coords; decays to 0 each frame for the
-        // slide-into-place animation (see output.cpp). `dragging` holds the offset
-        // (no decay) while the window tracks the cursor, and draws it above the tiles.
+        // Render offset from box, in logical coords
         double anim_ox = 0, anim_oy = 0;
+        double anim_sx = 0, anim_sy = 0;
+        double anim_t = 1.0;
         bool dragging = false;
 
         // wlr-foreign-toplevel handle (taskbar/window-list protocol); live while mapped.
@@ -81,15 +77,8 @@ namespace fenriz {
         // activate or close), so it runs alongside foreign_handle rather than replacing it.
         wlr_ext_foreign_toplevel_handle_v1* ext_foreign_handle = nullptr;
 
-        // Scene nodes, created on map (see view_handle_map). scene_tree is the container
-        // positioned at the tile origin; surface_tree holds the xdg surface (inset by the
-        // border); border is the frame rect.
-        //
-        // popup_tree is a sibling of surface_tree, not a child, and shares its origin (both
-        // sit at the inner border corner, which is the window-geometry top-left the popup
-        // protocol positions against). Popups must live outside surface_tree because the
-        // toplevel's clip and content effects both sweep that subtree wholesale — a popup
-        // parented under it inherits the parent's clip box and corner radius.
+        // Scene nodes, created on map. scene_tree is the container
+        // positioned at the tile origin; surface_tree holds the xdg surface
         wlr_scene_tree* scene_tree = nullptr;
         wlr_scene_tree* surface_tree = nullptr;
         wlr_scene_tree* popup_tree = nullptr;
@@ -188,6 +177,15 @@ namespace fenriz {
     // Focus the nearest visible view whose center lies in direction (dx,dy), each in
     // {-1,0,1}: left (-1,0), right (1,0), up (0,-1), down (0,1). No-op if none.
     void focus_direction(Server& server, int dx, int dy);
+
+    // (re)start the slide-into-place ease
+    inline void anim_slide(View* v, int dx, int dy) {
+        v->anim_ox += dx;
+        v->anim_oy += dy;
+        v->anim_sx = v->anim_ox;
+        v->anim_sy = v->anim_oy;
+        v->anim_t = 0.0;
+    }
 
     // A view is shown only when mapped and its workspace is the one currently shown on the
     // output that workspace lives on. A workspace on no output (all screens gone) shows

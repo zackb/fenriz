@@ -88,10 +88,8 @@ namespace fenriz::tiling {
                 // that weren't placed yet (new maps: box.width == 0) so they don't fly in.
                 const View::Box old = view->box;
                 view->box = {n->rect.x, n->rect.y, n->rect.w, n->rect.h};
-                if (animate && server.config.animation_ms > 0 && old.width > 0) {
-                    view->anim_ox += old.x - view->box.x;
-                    view->anim_oy += old.y - view->box.y;
-                }
+                if (animate && server.config.animation_ms > 0 && old.width > 0)
+                    anim_slide(view, old.x - view->box.x, old.y - view->box.y);
                 view_configure(view); // size the client to the inner tile area (shell-agnostic)
             }
         }

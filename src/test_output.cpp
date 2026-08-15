@@ -358,6 +358,24 @@ int main() {
         assert(std::abs(zoom_viewport_origin(W, 4.0) - (W - W / 4)) < 1e-9);
     }
 
+    {
+        // The animation curve. An inverted or overshooting ease would leave windows sliding
+        // the wrong way or landing past their tile, and a curve that misses its endpoints
+        // would strand a fade below full opacity.
+        assert(ease_out(0.0) == 0.0);
+        assert(ease_out(1.0) == 1.0);
+        assert(ease_out(-1.0) == 0.0); // clamped, never negative
+        assert(ease_out(2.0) == 1.0);
+        double prev = -1.0;
+        for (int i = 0; i <= 100; i++) {
+            const double e = ease_out(i / 100.0);
+            assert(e > prev);             // strictly increasing: no stall, no reversal
+            assert(e >= 0.0 && e <= 1.0); // no overshoot past the target
+            prev = e;
+        }
+        assert(ease_out(0.5) > 0.5); // front-loaded: most of the distance covered early
+    }
+
     printf("test_output: ok\n");
     return 0;
 }
