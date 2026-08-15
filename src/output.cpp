@@ -10,6 +10,7 @@
 #include "cursor.hpp"
 #include "ipc.hpp"
 #include "layer.hpp"
+#include "lock.hpp"
 #include "server.hpp"
 #include "tiling.hpp"
 #include "view.hpp"
@@ -27,9 +28,6 @@ namespace fenriz::output {
         // Advance the slide-into-place animation: decay each visible view's render offset
         // toward 0 by an exponential factor scaled to the elapsed frame time (so the speed
         // is independent of refresh rate), pushing the result into its scene node.
-        //
-        // Only animates views on THIS output, so a busy screen doesn't drive frames on a
-        // quiet one (each output tracks its own dt).
         bool animate(Output* output, const timespec& now) {
             Server& server = *output->server;
             double dt = (now.tv_sec - output->last_frame.tv_sec) + (now.tv_nsec - output->last_frame.tv_nsec) / 1e9;
@@ -181,10 +179,7 @@ namespace fenriz::output {
             }
             const bool zoomed = has_cursor && server.zoom > 1.0f;
             // The zoom path renders via a manual pass into the output's own buffers, which the
-            // scene's damage tracking never sees. Returning to the direct (damage-tracked) path
-            // would then leave stale zoom pixels in undamaged regions, so the first unzoomed
-            // frame must force a whole-output repaint. ponytail: only cleans the cursor's output;
-            // zooming then moving to another output mid-zoom can strand a stale frame there.
+            // scene's damage tracking never sees.
             const bool exiting_zoom = output->zoom_active && !zoomed;
 
             // Only commit when the scene needs a repaint, a gamma LUT change is pending, or a
@@ -302,12 +297,13 @@ namespace fenriz::output {
             add_listener(output->destroy, out->events.destroy, output_handle_destroy);
 
             server.outputs.push_back(output);
-            workspace_protocol::output_enter(out); // the workspace group spans every screen
 
             // Scene output must exist before the output is added to the layout below.
             wlr_scene_output* scene_output = wlr_scene_output_create(server.scene, out);
             wlr_scene_output_layout_add_output(
                 server.scene_layout, wlr_output_layout_add_auto(server.output_layout, out), scene_output);
+
+            workspace_protocol::output_enter(out); // the workspace group spans every screen
 
             // Full-output backdrop at the bottom of the scene (below wallpaper/windows).
             output->bg = wlr_scene_rect_create(server.scene_background, 0, 0, BG);
@@ -670,11 +666,16 @@ namespace fenriz::output {
         for (View* v : server.views)
             view_update_output(server, v);
 
+        // The lock scene is pinned to creation-time output coordinates; outputs just moved.
+        lock::relayout(server);
+
         // Re-seat the keyboard. Two cases: the focused window went hidden (its workspace isn't
         // shown anywhere), or focus was dropped earlier because nothing was visible and a
         // screen has now come back with windows on it. Without the second case, opening the lid
         // hands you back your windows with nothing focused, and you'd have to click.
-        if (!server.focused_view || !view_visible(server, server.focused_view))
+        if (server.locked)
+            lock::refocus(server);
+        else if (!server.focused_view || !view_visible(server, server.focused_view))
             focus_topmost_visible(server);
 
         cursor::clamp_to_layout(server);
@@ -693,26 +694,24 @@ namespace fenriz::output {
             const OutputCfg* cfg = config_for(server, name_of(o));
             if (cfg && cfg->mode == "disable")
                 on = false;
+            else if (lid_controls(server, o) && server.lid_closed && !o->enabled)
+                on = false;
         }
 
         const bool was = o->enabled;
         o->enabled = on;
+
         if (on) {
-            // ALWAYS (re)commit mode + scale, even when the output already reports itself
-            // enabled. A DRM connector arrives already lit, carrying the firmware's mode and
-            // scale 1 — so short-circuiting on "it's already enabled" silently skips our scale
-            // and a HiDPI panel runs at 1x. (Nested outputs arrive disabled, so this path is
-            // only exercised on real hardware.)
             commit_mode(server, o);
-            // Adding to the layout re-creates the wl_output global: clients see the screen
-            // appear and build their per-screen surfaces again, no reload needed.
             layout_add(server, o);
+
+            if (!was)
+                workspace_protocol::output_enter(o->handle);
             wlr_output_schedule_frame(o->handle);
         } else if (was || o->handle->enabled) {
             close_layer_surfaces(server, o->handle);
 
-            // Removing from the layout destroys the wl_output global (wlr_output_layout.h:23):
-            // the screen genuinely disappears for clients.
+            workspace_protocol::output_leave(o->handle);
             wlr_output_layout_remove(server.output_layout, o->handle);
 
             wlr_output_state state;

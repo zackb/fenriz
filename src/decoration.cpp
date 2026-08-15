@@ -15,13 +15,12 @@ namespace fenriz::decoration {
             wl_listener destroy;
         };
 
-        // set_mode asserts the xdg surface is initialized (it schedules a configure), so
-        // this is a no-op until the toplevel's first commit. Idempotent: skips if already
-        // scheduled server-side to avoid redundant configures.
-        void force_server_side(wlr_xdg_toplevel_decoration_v1* dec) {
+        // set_mode asserts the xdg surface is initialized (it schedules a configure), so this is
+        // a no-op until the toplevel's first commit.
+        void force_server_side(wlr_xdg_toplevel_decoration_v1* dec, bool always) {
             if (!dec->toplevel->base->initialized)
                 return;
-            if (dec->scheduled_mode == WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE)
+            if (!always && dec->scheduled_mode == WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE)
                 return;
             wlr_xdg_toplevel_decoration_v1_set_mode(dec, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
         }
@@ -29,13 +28,13 @@ namespace fenriz::decoration {
         void on_request_mode(wl_listener* listener, void* data) {
             Decoration* d = wl_container_of(listener, d, request_mode);
             (void)data;
-            force_server_side(d->handle);
+            force_server_side(d->handle, true); // every request gets a configure
         }
 
         void on_surface_commit(wl_listener* listener, void* data) {
             Decoration* d = wl_container_of(listener, d, surface_commit);
             (void)data;
-            force_server_side(d->handle); // fires once the surface is initialized
+            force_server_side(d->handle, false); // fires once the surface is initialized
         }
 
         void on_destroy(wl_listener* listener, void* data) {
@@ -58,7 +57,7 @@ namespace fenriz::decoration {
             add_listener(d->surface_commit, dec->toplevel->base->surface->events.commit, on_surface_commit);
             add_listener(d->destroy, dec->events.destroy, on_destroy);
 
-            force_server_side(dec); // in case the surface is already initialized
+            force_server_side(dec, false); // in case the surface is already initialized
         }
 
     } // namespace

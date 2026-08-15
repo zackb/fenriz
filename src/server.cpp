@@ -1,5 +1,6 @@
 #include "server.hpp"
 
+#include <csignal>
 #include <cstdlib>
 #include <cstring>
 #include <sys/inotify.h>
@@ -256,9 +257,18 @@ namespace fenriz {
             int fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
             if (fd < 0)
                 return;
+
             if (inotify_add_watch(fd, dir.c_str(), IN_CLOSE_WRITE | IN_MOVED_TO) < 0) {
-                close(fd);
-                return;
+                if (errno == ENOENT && mkdir(dir.c_str(), 0755) == 0)
+                    wlr_log(WLR_INFO, "fenriz: created %s to watch for a config", dir.c_str());
+                if (inotify_add_watch(fd, dir.c_str(), IN_CLOSE_WRITE | IN_MOVED_TO) < 0) {
+                    wlr_log(WLR_ERROR,
+                            "fenriz: cannot watch %s: %s (no config hot-reload)",
+                            dir.c_str(),
+                            std::strerror(errno));
+                    close(fd);
+                    return;
+                }
             }
             server.config_watch = wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, on_config_changed, &server);
             if (!server.config_watch) {
@@ -386,6 +396,8 @@ namespace fenriz {
             // A bell with no surface is not attributable to a window; there is nothing to flag.
             if (ev->surface)
                 mark_urgent(*sl->server, ev->surface, false);
+            // The event fires for every ring, including one on the focused window and one with no surface.
+            ipc::bell(*sl->server, ev->surface);
         }
 
         // idle-inhibit-v1: a client holding an inhibitor (video/fullscreen) keeps the
@@ -478,6 +490,9 @@ namespace fenriz {
     Server::~Server() {
         if (config_watch)
             wl_event_source_remove(config_watch);
+        for (wl_event_source* s : signal_sources)
+            if (s)
+                wl_event_source_remove(s);
         ipc::shutdown();
         if (display) {
             wl_display_destroy_clients(display);
@@ -719,6 +734,19 @@ namespace fenriz {
 
         // Hot-reload: apply edits to fenriz.conf live (no restart). See init_config_watch.
         init_config_watch(*this, loop);
+
+        // SIGTERM is what a session manager (greetd, systemd) sends at logout, and SIGINT is what a terminal sends.
+        const int sigs[2] = {SIGTERM, SIGINT};
+        for (int i = 0; i < 2; i++)
+            signal_sources[i] = wl_event_loop_add_signal(
+                loop,
+                sigs[i],
+                [](int s, void* data) -> int {
+                    wlr_log(WLR_INFO, "fenriz: caught signal %d, exiting", s);
+                    static_cast<Server*>(data)->stop();
+                    return 0;
+                },
+                this);
 
         // Run startup commands now that the socket is live and WAYLAND_DISPLAY is set,
         // so the spawned clients connect to us.

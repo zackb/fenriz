@@ -21,6 +21,9 @@ namespace fenriz {
         // Re-route the keyboard to the lock UI.
         void refocus(Server& server);
 
+        // Re-place the lock scene against the current output layout
+        void relayout(Server& server);
+
     } // namespace lock
 
 } // namespace fenriz

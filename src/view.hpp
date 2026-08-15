@@ -63,6 +63,8 @@ namespace fenriz {
         int req_w = 0, req_h = 0;
         bool acked = false;
 
+        bool configure_pending = false;
+
         // Render offset from box, in logical coords; decays to 0 each frame for the
         // slide-into-place animation (see output.cpp). `dragging` holds the offset
         // (no decay) while the window tracks the cursor, and draws it above the tiles.

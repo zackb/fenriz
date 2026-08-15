@@ -308,11 +308,16 @@ clients as `FENRIZ_SOCKET`. It streams workspace, window, and output state as ne
 JSON and takes one-line commands. This is enough to drive a status bar or shell (waybar, quickshell,
 etc.).
 
+Beside it is a read-only event socket (`FENRIZ_EVENT_SOCKET`) sending things that happen
+rather than state (system bell), so a shell can decide whether a terminal's `\a`
+makes a sound. fenriz plays nothing itself.
+
 `fenrizctl`, installed alongside the compositor, is the command-line front end:
 
 ```
 fenrizctl state | jq            # everything fenriz knows, right now
 fenrizctl watch                 # the same, streamed on every change
+fenrizctl events                # the bell, and anything else that happens
 fenrizctl workspace 3
 fenrizctl killactive            # any keybind action works as a subcommand
 fenrizctl output DP-1 off

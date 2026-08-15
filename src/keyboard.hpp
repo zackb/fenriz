@@ -30,4 +30,7 @@ namespace fenriz {
     // Run a bind's action.
     void execute_bind(Server& server, const Bind& b);
 
+    // Does the focused surface hold an active keyboard-shortcuts inhibitor?
+    bool shortcuts_inhibited(Server& server);
+
 } // namespace fenriz

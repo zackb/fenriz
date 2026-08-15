@@ -98,12 +98,13 @@ namespace fenriz::tiling {
 
         // Push every view's box/anim/visibility into its scene nodes. Covers all workspaces
         // (not just the shown leaves above) so views on hidden workspaces get disabled and
-        // a window just moved elsewhere stops rendering — this must run even when every
-        // shown workspace is empty.
-        //
-        // Fullscreen geometry lands here rather than in the leaf loop: a floating window has
-        // left the tree, so a leaf-only pass never sees it and it stays at its float box
+        // a window just moved elsewhere stops rendering.
         for (View* view : server.views) {
+            // A float resize deferred its configure to here
+            if (view->configure_pending) {
+                view->configure_pending = false;
+                view_configure(view);
+            }
             if (view->fullscreen) {
                 // Cover the output the window is on — not the whole layout, which would span
                 // every monitor. A homeless workspace has no output: leave the box as-is.
