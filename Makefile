@@ -44,11 +44,16 @@ package-desktop:
 run-desktop:
 	$(MAKE) -C desktop run
 
-.PHONY: fmt
+SOURCES = find ./src ./tests \( -name "*.cpp" -o -name "*.hpp" -o -name "*.c" -o -name "*.h" \) -print0
+
+.PHONY: fmt fmt-check
 fmt:
 	@echo "Formatting code with clang-format..."
-	@find ./src ./tests \( -name "*.cpp" -o -name "*.hpp" -o -name "*.c" -o -name "*.h" \) -print0 | xargs -0 -n 1 clang-format -i
+	@$(SOURCES) | xargs -0 -n 1 clang-format -i
 	@echo "Done."
+
+fmt-check:
+	@$(SOURCES) | xargs -0 -n 1 clang-format --dry-run -Werror
 
 clean:
 	rm -rf build
