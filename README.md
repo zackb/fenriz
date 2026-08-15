@@ -29,6 +29,8 @@ I use this as my daily driver. It is stable and usable, but still under active d
 
 ```
 yay -S fenriz
+
+yay -S fenriz-desktop # optional (desktop shell):
 ```
 
 #### Other distros
