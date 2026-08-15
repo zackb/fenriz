@@ -11,10 +11,11 @@ A compositor that is small, fast, and stays out of the way. Performance and stab
 tons of features and eye-candy. It tiles your windows, reads a config file, speaks a small [IPC](/docs/IPC.md), and otherwise
 does nothing you didn't ask for.
 
+
 [![Arch Linux](https://github.com/zackb/fenriz/actions/workflows/arch.yml/badge.svg?branch=main)](https://github.com/zackb/fenriz/actions/workflows/arch.yml)
 [![Fedora](https://github.com/zackb/fenriz/actions/workflows/fedora.yml/badge.svg?branch=main)](https://github.com/zackb/fenriz/actions/workflows/fedora.yml)
 [![Debian](https://github.com/zackb/fenriz/actions/workflows/debian.yml/badge.svg?branch=main)](https://github.com/zackb/fenriz/actions/workflows/debian.yml)
-[![Format](https://github.com/zackb/fenriz/actions/workflows/format.yml/badge.svg?branch=main)](https://github.com/zackb/fenriz/actions/workflows/format.yml)
+[![Ubuntu](https://github.com/zackb/fenriz/actions/workflows/ubuntu.yml/badge.svg?branch=main)](https://github.com/zackb/fenriz/actions/workflows/ubuntu.yml)
 
 ## Goals
 
@@ -66,18 +67,6 @@ If you want to install [fenriz-desktop](desktop) with it, then it will also work
 
 Full setup, config, and screen-sharing walkthrough: [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
-## Dependencies
-
-wlroots 0.20, scenefx 0.5, wayland-server, xkbcommon, pixman, libinput, EGL, GLESv2.
-On Arch:
-
-```
-sudo pacman -S wlroots0.20 wayland wayland-protocols libxkbcommon pixman libinput mesa libxcb xcb-util-wm
-yay -S scenefx0.5
-```
-
-Also needs `cmake` (>= 3.19) and `ninja`.
-
 ### Other distributions
 
 Nothing packages either of the two dependencies that matter: wlroots 0.20 is in no Fedora or Debian
@@ -92,11 +81,24 @@ sudo ./scripts/ci-deps.sh
 It installs into `/usr`, over the top of the package manager. Run it in a container, a VM,
 or a machine you don't mind, not on a desktop you care about.
 
-On Debian this needs unstable.
+On Debian this needs unstable. Ubuntu 26.04 LTS is new enough; older Ubuntu is not.
 
-Fedora is current enough that only wayland, wlroots and scenefx get built.
+How much gets built varies: Arch needs only scenefx, Fedora and Debian add wlroots, and
+Ubuntu also rebuilds wayland and wayland-protocols.
 
 ## Build
+
+### Dependencies
+
+wlroots 0.20, scenefx 0.5, wayland-server, xkbcommon, pixman, libinput, EGL, GLESv2.
+On Arch:
+
+```
+sudo pacman -S wlroots0.20 wayland wayland-protocols libxkbcommon pixman libinput mesa libxcb xcb-util-wm
+yay -S scenefx0.5
+```
+
+Also needs `cmake` (>= 3.19) and `ninja`.
 
 ```
 make debug      # configure + build into build/debug
@@ -127,6 +129,7 @@ If you are new to tilers, or just don't want to configure the typical wayland to
 - Idle managment - dim, lock, sleep on a configurable timer
 - Notifications - the daemon apps expect, so notify-send and friends aren't swallowed
 - OSD - On screen display for volume, brightness
+- Polkit Agent - for authentication prompts
 
 ## Multi-monitor and clamshell
 
@@ -135,9 +138,6 @@ screen goes away — lid shut, cable pulled, suspend — its workspaces move to 
 screen with layouts and focus intact, and return exactly where they were when it comes
 back. The internal panel turns off when the lid shuts with an external connected, and back
 on otherwise; suspend-on-lid is left to logind, which already gets it right.
-
-Your bar does not need reloading on monitor change: disabling a screen removes its
-`wl_output` global, so a per-screen shell rebuilds through the normal registry events.
 
 Scale is guessed per screen from its physical size and mode.
 Override the defaults only if the guess is wrong or you want a specific arrangement:
@@ -176,25 +176,3 @@ fenrizctl workspace 3      # ...and any keybind action: fenrizctl killactive
 ```
 
 See [docs/IPC.md](docs/IPC.md).
-
-## Layout
-
-```
-src/
-  main.cpp        entry + event loop
-  log.*           wlroots + libwayland logging to stderr and $XDG_STATE_HOME/fenriz/fenriz.log
-  server.*        backend, renderer, allocator, xdg-shell, seat, protocols; owns the window list
-  output.*        outputs: frame handler, hotplug, enable/disable, clamshell policy
-  output_policy.cpp   pure workspace-assignment rules (evacuate/restore); no wlroots, unit-tested
-  view.*          xdg_toplevel wrapper: geometry, focus, floating/fullscreen, scene nodes
-  tiling.*        dwindle BSP layout
-  cursor.*        pointer focus + interactive move/resize
-  keyboard.*      xkb + keybind dispatch
-  layer.*         wlr-layer-shell (bars/panels/wallpapers) + idle-notify
-  decoration.*    force server-side decoration (xdg-decoration); fenriz draws the border
-  lock.*          session lock (ext-session-lock)
-  ipc.*           FENRIZ_SOCKET control socket + FENRIZ_EVENT_SOCKET event feed (see docs/IPC.md)
-  fenrizctl.*     the `fenrizctl` CLI for that socket
-  config.*        Hyprland-style config parser
-  xwayland.*      XWayland support (X11 apps)
-```
