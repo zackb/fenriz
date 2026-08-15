@@ -22,6 +22,16 @@ namespace fenriz {
             int x, y, width, height;
         };
 
+        // Change 0..1 animation progress into a 0..1 eased fraction
+        inline double ease_out(double t) {
+            if (t <= 0.0)
+                return 0.0;
+            if (t >= 1.0)
+                return 1.0;
+            const double k = 1.0 - t;
+            return 1.0 - k * k * k;
+        }
+
         // Per-output state
         struct Output {
             Server* server = nullptr;
@@ -43,9 +53,9 @@ namespace fenriz {
             wl_listener destroy;
             timespec last_frame{}; // for frame-rate-independent animation decay
 
-            // Workspace-switch fade: alpha multiplier for this output's windows, eased 0 -> 1 after a switch. 1.0 =
-            // settled, no fade in progress.
+            // Workspace-switch fade. ws_fade is the alpha multiplier this output's windows render with
             double ws_fade = 1.0;
+            double ws_fade_t = 1.0;
 
             // Offscreen buffers the scene renders into while this output is zoomed; the frame
             // is then blitted scaled to fill the output. Null unless zoom is/was active here.

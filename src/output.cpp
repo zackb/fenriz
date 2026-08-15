@@ -25,17 +25,15 @@ namespace fenriz::output {
         // layer-shell wallpaper. wlr_scene otherwise clears uncovered regions to black.
         constexpr float BG[4] = {0.1f, 0.1f, 0.12f, 1.0f};
 
-        // Advance the slide-into-place animation: decay each visible view's render offset
-        // toward 0 by an exponential factor scaled to the elapsed frame time (so the speed
-        // is independent of refresh rate), pushing the result into its scene node.
+        // Advance every animation running on this output by the elapsed frame time , pushing result into the scene
+        // nodes.
         bool animate(Output* output, const timespec& now) {
             Server& server = *output->server;
             double dt = (now.tv_sec - output->last_frame.tv_sec) + (now.tv_nsec - output->last_frame.tv_nsec) / 1e9;
             output->last_frame = now;
             if (dt <= 0 || dt > 1.0)
                 dt = 1.0 / 60; // first frame or a long stall: assume one 60Hz tick
-            const double tau = std::max(1, server.config.animation_ms) / 1000.0 * 0.35;
-            const double factor = std::exp(-dt / tau);
+            const double step = dt / (std::max(1, server.config.animation_ms) / 1000.0);
             bool animating = false;
             for (View* view : server.views) {
                 if (!view_visible(server, view) || view_output(server, view) != output)
@@ -45,23 +43,22 @@ namespace fenriz::output {
                     place_view_nodes(view); // keep the held window under the cursor each frame
                     continue;
                 }
-                if (view->anim_ox != 0 || view->anim_oy != 0) {
-                    view->anim_ox *= factor;
-                    view->anim_oy *= factor;
-                    if (std::abs(view->anim_ox) < 1 && std::abs(view->anim_oy) < 1)
-                        view->anim_ox = view->anim_oy = 0;
-                    else
+                if (view->anim_t < 1.0) {
+                    view->anim_t = std::min(1.0, view->anim_t + step);
+                    const double left = 1.0 - ease_out(view->anim_t); // offset still to travel
+                    view->anim_ox = view->anim_sx * left;
+                    view->anim_oy = view->anim_sy * left;
+                    if (view->anim_t < 1.0)
                         animating = true;
                     place_view_nodes(view);
                 }
             }
 
             // Ease the workspace-switch fade up to full.
-            if (output->ws_fade < 1.0) {
-                output->ws_fade = 1.0 - (1.0 - output->ws_fade) * factor;
-                if (output->ws_fade > 0.99)
-                    output->ws_fade = 1.0;
-                else
+            if (output->ws_fade_t < 1.0) {
+                output->ws_fade_t = std::min(1.0, output->ws_fade_t + step);
+                output->ws_fade = ease_out(output->ws_fade_t);
+                if (output->ws_fade_t < 1.0)
                     animating = true;
                 for (View* view : server.views)
                     if (view_visible(server, view) && view_output(server, view) == output)
@@ -174,7 +171,7 @@ namespace fenriz::output {
                 tiling::arrange(server, false);
             }
 
-            // Ease the global zoom level toward its target only on the output holding the cursor
+            // Ease the global zoom level toward its target only on the output holding the cursor.
             const bool has_cursor =
                 wlr_output_layout_output_at(server.output_layout, server.cursor->x, server.cursor->y) == output->handle;
             bool zoom_animating = false;
@@ -197,7 +194,7 @@ namespace fenriz::output {
             // Only commit when the scene needs a repaint, a gamma LUT change is pending, or a
             // zoom is active/animating/just-ended here. An idle, unchanged output commits nothing.
             if (wlr_scene_output_needs_frame(so) || output->gamma_dirty || zoomed || zoom_animating || exiting_zoom ||
-                output->ws_fade < 1.0) {
+                output->ws_fade_t < 1.0) {
                 // (Re)apply SceneFX per-window effects right before rendering. scenefx re-syncs
                 // each surface buffer during its own commit handling (after our commit handler), resetting opacity
                 // to 1.0
@@ -248,9 +245,7 @@ namespace fenriz::output {
             wlr_scene_node_set_position(&o->bg->node, box.x, box.y);
         }
 
-        // Close (client-side) every layer surface anchored to this output before it goes away,
-        // rather than waiting for the client to notice the wl_output global vanish — otherwise a
-        // bar outlives its screen and layer::arrange keeps walking a dangling handle->output.
+        // Close every layer surface anchored to this output before it goes away
         void close_layer_surfaces(Server& server, wlr_output* handle) {
             for (LayerSurface* ls : std::list<LayerSurface*>(server.layer_surfaces))
                 if (ls->handle->output == handle)

@@ -785,10 +785,8 @@ namespace fenriz {
                     center_view(server, v);
                 }
                 v->float_self_sized = false;
-                if (server.config.animation_ms > 0 && old.width > 0) {
-                    v->anim_ox += old.x - v->box.x;
-                    v->anim_oy += old.y - v->box.y;
-                }
+                if (server.config.animation_ms > 0 && old.width > 0)
+                    anim_slide(v, old.x - v->box.x, old.y - v->box.y);
                 view_configure(v);
             }
         } else {
@@ -1237,6 +1235,7 @@ namespace fenriz {
         // Fade the incoming workspace up rather than swapping it in between two frames.
         if (switched && server.config.animation_ms > 0) {
             o->ws_fade = 0.0;
+            o->ws_fade_t = 0.0;
             wlr_output_schedule_frame(o->handle);
         }
 
