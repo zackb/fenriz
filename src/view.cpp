@@ -39,6 +39,14 @@ namespace fenriz {
                 c[i] *= fade;
         }
 
+        // Alpha multiplier for the workspace-switch fade. Fading a pinned float just looks broken.
+        float ws_fade(const Server& server, const View* view) {
+            if (view->pinned)
+                return 1.0f;
+            const output::Output* o = view_output(server, view);
+            return o ? (float)o->ws_fade : 1.0f;
+        }
+
         // ramp resolution
         constexpr int GRAD_N = 17;
 
@@ -138,8 +146,7 @@ namespace fenriz {
                 if (const wlr_alpha_modifier_surface_v1_state* am =
                         wlr_alpha_modifier_v1_get_surface_state(ss->surface))
                     alpha *= (float)am->multiplier;
-            if (const output::Output* o = view_output(s, v))
-                alpha *= (float)o->ws_fade; // workspace-switch fade
+            alpha *= ws_fade(s, v);
             wlr_scene_buffer_set_opacity(buf, alpha);
         }
 
@@ -1041,7 +1048,7 @@ namespace fenriz {
 
         // Decorations fade with the content, or they'd pop in at full strength in front of a window that isn't there
         // yet.
-        const float fade = (float)server.workspaces[view->workspace].output->ws_fade;
+        const float fade = ws_fade(server, view);
 
         const int bw = view->fullscreen ? 0 : server.config.border_width;
 
