@@ -29,7 +29,7 @@ trap 'rm -rf "$SRC"' EXIT
 . /etc/os-release
 
 case ${ID_LIKE:-$ID} in
-    *arch*|arch)
+    *arch*)
         LIBDIR=lib
         pacman -Syu --noconfirm --needed \
             base-devel cmake ninja git meson pkgconf \
@@ -39,7 +39,7 @@ case ${ID_LIKE:-$ID} in
             libxcb xcb-util-wm xcb-util-errors \
             wlroots0.20 xorg-xwayland xkeyboard-config socat
         ;;
-    *fedora*|fedora)
+    *fedora*)
         LIBDIR=lib64
         dnf install -y \
             gcc-c++ cmake ninja-build git meson pkgconf-pkg-config \
@@ -52,7 +52,7 @@ case ${ID_LIKE:-$ID} in
             xorg-x11-server-Xwayland xorg-x11-server-Xwayland-devel \
             xkeyboard-config socat
         ;;
-    *debian*|debian|*ubuntu*|ubuntu)
+    *debian*|*ubuntu*)
         export DEBIAN_FRONTEND=noninteractive
         apt-get update
         apt-get install -y --no-install-recommends \

@@ -1,0 +1,20 @@
+name: Format
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Pinned: comment reflowing differs between clang-format releases, so the apt version
+      # rejects files a newer one formatted. Bump to match whatever you run locally.
+      - run: pipx install clang-format==22.1.8
+      - run: make fmt-check

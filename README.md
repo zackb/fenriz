@@ -11,6 +11,11 @@ A compositor that is small, fast, and stays out of the way. Performance and stab
 tons of features and eye-candy. It tiles your windows, reads a config file, speaks a small [IPC](/docs/IPC.md), and otherwise
 does nothing you didn't ask for.
 
+[![Arch Linux](https://github.com/zackb/fenriz/actions/workflows/arch.yml/badge.svg?branch=main)](https://github.com/zackb/fenriz/actions/workflows/arch.yml)
+[![Fedora](https://github.com/zackb/fenriz/actions/workflows/fedora.yml/badge.svg?branch=main)](https://github.com/zackb/fenriz/actions/workflows/fedora.yml)
+[![Debian](https://github.com/zackb/fenriz/actions/workflows/debian.yml/badge.svg?branch=main)](https://github.com/zackb/fenriz/actions/workflows/debian.yml)
+[![Format](https://github.com/zackb/fenriz/actions/workflows/format.yml/badge.svg?branch=main)](https://github.com/zackb/fenriz/actions/workflows/format.yml)
+
 ## Goals
 
 - Great tiling support: dwindle BSP layout, floating, fullscreen, pinned, and per-window rules.
