@@ -44,7 +44,7 @@ On Arch:
 sudo pacman -S wlroots wayland xkbcommon pixman libinput mesa libxcb xcb-util-wm cmake ninja
 ```
 
-Then install `scenefx` (package `scenefx-0.5`) from the AUR or build it from source.
+Then install `scenefx` from the AUR or build it from source.
 
 ```
 yay -S scenefx0.5
@@ -77,13 +77,6 @@ Builds release and installs:
 | `fenriz.desktop` | `share/wayland-sessions/` |
 | `fenriz-portals.conf` | `share/xdg-desktop-portal/` |
 
-**Packaging:** `make install` does not thread a prefix or `DESTDIR`. Call cmake directly:
-
-```
-cmake --preset release -DCMAKE_INSTALL_PREFIX=/usr
-cmake --build --preset release
-DESTDIR="$pkgdir" cmake --install build/release
-```
 
 ## Running
 
@@ -141,7 +134,7 @@ Colors are `0xRRGGBBAA` hex.
 | `sensitivity` | `0.0` | pointer speed, `-1.0` (slow) to `1.0` (fast); `0` = default |
 | `tap_to_click` | `true` | trackpad tap = click (1/2/3 fingers = left/right/middle) |
 | `clickfinger` | `true` | two-finger press = right-click; `false` = bottom-right corner |
-| `disable_while_typing` | `true` | trackpad ignores touches while the internal keyboard types; `false` for touchpad gaming. Applied when a device is attached |
+| `disable_while_typing` | `true` | trackpad ignores touches while the internal keyboard types; `false` for touchpad gaming |
 | `focus_follows_pointer` | `true` | hovering focuses; `false` = click to focus |
 | `repeat_delay` | `250` | ms before a held key repeats |
 | `repeat_rate` | `15` | key repeats per second |

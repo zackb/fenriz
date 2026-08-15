@@ -7,8 +7,7 @@ and [SceneFX](https://github.com/wlrfx/scenefx).
   <img src="docs/img/demo.png" alt="fenriz" width="800">
 </p>
 
-A Hyprland/niri alternative for minimalists. The goal is a compositor that is small,
-fast, and stays out of the way. Performance and stability are the primary goals over
+A compositor that is small, fast, and stays out of the way. Performance and stability are the primary goals over
 tons of features and eye-candy. It tiles your windows, reads a config file, speaks a small [IPC](/docs/IPC.md), and otherwise
 does nothing you didn't ask for.
 
@@ -30,11 +29,12 @@ I use this as my daily driver. It is stable and usable, but still under active d
 ```
 yay -S fenriz
 
-yay -S fenriz-desktop # optional (desktop shell):
+yay -S fenriz-desktop # optional desktop shell
 ```
 
 #### Other distros
 Build from source (see [Build](#build)).
+`.deb` and `.rpm` packages are available in the [releases](https://github.com/zackb/fenriz/releases) page.
 
 ### First run
 
