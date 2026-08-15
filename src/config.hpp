@@ -76,6 +76,7 @@ namespace fenriz {
         int blur_radius = 5;
         uint32_t shadow_color = 0x00000055; // RGBA — alpha = glow intensity; hue tracks border_active
         int shadow_blur = 28;               // blur sigma (px) — wider halo = softer falloff
+        bool tearing = false;               // let a fullscreen client that asks tear, for lower latency
         int gaps = 8;
         Margin margin{};
         int rounding = 10;

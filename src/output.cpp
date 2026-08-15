@@ -93,6 +93,22 @@ namespace fenriz::output {
             return true;
         }
 
+        // Whether this frame may be committed as a tearing (async) page-flip
+        bool tearing_allowed(Server& server, const Output* output) {
+            if (!server.config.tearing || !server.tearing_control || !output->tearing_supported)
+                return false;
+            if (server.locked)
+                return false;
+            for (View* view : server.views) {
+                if (!view->fullscreen || !view_visible(server, view) || view_output(server, view) != output)
+                    continue;
+                wlr_surface* surface = view_surface(view);
+                return surface && wlr_tearing_control_manager_v1_surface_hint_from_surface(
+                                      server.tearing_control, surface) == WP_TEARING_CONTROL_V1_PRESENTATION_HINT_ASYNC;
+            }
+            return false;
+        }
+
         // Zoomed render: draw the whole scene into an offscreen buffer, then blit a
         // cursor-centered sub-region of it scaled up to fill the output
         void render_zoomed(Output* output, wlr_scene_output* so, timespec* now) {
@@ -216,7 +232,18 @@ namespace fenriz::output {
                     wlr_output_state_init(&state);
                     wlr_scene_output_build_state(so, &state, nullptr);
                     const bool took_gamma = apply_gamma(server, output, &state);
+
+                    // A tearing flip is only legal with a buffer attached
+                    const bool tearing = state.buffer && tearing_allowed(server, output);
+                    state.tearing_page_flip = tearing;
+
                     const bool committed = wlr_output_commit_state(output->handle, &state);
+                    if (!committed && tearing) {
+                        output->tearing_supported = false;
+                        wlr_log(WLR_DEBUG,
+                                "fenriz: output %s: tearing page-flips rejected, disabling",
+                                name_of(output).c_str());
+                    }
                     wlr_output_state_finish(&state);
                     const bool retry = retry_after_failed_commit(output, committed);
                     if (committed) {

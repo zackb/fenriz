@@ -67,6 +67,8 @@ namespace fenriz {
 
             // Consecutive rejected commits.
             int commit_failures = 0;
+
+            bool tearing_supported = true;
         };
 
         // Register the backend's new_output listener.

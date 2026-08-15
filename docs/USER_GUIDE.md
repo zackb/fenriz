@@ -120,6 +120,7 @@ Colors are `0xRRGGBBAA` hex.
 | `blur` | `true` | blur the desktop behind translucent surfaces that ask for it |
 | `blur_passes` | `2` | blur passes, 1–10; more is softer and more expensive |
 | `blur_radius` | `5` | blur radius, 1–50 |
+| `tearing` | `false` | let a **fullscreen** window tear for up to a frame less latency, at the cost of a visible seam. The client must ask too (tearing-control-v1, so this only unlocks it |
 | `gaps` | `8` | gap between windows, px |
 | `margin` | `0` | inset from the screen edges, px. One value = all sides, two = vertical horizontal, four = top right bottom left |
 | `rounding` | `10` | corner radius, px |
