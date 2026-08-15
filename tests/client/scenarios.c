@@ -3286,6 +3286,34 @@ static void s_keybind(struct wlc* c) {
     if (during == 0)
         wlc_die("the repeating bind never fired while held; the rest of this proves nothing");
 
+    // What that spawned shell inherited.
+    {
+        FILE* f = fopen("/tmp/fenriz-test-repeat", "r");
+        if (!f)
+            wlc_die("the repeating bind wrote nothing");
+        char line[256];
+        int checked = 0;
+        while (fgets(line, sizeof line, f)) {
+            char* val = strchr(line, ':');
+            if (!val)
+                continue;
+            unsigned long long bits = strtoull(val + 1, NULL, 16);
+            if (bits != 0) {
+                fclose(f);
+                wlc_die("a spawned command inherited signal state from the compositor (%.*s = %llx); "
+                        "it survives execve, so every app launched from a keybind gets it — "
+                        "a blocked SIGINT means Ctrl-C does nothing in any shell",
+                        (int)(val - line),
+                        line,
+                        bits);
+            }
+            checked++;
+        }
+        fclose(f);
+        if (checked == 0)
+            wlc_die("no SigBlk/SigIgn lines recorded; the probe did not run");
+    }
+
     zwp_virtual_keyboard_v1_destroy(c->vk);
     c->vk = NULL;
     wl_display_flush(c->display);

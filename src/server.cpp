@@ -465,6 +465,12 @@ namespace fenriz {
         // wait4()s its xkbcomp child
         pid_t pid = fork();
         if (pid == 0) {
+            sigset_t empty;
+            sigemptyset(&empty);
+            sigprocmask(SIG_SETMASK, &empty, nullptr);
+            for (int s = 1; s < NSIG; s++)
+                signal(s, SIG_DFL);
+
             setsid();
             if (fork() == 0) {
                 execl("/bin/sh", "/bin/sh", "-c", cmd.c_str(), (char*)nullptr);
