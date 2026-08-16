@@ -229,12 +229,13 @@ int main() {
     // screen edge; a negative border/rounding/blur reaches the scene rect setters as a
     // negative size. Values are geometry, and geometry has no meaning below zero.
     Config neg = Config::parse("gaps = -5\nborder_width = -3\nrounding = -1\n"
-                               "shadow_blur = -10\nanimation = -20\n");
+                               "shadow_blur = -10\nanimation = -20\nworkspace_animation = -20\n");
     assert(neg.gaps >= 0);
     assert(neg.border_width >= 0);
     assert(neg.rounding >= 0);
     assert(neg.shadow_blur >= 0);
     assert(neg.animation_ms >= 0);
+    assert(neg.workspace_animation_ms >= 0);
 
     // `margin` takes CSS shorthand: 1 value = all sides, 2 = vertical horizontal,
     // 4 = top right bottom left. Runs of spaces between fields are fine.

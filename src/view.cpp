@@ -1240,7 +1240,7 @@ namespace fenriz {
         o->active_ws = n;
 
         // Fade the incoming workspace up rather than swapping it in between two frames.
-        if (switched && server.config.animation_ms > 0) {
+        if (switched && server.config.workspace_animation_ms > 0) {
             o->ws_fade = 0.0;
             o->ws_fade_t = 0.0;
             wlr_output_schedule_frame(o->handle);

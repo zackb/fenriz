@@ -80,7 +80,8 @@ namespace fenriz {
         int gaps = 8;
         Margin margin{};
         int rounding = 10;
-        int animation_ms = 150; // slide-into-place duration; 0 = instant (no animation)
+        int animation_ms = 150;         // window slide-into-place duration; 0 = instant (no animation)
+        int workspace_animation_ms = 0; // workspace-switch fade duration; 0 = instant (no fade)
         float opacity = 1.0f;
         float scale = 0;                   // output scale for screens with no `output =` scale; 0 = guess from DPI
         bool natural_scroll = true;        // libinput scroll direction; false = traditional wheel

@@ -56,7 +56,8 @@ namespace fenriz::output {
 
             // Ease the workspace-switch fade up to full.
             if (output->ws_fade_t < 1.0) {
-                output->ws_fade_t = std::min(1.0, output->ws_fade_t + step);
+                const double ws_step = dt / (std::max(1, server.config.workspace_animation_ms) / 1000.0);
+                output->ws_fade_t = std::min(1.0, output->ws_fade_t + ws_step);
                 output->ws_fade = ease_out(output->ws_fade_t);
                 if (output->ws_fade_t < 1.0)
                     animating = true;

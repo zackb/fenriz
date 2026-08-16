@@ -124,7 +124,8 @@ Colors are `0xRRGGBBAA` hex.
 | `gaps` | `8` | gap between windows, px |
 | `margin` | `0` | inset from the screen edges, px. One value = all sides, two = vertical horizontal, four = top right bottom left |
 | `rounding` | `10` | corner radius, px |
-| `animation` | `150` | slide-into-place and workspace-switch fade duration, ms; `0` = off |
+| `animation` | `150` | window slide-into-place duration, ms; `0` = off |
+| `workspace_animation` | `0` | workspace-switch fade duration, ms; `0` = instant cut (off) |
 | `opacity` | `1.0` | window opacity, `0.0`–`1.0` |
 
 ### Input

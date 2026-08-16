@@ -341,6 +341,8 @@ namespace fenriz {
                 cfg.rounding = parse_int(val, cfg.rounding, 0, 200);
             else if (key == "animation")
                 cfg.animation_ms = parse_int(val, cfg.animation_ms, 0, 5000);
+            else if (key == "workspace_animation")
+                cfg.workspace_animation_ms = parse_int(val, cfg.workspace_animation_ms, 0, 5000);
             else if (key == "opacity")
                 cfg.opacity = parse_float(val, cfg.opacity, 0.0f, 1.0f);
             else if (key == "scale")
