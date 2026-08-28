@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <vector>
 
 #include "background_blur.hpp"
 #include "color.hpp"
@@ -584,10 +585,6 @@ namespace fenriz {
         if (view->kind == View::Kind::Xdg) {
             wlr_xdg_toplevel_set_size(view->toplevel, cw, ch);
         } else {
-            // X clients position themselves in absolute layout coords, so a bare size isn't
-            // enough — send the on-screen origin (tile corner, inside the border) too.
-            // ponytail: fires an X ConfigureNotify per arrange; wlroots dedupes unchanged
-            // geometry, so this stays quiet unless the tile actually moved.
             wlr_xwayland_surface_configure(view->xwl, view->box.x + bw, view->box.y + bw, (uint16_t)cw, (uint16_t)ch);
         }
     }
@@ -611,17 +608,52 @@ namespace fenriz {
         server.views.push_back(v);
     }
 
-    // xdg-dialog-v1: the mapped modal dialog standing in front of `view`, or `view` itself.
+    // The View `v` is transient for (xdg set_parent / X11 WM_TRANSIENT_FOR), or null.
+    View* view_parent(Server& server, View* v) {
+        if (v->kind == View::Kind::Xdg) {
+            if (!v->toplevel->parent)
+                return nullptr;
+            for (View* p : server.views)
+                if (p->kind == View::Kind::Xdg && p->toplevel == v->toplevel->parent)
+                    return p;
+        } else {
+            if (!v->xwl->parent)
+                return nullptr;
+            for (View* p : server.views)
+                if (p->kind == View::Kind::Xwl && p->xwl == v->xwl->parent)
+                    return p;
+        }
+        return nullptr;
+    }
+
+    // True if `v` is somewhere up `w`'s transient chain. Hop-capped against a parent cycle.
+    static bool descends_from(Server& server, View* w, View* v) {
+        for (int hop = 0; hop < 8 && w; hop++) {
+            w = view_parent(server, w);
+            if (w == v)
+                return true;
+        }
+        return false;
+    }
+
+    // True if this view asked to block its parent: xdg-dialog-v1 modal, or _NET_WM_STATE_MODAL.
+    static bool view_modal(View* v) {
+        if (v->kind != View::Kind::Xdg)
+            return v->xwl->modal;
+        const wlr_xdg_dialog_v1* d = wlr_xdg_dialog_v1_try_from_wlr_xdg_toplevel(v->toplevel);
+        return d && d->modal;
+    }
+
+    // The mapped modal dialog standing in front of `view`, or `view` itself.
     View* modal_front(Server& server, View* view) {
         for (int hop = 0; hop < 8; hop++) {
             View* modal = nullptr;
             for (View* v : server.views) {
-                if (!v->mapped || v == view || v->kind != View::Kind::Xdg)
+                if (!v->mapped || v == view)
                     continue;
-                if (v->toplevel->parent != view->toplevel || !view_visible(server, v))
+                if (view_parent(server, v) != view || !view_visible(server, v))
                     continue;
-                const wlr_xdg_dialog_v1* d = wlr_xdg_dialog_v1_try_from_wlr_xdg_toplevel(v->toplevel);
-                if (d && d->modal)
+                if (view_modal(v))
                     modal = v; // later views are higher in the stack; take the topmost
             }
             if (!modal)
@@ -631,24 +663,31 @@ namespace fenriz {
         return view;
     }
 
-    void focus_view(Server& server, View* view) {
-        // While locked, keyboard focus belongs to the lock surface; a window mapping or a
-        // click underneath must not steal it. focused_view is left as-is so it's restored
-        // on unlock (on_unlock in lock.cpp).
+    // Raise a float above the other floats, carrying its transient children with it.
+    void raise_view(Server& server, View* v) {
+        if (!v || !v->floating)
+            return;
+        std::vector<View*> stack{v};
+        for (View* w : server.views)
+            if (w != v && w->floating && w->mapped && descends_from(server, w, v))
+                stack.push_back(w);
+        for (View* w : stack) {
+            raise_to_tail(server, w);
+            if (w->scene_tree)
+                wlr_scene_node_raise_to_top(&w->scene_tree->node);
+        }
+    }
+
+    void focus_view(Server& server, View* view, bool raise) {
         if (!view || server.locked)
             return;
 
-        if (view->kind == View::Kind::Xdg)
-            view = modal_front(server, view);
+        view = modal_front(server, view);
 
         // Above the early-return below on purpose
         view->urgent = false;
 
         if (server.focused_view == view) {
-            // Already the focused window, but the seat's keyboard focus can have been grabbed
-            // away by a keyboard-interactive layer surface (e.g. a quickshell launcher) while
-            // this stayed focused_view. Re-assert it so a click / cycle / workspace-return
-            // reclaims the keyboard instead of no-opping and stranding input.
             focus_surface(server, view_surface(view));
             return;
         }
@@ -665,14 +704,8 @@ namespace fenriz {
                 wlr_foreign_toplevel_handle_v1_set_activated(prev->foreign_handle, false);
         }
 
-        // Floating windows live in their own scene tree (always above tiles). Raise the
-        // focused float above the *other* floats so it's on top while in use. Tiled windows
-        // keep their list order (raising them would scramble cycle_focus).
-        if (view->floating) {
-            raise_to_tail(server, view);
-            if (view->scene_tree)
-                wlr_scene_node_raise_to_top(&view->scene_tree->node);
-        }
+        if (raise)
+            raise_view(server, view);
 
         server.focused_view = view;
         server.workspaces[view->workspace].last_focused = view; // remembered for workspace return
@@ -746,6 +779,7 @@ namespace fenriz {
         if (!on && view->floating)
             view_configure(view); // tell the restored float its geometry (fullscreen flag now cleared)
         restack_view(server, view);
+        raise_view(server, view); // reparenting drops it on top of its own dialogs; re-stack them
         tiling::arrange(server);
     }
 
@@ -802,6 +836,7 @@ namespace fenriz {
             tiling::insert(server, v, nullptr); // re-tile at the spiral tail
         }
         restack_view(server, v);
+        raise_view(server, v); // reparenting drops it on top of its own dialogs; re-stack them
         tiling::arrange(server);
     }
 

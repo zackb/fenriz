@@ -355,12 +355,11 @@ namespace fenriz::cursor {
             wlr_seat_pointer_notify_enter(server.seat, surface, sx, sy);
             wlr_seat_pointer_notify_motion(server.seat, time, sx, sy);
 
-            // Focus follows pointer: the view under the moving cursor gains focus. Reuse the
-            // hit node from above instead of a second scene_node_at.
-            // focus_view no-ops when the view is already focused, so per-event calls are cheap.
+            // Focus follows pointer: the view under the moving cursor gains focus, but does not rise above the other
+            // floats.
             if (server.config.focus_follows_pointer)
                 if (View* v = hit ? view_from_node(hit) : nullptr)
-                    focus_view(server, v);
+                    focus_view(server, v, /*raise=*/false);
         }
 
         void cursor_motion(wl_listener* listener, void* data) {
@@ -479,6 +478,7 @@ namespace fenriz::cursor {
                     View* v = view_box_at(server, c->cursor->x, c->cursor->y);
                     if (v && !v->fullscreen) {
                         focus_view(server, v);
+                        raise_view(server, v);
                         const bool resize = mods & WLR_MODIFIER_SHIFT;
                         c->grabbed = v;
                         c->grab = v->floating ? (resize ? Grab::ResizeFloat : Grab::MoveFloat)
@@ -514,8 +514,10 @@ namespace fenriz::cursor {
                     wlr_scene_node_at(&server.scene->tree.node, c->cursor->x, c->cursor->y, &sx, &sy);
                 if (LayerSurface* ls = layer::interactive_from_node(server, node))
                     focus_surface(server, ls->handle->surface);
-                else if (View* view = node ? view_from_node(node) : nullptr)
+                else if (View* view = node ? view_from_node(node) : nullptr) {
                     focus_view(server, view);
+                    raise_view(server, view);
+                }
             }
             wlr_seat_pointer_notify_button(server.seat, event->time_msec, event->button, event->state);
         }

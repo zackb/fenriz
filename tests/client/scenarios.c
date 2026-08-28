@@ -1602,6 +1602,22 @@ static void fd_active_title(char* out, size_t n) {
     snprintf(out, n, "%.*s", (int)(end - t), t);
 }
 
+// Index of a window title in the control socket's `windows` array, which is published in
+// stacking order (bottom first). -1 when it isn't listed.
+static int fd_stack_index(const char* snap, const char* title) {
+    const char* w = strstr(snap, "\"windows\":[");
+    const char* end = w ? strstr(w, "\"activeWindow\"") : NULL;
+    if (!w || !end)
+        return -1;
+    char pat[256];
+    snprintf(pat, sizeof pat, "\"title\":\"%s\"", title);
+    int idx = 0;
+    for (const char* p = w; (p = strstr(p, "\"title\":\"")) && p < end; p++, idx++)
+        if (!strncmp(p, pat, strlen(pat)))
+            return idx;
+    return -1;
+}
+
 static void s_dialog(struct wlc* c) {
     fd_wm_dialog = NULL;
 
@@ -1655,6 +1671,31 @@ static void s_dialog(struct wlc* c) {
     if (!reached_parent)
         wlc_die("focus never reached the parent after unset_modal; the test proves nothing");
     wlc_log("modal held focus, unset_modal released it");
+
+    // A dialog must never fall behind the window that spawned it, not even when the parent is
+    // the one being focused. Float the parent first: only floats restack.
+    wlc_phase("focusing a floating parent must not bury its dialog");
+    ipc_send("{\"cmd\":\"dispatch\",\"action\":\"togglefloating\"}"); // the parent is focused here
+    wlc_pump(c, 150);
+    for (int i = 0; i < 4; i++) {
+        ipc_send("{\"cmd\":\"dispatch\",\"action\":\"focusnext\"}");
+        wlc_pump(c, 150);
+        fd_active_title(title, sizeof title);
+        if (!strcmp(title, "fenriz-test dialog-parent"))
+            break;
+    }
+    if (strcmp(title, "fenriz-test dialog-parent"))
+        wlc_die("focus never came back to the floating parent (focused: \"%s\")", title);
+    char snap[16384];
+    if (!ipc_snapshot(snap, sizeof snap))
+        wlc_die("no control socket; cannot tell how the windows are stacked");
+    const int parent_at = fd_stack_index(snap, "fenriz-test dialog-parent");
+    const int dialog_at = fd_stack_index(snap, "fenriz-test dialog-modal");
+    if (parent_at < 0 || dialog_at < 0)
+        wlc_die("both windows must be listed (parent %d, dialog %d)", parent_at, dialog_at);
+    if (dialog_at < parent_at)
+        wlc_die("the parent was raised over its dialog (parent %d, dialog %d)", parent_at, dialog_at);
+    wlc_log("the dialog stayed above its parent");
 
     wlc_hold_point(c);
 
@@ -3476,7 +3517,7 @@ const struct scenario scenarios[] = {
     {"destroy-parent", s_destroy_parent, "destroy the parent under a live nested popup"},
     {"hotplug", s_hotplug, "output enable/disable and lid churn under mapped surfaces"},
     {"workspace", s_workspace, "ext-workspace-v1: list, activate from the client, follow a switch"},
-    {"dialog", s_dialog, "xdg-dialog-v1: a modal dialog holds focus against its parent"},
+    {"dialog", s_dialog, "xdg-dialog-v1: a modal dialog holds focus, and stays stacked above its parent"},
     {"icon", s_icon, "xdg-toplevel-icon-v1: icon name reaches the feed; buffer-only and unset clear it"},
     {"foreign", s_foreign, "xdg-foreign: export a toplevel, import it, parent a second window to it"},
     {"toplevel-tag",
