@@ -141,7 +141,15 @@ namespace fenriz {
 
     // Give a view keyboard focus: activate it, deactivate the previous focus, and route
     // keyboard input to its surface. No-op if view is null or already focused.
-    void focus_view(Server& server, View* view);
+    // `raise` also brings a float to the front.
+    void focus_view(Server& server, View* view, bool raise = true);
+
+    // The View `view` is transient for (xdg set_parent / X11 WM_TRANSIENT_FOR), or null.
+    View* view_parent(Server& server, View* view);
+
+    // Bring a float to the front of the other floats, its transient children along with it.
+    // No-op for a tiled view.
+    void raise_view(Server& server, View* view);
 
     // Drop keyboard focus entirely (e.g. switching to an empty workspace).
     void clear_focus(Server& server);

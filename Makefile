@@ -14,7 +14,7 @@ run: debug
 	./build/debug/fenriz
 
 install: release
-	cmake --install build/release
+	sudo cmake --install build/release
 
 reinstall: release
 	sudo cmake --install build/release
