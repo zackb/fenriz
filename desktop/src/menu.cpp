@@ -225,6 +225,8 @@ namespace fenriz::desktop::menu {
             g_menu_append(apps, "Applications", "app.launcher");
         if (!cfg.wallpaper_dir.empty())
             g_menu_append(apps, "Wallpaper", "app.wallpaper");
+        if (cfg.notifications && cfg.notify_history > 0)
+            g_menu_append(apps, "Notifications", "app.notifications");
         if (std::string terminal = resolve_terminal(cfg); !terminal.empty())
             append_exec(apps, "Terminal", terminal);
         for (const auto& [label, command] : cfg.menu)

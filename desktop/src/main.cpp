@@ -9,6 +9,7 @@
 #include "blur.hpp"
 #include "brightness.hpp"
 #include "config.hpp"
+#include "history.hpp"
 #include "idle.hpp"
 #include "launcher.hpp"
 #include "lock.hpp"
@@ -28,6 +29,7 @@ namespace {
     using fenriz::desktop::Background;
     using fenriz::desktop::Brightness;
     using fenriz::desktop::Config;
+    using fenriz::desktop::History;
     using fenriz::desktop::Idle;
     using fenriz::desktop::Launcher;
     using fenriz::desktop::Lock;
@@ -53,6 +55,7 @@ namespace {
         std::unique_ptr<Osd> osd;
         std::unique_ptr<Volume> volume;
         std::unique_ptr<Notifications> notify;
+        std::unique_ptr<History> history;
     };
 
     // Icons come from the theme's standard audio set, picked to match the level.
@@ -91,6 +94,13 @@ namespace {
         if (session->launcher)
             session->launcher->prewarm(app);
         return G_SOURCE_REMOVE;
+    }
+
+    void on_notifications(GSimpleAction*, GVariant*, gpointer data) {
+        auto* app = static_cast<GtkApplication*>(data);
+        auto* session = static_cast<Session*>(g_object_get_data(G_OBJECT(app), "session"));
+        if (session->history)
+            session->history->toggle(app);
     }
 
     void on_wallpaper(GSimpleAction*, GVariant*, gpointer data) {
@@ -134,6 +144,11 @@ namespace {
         g_signal_connect(launcher_action, "activate", G_CALLBACK(on_launcher), app);
         g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(launcher_action));
         g_object_unref(launcher_action);
+
+        GSimpleAction* notifications_action = g_simple_action_new("notifications", nullptr);
+        g_signal_connect(notifications_action, "activate", G_CALLBACK(on_notifications), app);
+        g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(notifications_action));
+        g_object_unref(notifications_action);
 
         GSimpleAction* wallpaper_action = g_simple_action_new("wallpaper", nullptr);
         g_signal_connect(wallpaper_action, "activate", G_CALLBACK(on_wallpaper), app);
@@ -204,6 +219,8 @@ namespace {
         if (session->cfg.notifications) {
             session->notify = std::make_unique<Notifications>(app, session->cfg);
             session->notify->start();
+            if (session->cfg.notify_history > 0)
+                session->history = std::make_unique<History>(session->cfg, *session->notify);
         }
         session->polkit = std::make_unique<Polkit>(session->cfg);
         session->polkit->start();
@@ -232,6 +249,11 @@ namespace {
                     session->launcher->toggle(app);
                 else
                     g_warning("launcher is disabled in the config");
+            } else if (arg == "notifications") {
+                if (session->history)
+                    session->history->toggle(app);
+                else
+                    g_warning("notification history is disabled in the config");
             } else if (arg == "wallpaper") {
                 if (session->wallpaper)
                     session->wallpaper->toggle(app);
@@ -312,7 +334,8 @@ int main(int argc, char** argv) {
     }
 
     int status = g_application_run(G_APPLICATION(app), argc, argv);
-    session.polkit.reset(); // tear surfaces down while GTK is still alive
+    session.polkit.reset();  // tear surfaces down while GTK is still alive
+    session.history.reset(); // holds a callback into notify, so it goes first
     session.notify.reset();
     session.osd.reset();
     session.volume.reset();

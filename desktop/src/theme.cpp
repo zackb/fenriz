@@ -98,6 +98,26 @@ window.fenriz-notify { background: transparent; }
 .fenriz-notify .toast-icon { border-radius: 6px; }
 .fenriz-notify .toast-action { padding: 4px 12px; border-radius: 8px; }
 
+.fenriz-notify-history { padding: 10px; }
+.fenriz-notify-history .history-header { padding: 6px 6px 10px 6px; }
+.fenriz-notify-history .history-title { font-weight: bold; }
+.fenriz-notify-history .history-clear { padding: 2px 10px; border-radius: 8px; }
+.fenriz-notify-history .history-empty { padding: 18px; color: alpha(currentColor, 0.6); }
+.fenriz-notify-history .history-list { background: transparent; }
+.fenriz-notify-history .history-item {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background-color: @fenriz_fill_base;
+}
+.fenriz-notify-history .history-item.critical { border: 1px solid @fenriz_error; }
+.fenriz-notify-history .history-summary { font-weight: bold; }
+.fenriz-notify-history .history-body { color: alpha(currentColor, 0.8); }
+.fenriz-notify-history .history-footer { font-size: 0.85em; color: alpha(currentColor, 0.6); }
+.fenriz-notify-history .history-icon { border-radius: 6px; }
+/* the dismiss button surfaces on hover, so a quiet list stays quiet */
+.fenriz-notify-history .history-dismiss { opacity: 0; transition: opacity 150ms ease-out; }
+.fenriz-notify-history row:hover .history-dismiss { opacity: 1; }
+
 .fenriz-background popover.menu > contents {
   min-width: 200px;
   border-radius: 12px;

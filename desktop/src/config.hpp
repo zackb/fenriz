@@ -33,6 +33,7 @@ namespace fenriz::desktop {
         bool notifications = true;
         int notify_timeout = 5000;                 // milliseconds a notification lingers by default
         std::string notify_position = "top-right"; // {top,bottom}-{left,center,right}
+        int notify_history = 50;                   // notifications kept for the panel; 0 = none
 
         std::string accent = "#16b8f3";
         std::string accent_gradient = "#ff2090";

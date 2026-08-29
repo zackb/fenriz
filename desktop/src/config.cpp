@@ -155,6 +155,8 @@ namespace fenriz::desktop {
                 cfg.notify_timeout = parse_int(value, cfg.notify_timeout, 1000, 60000);
             } else if (key == "notify_position") {
                 cfg.notify_position = value;
+            } else if (key == "notify_history") {
+                cfg.notify_history = parse_int(value, cfg.notify_history, 0, 500);
             } else if (key == "menu") {
                 std::vector<std::string> f = split_n(value, ',', 2);
                 if (f.size() == 2 && !f[0].empty() && !f[1].empty())

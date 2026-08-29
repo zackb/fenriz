@@ -51,6 +51,7 @@ add_executable(fenriz-desktop
     src/osd.cpp
     src/notify.cpp
     src/toast.cpp
+    src/history.cpp
     src/menu.cpp
     src/launcher.cpp
     src/frecency.cpp

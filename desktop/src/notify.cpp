@@ -2,6 +2,8 @@
 
 #include <gtk/gtk.h>
 
+#include <algorithm>
+
 namespace fenriz::desktop {
 
     namespace {
@@ -12,6 +14,8 @@ namespace fenriz::desktop {
         constexpr guint8 URGENCY_CRITICAL = 2;
 
         constexpr guint32 REASON_CLOSED_BY_CALL = 3;
+
+        constexpr int HISTORY_TEXTURE_MAX = 256;
 
         constexpr const char* INTROSPECTION_XML = R"(<node>
   <interface name='org.freedesktop.Notifications'>
@@ -157,6 +161,27 @@ namespace fenriz::desktop {
         return out;
     }
 
+    bool notify_hint_bool(GVariant* hints, const char* key) {
+        GVariant* value = g_variant_lookup_value(hints, key, nullptr);
+        if (!value)
+            return false;
+        bool out = false;
+        if (g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN))
+            out = g_variant_get_boolean(value);
+        else if (g_variant_is_of_type(value, G_VARIANT_TYPE_BYTE))
+            out = g_variant_get_byte(value) != 0;
+        else if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT32))
+            out = g_variant_get_int32(value) != 0;
+        else if (g_variant_is_of_type(value, G_VARIANT_TYPE_UINT32))
+            out = g_variant_get_uint32(value) != 0;
+        else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
+            const char* text = g_variant_get_string(value, nullptr);
+            out = g_strcmp0(text, "0") != 0 && g_ascii_strcasecmp(text, "false") != 0;
+        }
+        g_variant_unref(value);
+        return out;
+    }
+
     Actions notify_split_actions(const std::vector<std::string>& flat) {
         Actions actions;
         for (size_t i = 0; i + 1 < flat.size(); i += 2) {
@@ -172,6 +197,7 @@ namespace fenriz::desktop {
     Notifications::Notifications(GtkApplication* app, const Config& cfg)
         : app_(app)
         , default_timeout_(cfg.notify_timeout)
+        , history_max_(static_cast<size_t>(cfg.notify_history))
         , toasts_(
               cfg.notify_position,
               [this](guint32 id, const std::string& key) {
@@ -180,6 +206,10 @@ namespace fenriz::desktop {
               [this](guint32 id, guint32 reason) { emit("NotificationClosed", g_variant_new("(uu)", id, reason)); }) {}
 
     Notifications::~Notifications() {
+        // Not clear_history(): the panel owning the callback is torn down first.
+        for (HistoryItem& item : history_)
+            if (item.texture)
+                g_object_unref(item.texture);
         if (owner_id_)
             g_bus_unown_name(owner_id_);
         if (introspection_)
@@ -224,6 +254,64 @@ namespace fenriz::desktop {
             g_warning("notify: emit %s: %s", signal, err ? err->message : "unknown");
             g_clear_error(&err);
         }
+    }
+
+    void Notifications::remember(const Toast& toast, const std::string& app_name) {
+        if (history_max_ == 0)
+            return;
+
+        // A replacing notification updates its entry rather than adding a second one.
+        auto it =
+            std::find_if(history_.begin(), history_.end(), [&](const HistoryItem& i) { return i.id == toast.id; });
+        if (it != history_.end()) {
+            if (it->texture)
+                g_object_unref(it->texture);
+            history_.erase(it);
+        }
+
+        HistoryItem item;
+        item.id = toast.id;
+        item.app_name = app_name;
+        item.summary = toast.summary;
+        item.body = toast.body;
+        item.icon = toast.icon;
+        item.critical = toast.critical;
+        item.time = g_get_real_time() / 1000;
+        if (toast.texture && gdk_texture_get_width(toast.texture) <= HISTORY_TEXTURE_MAX &&
+            gdk_texture_get_height(toast.texture) <= HISTORY_TEXTURE_MAX)
+            item.texture = GDK_TEXTURE(g_object_ref(toast.texture));
+
+        history_.push_front(std::move(item));
+        while (history_.size() > history_max_) {
+            if (history_.back().texture)
+                g_object_unref(history_.back().texture);
+            history_.pop_back();
+        }
+
+        if (on_history_changed_)
+            on_history_changed_();
+    }
+
+    void Notifications::dismiss_history(guint32 id) {
+        auto it = std::find_if(history_.begin(), history_.end(), [id](const HistoryItem& i) { return i.id == id; });
+        if (it == history_.end())
+            return;
+        if (it->texture)
+            g_object_unref(it->texture);
+        history_.erase(it);
+        if (on_history_changed_)
+            on_history_changed_();
+    }
+
+    void Notifications::clear_history() {
+        if (history_.empty())
+            return;
+        for (HistoryItem& item : history_)
+            if (item.texture)
+                g_object_unref(item.texture);
+        history_.clear();
+        if (on_history_changed_)
+            on_history_changed_();
     }
 
     guint32 Notifications::notify(GVariant* params) {
@@ -277,6 +365,11 @@ namespace fenriz::desktop {
             counter_ = replaces_id;
 
         toasts_.show(app_, toast);
+
+        // A transient notification is a status blip (an OSD, a progress tick); it is shown
+        // and forgotten, never archived.
+        if (!notify_hint_bool(hints, "transient"))
+            remember(toast, app_name ? app_name : "");
 
         if (toast.texture)
             g_object_unref(toast.texture);
