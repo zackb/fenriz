@@ -98,6 +98,43 @@ window.fenriz-notify { background: transparent; }
 .fenriz-notify .toast-icon { border-radius: 6px; }
 .fenriz-notify .toast-action { padding: 4px 12px; border-radius: 8px; }
 
+.fenriz-notify-history { padding: 12px; }
+.fenriz-notify-history .history-header { padding: 2px 4px 10px 4px; }
+.fenriz-notify-history .history-title { font-weight: bold; font-size: 1.05em; }
+.fenriz-notify-history .history-clear { padding: 2px 12px; border-radius: 8px; }
+.fenriz-notify-history .history-empty {
+  padding: 20px;
+  color: alpha(currentColor, 0.55);
+}
+/* rows carry no spacing of their own, so the gap has to come from the card */
+.fenriz-notify-history list > row { padding: 3px 0; }
+/* A tint of the foreground, not @fenriz_fill_base: many themes (Catppuccin) define
+   theme_base_color and window_bg_color identically, which leaves the row invisible
+   against the panel. This lifts it in a light theme too. */
+.fenriz-notify-history .history-item {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background-color: alpha(currentColor, 0.07);
+}
+.fenriz-notify-history list > row:hover .history-item {
+  background-color: alpha(currentColor, 0.12);
+}
+.fenriz-notify-history .history-item.critical { border: 1px solid @fenriz_error; }
+.fenriz-notify-history .history-summary { font-weight: bold; }
+.fenriz-notify-history .history-body { color: alpha(currentColor, 0.8); }
+.fenriz-notify-history .history-footer { font-size: 0.85em; color: alpha(currentColor, 0.55); }
+.fenriz-notify-history .history-icon { border-radius: 6px; }
+/* the dismiss button surfaces on hover, so a quiet list stays quiet */
+.fenriz-notify-history .history-dismiss {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border-radius: 12px;
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+.fenriz-notify-history list > row:hover .history-dismiss { opacity: 1; }
+
 .fenriz-background popover.menu > contents {
   min-width: 200px;
   border-radius: 12px;
@@ -106,7 +143,7 @@ window.fenriz-notify { background: transparent; }
 
 window.fenriz-shell { background: transparent; }
 
-.fenriz-launcher, .fenriz-wallpaper, .fenriz-polkit {
+.fenriz-launcher, .fenriz-wallpaper, .fenriz-polkit, .fenriz-notify-history {
   border-radius: 12px;
   background-color: @fenriz_fill_window;
 }
@@ -115,7 +152,9 @@ window.fenriz-shell { background: transparent; }
 .fenriz-wallpaper.no-search { padding-top: 10px; }
 
 .fenriz-launcher list, .fenriz-launcher list > row,
-.fenriz-launcher scrolledwindow, .fenriz-wallpaper scrolledwindow {
+.fenriz-launcher scrolledwindow, .fenriz-wallpaper scrolledwindow,
+.fenriz-notify-history list, .fenriz-notify-history list > row,
+.fenriz-notify-history scrolledwindow {
   background: transparent;
 }
 

@@ -14,7 +14,7 @@ This is early alpha. I use it as my daily driver and it works for me.
 
 ## Scope
 
-Wallpaper, launcher, desktop context menu, idle, lock screen, polkit agent, notifications, media keys (brightness, volume, mute, mic mute) with an OSD.
+Wallpaper, launcher, desktop context menu, idle, lock screen, polkit agent, notifications with history, media keys (brightness, volume, mute, mic mute) with an OSD.
 
 ### Non-goals
 
@@ -199,7 +199,19 @@ The session's `org.freedesktop.Notifications` daemon, so `notify-send` and every
 notifications = on          # off if you would rather run mako/dunst/swaync
 notify_timeout = 5000       # ms, for senders that don't set their own
 notify_position = top-right # {top,bottom}-{left,center,right}
+notify_history = 50         # kept for the history panel; 0 keeps none
 ```
+
+### History
+
+Everything that has come and gone, so a toast you missed is not lost. It opens on the same
+corner the toasts stack in, and Escape closes it.
+
+```ini
+bind = SUPER, N, exec, fenriz-desktop notifications
+```
+
+Also in the desktop menu, under Notifications.
 
 ## Polkit agent
 

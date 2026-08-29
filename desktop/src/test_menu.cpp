@@ -73,9 +73,11 @@ namespace {
         unsetenv("TERMINAL");
         Config cfg;
         cfg.launcher = false;
+        cfg.notifications = false;
         GMenuModel* root = menu::build_model(cfg);
 
-        // No launcher, no terminal, no custom entries: the apps section is dropped entirely.
+        // No launcher, no notifications, no terminal, no custom entries: the apps section is
+        // dropped entirely.
         assert(g_menu_model_get_n_items(root) == 1);
         assert(attr(root, 0, G_MENU_ATTRIBUTE_LABEL) == "Power");
 
@@ -99,6 +101,7 @@ namespace {
         setenv("PATH", "/nonexistent", 1);
         Config cfg;
         cfg.launcher = false;
+        cfg.notifications = false;
         cfg.terminal = "kitty";
         cfg.menu = {{"Files", "nautilus"}, {"Shot", "grim -"}};
         GMenuModel* root = menu::build_model(cfg);
@@ -123,6 +126,7 @@ namespace {
         unsetenv("TERMINAL");
 
         Config on;
+        on.notifications = false;
         on.menu = {{"Files", "nautilus"}};
         GMenuModel* root = menu::build_model(on);
         GMenuModel* apps = link_of(root, 0, G_MENU_LINK_SECTION);
@@ -137,6 +141,7 @@ namespace {
 
         Config off;
         off.launcher = false;
+        off.notifications = false;
         off.menu = {{"Files", "nautilus"}};
         GMenuModel* root2 = menu::build_model(off);
         GMenuModel* apps2 = link_of(root2, 0, G_MENU_LINK_SECTION);
@@ -145,6 +150,45 @@ namespace {
         assert(b[0].label == "Files");
         g_object_unref(apps2);
         g_object_unref(root2);
+    }
+
+    // The history entry is on by default; `notifications = off` or `notify_history = 0` drops it.
+    void test_notifications_entry_tracks_config() {
+        setenv("PATH", "/nonexistent", 1);
+        unsetenv("TERMINAL");
+
+        Config on;
+        on.launcher = false;
+        GMenuModel* root = menu::build_model(on);
+        GMenuModel* apps = link_of(root, 0, G_MENU_LINK_SECTION);
+        std::vector<Item> a = items_of(apps);
+        assert(a.size() == 1);
+        assert(a[0].label == "Notifications");
+        assert(attr(apps, 0, G_MENU_ATTRIBUTE_ACTION) == "app.notifications");
+        g_object_unref(apps);
+        g_object_unref(root);
+
+        // No daemon means no history to show.
+        Config no_daemon;
+        no_daemon.launcher = false;
+        no_daemon.notifications = false;
+        no_daemon.menu = {{"Files", "nautilus"}};
+        GMenuModel* root2 = menu::build_model(no_daemon);
+        GMenuModel* apps2 = link_of(root2, 0, G_MENU_LINK_SECTION);
+        assert(items_of(apps2).size() == 1); // just Files
+        g_object_unref(apps2);
+        g_object_unref(root2);
+
+        // Daemon on, but nothing is kept.
+        Config no_history;
+        no_history.launcher = false;
+        no_history.notify_history = 0;
+        no_history.menu = {{"Files", "nautilus"}};
+        GMenuModel* root3 = menu::build_model(no_history);
+        GMenuModel* apps3 = link_of(root3, 0, G_MENU_LINK_SECTION);
+        assert(items_of(apps3).size() == 1);
+        g_object_unref(apps3);
+        g_object_unref(root3);
     }
 
     // Config wins over $TERMINAL, and $TERMINAL is only honoured if it actually exists.
@@ -188,6 +232,7 @@ int main() {
     test_power_submenu_always_present();
     test_terminal_and_custom_entries_in_order();
     test_launcher_entry_tracks_config();
+    test_notifications_entry_tracks_config();
     test_terminal_resolution_order();
     test_logout_falls_back_without_fenriz();
     return 0;

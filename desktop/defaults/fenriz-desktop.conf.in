@@ -63,6 +63,11 @@ wallpaper = @FENRIZ_DESKTOP_DATADIR@/wallpaper.png
 # Which corner they stack in: top-left, top-center, top-right, bottom-left, bottom-center, bottom-right.
 # notify_position = top-right
 
+# How many past notifications the history panel keeps. Never written to disk, so it
+# starts empty every login. `0` keeps none and removes the panel. Bind it from fenriz.conf with
+#   bind = SUPER, N, exec, fenriz-desktop notifications
+# notify_history = 50
+
 # --- Idle and lock ------------------------------------------------------------
 # The three stages fire in order: dim as a warning, then lock, then screens off.
 # Set any of them to 0 to disable that stage.

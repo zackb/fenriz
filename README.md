@@ -127,7 +127,7 @@ If you are new to tilers, or just don't want to configure the typical wayland to
 - Launcher - launch apps with a menu (like rofi, spotlight)
 - Desktop context menu - right click on the desktop to get a menu with a bunch of stuff
 - Idle managment - dim, lock, sleep on a configurable timer
-- Notifications - the daemon apps expect, so notify-send and friends aren't swallowed
+- Notifications - the daemon apps expect, so notify-send and friends aren't swallowed, with a history panel for the ones you missed
 - OSD - On screen display for volume, brightness
 - Polkit Agent - for authentication prompts
 

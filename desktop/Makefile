@@ -14,7 +14,7 @@ run: debug
 	./build/debug/fenriz-desktop
 
 install: release
-	cmake --install build/release
+	sudo cmake --install build/release
 
 package: release
 	cd build/release && cpack
