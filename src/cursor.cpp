@@ -549,12 +549,12 @@ namespace fenriz::cursor {
                     delta = -delta;
                 float f = delta < 0 ? (1.0f + step) : (1.0f / (1.0f + step));
                 const float want = std::clamp(server.zoom_target * f, 1.0f, server.config.zoom_max);
-                // Only swallow the scroll if it actually moved the zoom
                 if (want != server.zoom_target) {
                     server.zoom_target = want;
                     schedule_frame_at_cursor(c);
-                    return;
                 }
+                // the gesture belongs to the compositor even when the zoom is clamped
+                return;
             }
 
             wlr_seat_pointer_notify_axis(c->server->seat,
