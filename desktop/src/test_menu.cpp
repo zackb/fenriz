@@ -39,7 +39,8 @@ namespace {
     void assert_all_exec(GMenuModel* model) {
         for (int i = 0; i < g_menu_model_get_n_items(model); i++) {
             const std::string action = attr(model, i, G_MENU_ATTRIBUTE_ACTION);
-            assert(action == "app.exec" || action == "app.launcher" || action == "app.lock");
+            assert(action == "app.exec" || action == "app.launcher" || action == "app.lock" ||
+                   action == "app.cleaning");
         }
     }
 
@@ -84,13 +85,15 @@ namespace {
         GMenuModel* power = link_of(root, 0, G_MENU_LINK_SUBMENU);
         assert(power != nullptr);
         std::vector<Item> p = items_of(power);
-        assert(p.size() == 5);
+        assert(p.size() == 6);
         assert(p[0].label == "Lock");
         assert(attr(power, 0, G_MENU_ATTRIBUTE_ACTION) == "app.lock");
-        assert(p[1].label == "Sleep" && p[1].command == "systemctl suspend");
-        assert(p[2].label == "Log Out");
-        assert(p[3].label == "Restart" && p[3].command == "systemctl reboot");
-        assert(p[4].label == "Shut Down" && p[4].command == "systemctl poweroff");
+        assert(p[1].label == "Clean Keyboard");
+        assert(attr(power, 1, G_MENU_ATTRIBUTE_ACTION) == "app.cleaning");
+        assert(p[2].label == "Sleep" && p[2].command == "systemctl suspend");
+        assert(p[3].label == "Log Out");
+        assert(p[4].label == "Restart" && p[4].command == "systemctl reboot");
+        assert(p[5].label == "Shut Down" && p[5].command == "systemctl poweroff");
         assert_all_exec(power);
 
         g_object_unref(power);

@@ -237,6 +237,7 @@ namespace fenriz::desktop::menu {
 
         GMenu* power = g_menu_new();
         g_menu_append(power, "Lock", "app.lock");
+        g_menu_append(power, "Clean Keyboard", "app.cleaning");
         append_exec(power, "Sleep", "systemctl suspend");
         append_exec(power, "Log Out", logout_command());
         append_exec(power, "Restart", "systemctl reboot");
