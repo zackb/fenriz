@@ -58,6 +58,11 @@ namespace fenriz::desktop::theme {
 .lock-error { font-size: 14px; color: #ff8080; }
 .lock-error.status { color: alpha(white, 0.85); }
 
+.cleaning-scrim { background-color: rgba(0,0,0,0.88); }
+.cleaning-label { font-size: 26px; color: white; }
+.cleaning-time  { font-size: 76px; font-weight: 300; color: white; font-feature-settings: "tnum"; }
+.cleaning-hint  { font-size: 16px; color: alpha(white, 0.75); }
+
 window.fenriz-osd { background: transparent; }
 
 /* duration MUST match FADE_MS in osd.cpp */
@@ -143,12 +148,12 @@ window.fenriz-notify { background: transparent; }
 
 window.fenriz-shell { background: transparent; }
 
-.fenriz-launcher, .fenriz-wallpaper, .fenriz-polkit, .fenriz-notify-history {
+.fenriz-launcher, .fenriz-wallpaper, .fenriz-polkit, .fenriz-notify-history, .fenriz-cleaning {
   border-radius: 12px;
   background-color: @fenriz_fill_window;
 }
 
-.fenriz-polkit { padding: 20px 24px; }
+.fenriz-polkit, .fenriz-cleaning { padding: 20px 24px; }
 .fenriz-wallpaper.no-search { padding-top: 10px; }
 
 .fenriz-launcher list, .fenriz-launcher list > row,

@@ -169,6 +169,8 @@ namespace fenriz {
             return Action::MoveToWorkspace;
         if (s == "pin")
             return Action::Pin;
+        if (s == "cleaning")
+            return Action::Cleaning;
         return Action::None;
     }
 

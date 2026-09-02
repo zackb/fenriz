@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 struct wlr_surface;
 
 namespace fenriz {
@@ -20,6 +22,9 @@ namespace fenriz {
 
         // Ring: broadcast one line on the event feed.
         void bell(Server& server, wlr_surface* surface);
+
+        // Keyboard cleaning mode started
+        void cleaning(Server& server, int seconds, const std::string& cancel);
 
         // Close both sockets, drop every connected client, and remove the socket files.
         void shutdown();

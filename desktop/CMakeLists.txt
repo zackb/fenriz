@@ -63,6 +63,7 @@ add_executable(fenriz-desktop
     src/screensaver.cpp
     src/power.cpp
     src/polkit.cpp
+    src/cleaning.cpp
     ${PROTO_SRC}
 )
 target_include_directories(fenriz-desktop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_BINARY_DIR})

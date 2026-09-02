@@ -245,6 +245,21 @@ things you hold, like volume.
 | `pin` | pin a floating window to all workspaces |
 | `workspace` | switch to workspace `arg` (1–`workspaces`) |
 | `movetoworkspace` | send the focused window to workspace `arg` (1–`workspaces`) |
+| `cleaning` | keyboard cleaning mode for `arg` seconds (default 60) |
+
+### Keyboard cleaning
+
+`cleaning` drops every keyboard, pointer and touchpad event for a minute so the hardware can
+be wiped down. Nothing reaches a window, and no other keybind runs.
+
+```
+bind = SUPER SHIFT CTRL, C, cleaning        # the default; 60 seconds
+bind = SUPER SHIFT CTRL, C, cleaning, 120   # or set your own
+```
+
+The same bind ends it early, and is the only one that works
+
+`fenrizctl cleaning off` from a TTY ends it, as do `Ctrl+Alt+F2` and `SUPER SHIFT CTRL + Q`.
 
 ### Mouse
 
@@ -342,6 +357,7 @@ The defaults give you:
 | `SUPER` + `F` / `V` / `P` / `T` | fullscreen / float / pin / toggle split |
 | `SUPER` + `1`…`0` | switch workspace (`SUPER SHIFT` sends the window there) |
 | `SUPER` + `Space` / `SUPER SHIFT` + `L` / `SUPER` + `W` | fenriz-desktop launcher / lock / wallpaper |
+| `SUPER SHIFT CTRL` + `C` | keyboard cleaning mode: input off for 60 seconds |
 | `Print` / `SUPER` + `Print` | screenshot a region: annotate and save / copy |
 | **`SUPER SHIFT CTRL` + `Q`** | **quit, always** — see below |
 

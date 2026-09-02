@@ -1,8 +1,10 @@
 #include "keyboard.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <vector>
 
+#include "cleaning.hpp"
 #include "config.hpp"
 #include "cursor.hpp"
 #include "lock.hpp"
@@ -82,6 +84,8 @@ namespace fenriz {
         void keyboard_handle_modifiers(wl_listener* listener, void* data) {
             Keyboard* keyboard = wl_container_of(listener, keyboard, modifiers);
             (void)data;
+            if (keyboard->server->cleaning)
+                return; // resent by cleaning::stop, so the client isn't left mid-chord
             wlr_seat_set_keyboard(keyboard->server->seat, keyboard->kb);
             wlr_seat_keyboard_notify_modifiers(keyboard->server->seat, &keyboard->kb->modifiers);
         }
@@ -121,7 +125,9 @@ namespace fenriz {
             Server& server = *keyboard->server;
             wlr_keyboard* kb = keyboard->kb;
 
-            wlr_idle_notifier_v1_notify_activity(server.idle_notifier, server.seat);
+            // A cloth on the keys is not user activity.
+            if (!server.cleaning)
+                wlr_idle_notifier_v1_notify_activity(server.idle_notifier, server.seat);
 
             const uint32_t keycode = event->keycode + 8; // libinput -> xkb keycode
             const uint32_t mods = wlr_keyboard_get_modifiers(kb);
@@ -162,6 +168,21 @@ namespace fenriz {
                         }
                     }
                 }
+            }
+
+            // Cleaning mode: the cleaning bind is the only one that still runs
+            if (server.cleaning) {
+                if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+                    const xkb_layout_index_t layout = xkb_state_key_get_layout(kb->xkb_state, keycode);
+                    const xkb_keysym_t* syms;
+                    const int nsyms = xkb_keymap_key_get_syms_by_level(kb->keymap, keycode, layout, 0, &syms);
+                    for (int i = 0; i < nsyms; i++)
+                        if (const Bind* b = find_bind(server, mods, syms[i]); b && b->action == Action::Cleaning) {
+                            execute_bind(server, *b);
+                            break;
+                        }
+                }
+                return;
             }
 
             bool handled = false;
@@ -367,6 +388,15 @@ namespace fenriz {
         case Action::Pin:
             toggle_pin(server);
             break;
+        case Action::Cleaning: {
+            if (server.cleaning || b.arg == "off") {
+                cleaning::stop(server);
+                break;
+            }
+            const int seconds = b.arg.empty() ? 60 : std::atoi(b.arg.c_str());
+            cleaning::start(server, seconds > 0 ? seconds : 60);
+            break;
+        }
         case Action::Workspace:
         case Action::MoveToWorkspace: {
             int n = 0;
@@ -388,14 +418,18 @@ namespace fenriz {
         }
     }
 
-    const Bind* handle_keybind(Server& server, uint32_t mods, xkb_keysym_t sym) {
-        for (const Bind& b : server.config.binds) {
-            if (b.mods != mods || b.sym != sym)
-                continue;
-            execute_bind(server, b);
-            return &b;
-        }
+    const Bind* find_bind(Server& server, uint32_t mods, xkb_keysym_t sym) {
+        for (const Bind& b : server.config.binds)
+            if (b.mods == mods && b.sym == sym)
+                return &b;
         return nullptr;
+    }
+
+    const Bind* handle_keybind(Server& server, uint32_t mods, xkb_keysym_t sym) {
+        const Bind* b = find_bind(server, mods, sym);
+        if (b)
+            execute_bind(server, *b);
+        return b;
     }
 
 } // namespace fenriz

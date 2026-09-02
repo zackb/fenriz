@@ -534,6 +534,20 @@ namespace fenriz::ipc {
         broadcast(g->events, s);
     }
 
+    void cleaning(Server& server, int seconds, const std::string& cancel) {
+        (void)server;
+        if (!g || g->events.clients.empty())
+            return;
+        std::string s = "{\"event\":\"cleaning\",\"seconds\":" + std::to_string(seconds);
+        if (!cancel.empty()) {
+            s += ",\"cancel\":\"";
+            json_escape(s, cancel.c_str());
+            s += '"';
+        }
+        s += "}\n";
+        broadcast(g->events, s);
+    }
+
     void shutdown() {
         if (!g)
             return;

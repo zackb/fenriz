@@ -24,6 +24,7 @@ fenrizctl exit                     # quit the compositor
 fenrizctl killactive               # any keybind action, see `dispatch` below
 fenrizctl movetoworkspace 3
 fenrizctl exec 'foot -e htop'
+fenrizctl cleaning 60              # input off for 60s; `cleaning off` ends it
 ```
 
 Read commands print the raw feed
@@ -155,6 +156,25 @@ An `xdg-system-bell-v1` ring — a terminal's `\a`, or anything else asking for 
 | `title` | string | The ringing window's title. Absent under the same conditions. |
 | `workspace` | int | The ringing window's workspace, 1-indexed. Absent likewise. |
 
+### `cleaning`
+
+Keyboard cleaning mode started or ended. One line each way, so a shell can put a countdown
+on screen while input is dead.
+
+```
+{"event":"cleaning","seconds":60,"cancel":"SUPER+SHIFT+CTRL+C"}
+{"event":"cleaning","seconds":0}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `event` | string | `"cleaning"`. |
+| `seconds` | int | How long the mode will run. `0` means it just ended. |
+| `cancel` | string | The keybind that ends it early. **Absent** when no bind names the `cleaning` action, in which case only `fenrizctl` (or waiting) ends it. |
+
+A shell cannot get input during the mode — that is the point — so drive the overlay off this
+feed, not off a key or click.
+
 
 ## Commands (client → server)
 
@@ -188,6 +208,7 @@ Runs a keybind action by name using the same names the config's `bind =` lines t
 | `workspace` | `arg` = 1–10. Same as `{"cmd":"workspace"}`. |
 | `movetoworkspace` | `arg` = 1–10. Send the focused window there. |
 | `exec` | `arg` = a shell command, run detached. |
+| `cleaning` | Keyboard cleaning mode: drop all keyboard, pointer and touchpad input for `arg` seconds (default 60), so the hardware can be wiped. `arg` = `off` ends it; with no `arg` it toggles. The only live keybind during the mode is the one bound to `cleaning`; a VT switch and `SUPER+SHIFT+CTRL+Q` still work. Refused while the session is locked. |
 | `exit` | Quit the compositor. Same as `{"cmd":"exit"}`. |
 
 

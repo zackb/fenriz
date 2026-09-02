@@ -82,7 +82,8 @@ namespace fenrizctl {
                                         "togglefloating",
                                         "workspace",
                                         "movetoworkspace",
-                                        "pin"};
+                                        "pin",
+                                        "cleaning"};
         for (const char* a : actions)
             if (s == a)
                 return true;

@@ -30,7 +30,7 @@ namespace {
                         "\n"
                         "  ACTION [ARG]          run a keybind action: killactive, fullscreen,\n"
                         "                        togglefloating, pin, focusnext/prev/left/right/up/down,\n"
-                        "                        movetoworkspace N, exec CMD\n"
+                        "                        movetoworkspace N, exec CMD, cleaning [SECONDS|off]\n"
                         "\n"
                         "Reads $FENRIZ_SOCKET, falling back to\n"
                         "$XDG_RUNTIME_DIR/fenriz-$WAYLAND_DISPLAY.sock, and from a TTY (no\n"

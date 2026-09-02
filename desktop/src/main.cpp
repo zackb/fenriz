@@ -8,6 +8,7 @@
 #include "background.hpp"
 #include "blur.hpp"
 #include "brightness.hpp"
+#include "cleaning.hpp"
 #include "config.hpp"
 #include "history.hpp"
 #include "idle.hpp"
@@ -28,6 +29,7 @@ namespace {
 
     using fenriz::desktop::Background;
     using fenriz::desktop::Brightness;
+    using fenriz::desktop::Cleaning;
     using fenriz::desktop::Config;
     using fenriz::desktop::History;
     using fenriz::desktop::Idle;
@@ -47,6 +49,7 @@ namespace {
         std::unique_ptr<WallpaperPicker> wallpaper;
         std::unique_ptr<Launcher> launcher;
         std::unique_ptr<Lock> lock;
+        std::unique_ptr<Cleaning> cleaning;
         std::unique_ptr<Idle> idle;
         std::unique_ptr<Screensaver> screensaver;
         std::unique_ptr<Brightness> brightness;
@@ -79,6 +82,13 @@ namespace {
         auto* session = static_cast<Session*>(g_object_get_data(G_OBJECT(app), "session"));
         if (session->lock)
             session->lock->engage();
+    }
+
+    void on_cleaning(GSimpleAction*, GVariant*, gpointer data) {
+        auto* app = static_cast<GtkApplication*>(data);
+        auto* session = static_cast<Session*>(g_object_get_data(G_OBJECT(app), "session"));
+        if (session->cleaning)
+            session->cleaning->confirm();
     }
 
     void on_launcher(GSimpleAction*, GVariant*, gpointer data) {
@@ -140,6 +150,11 @@ namespace {
         g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(lock_action));
         g_object_unref(lock_action);
 
+        GSimpleAction* cleaning_action = g_simple_action_new("cleaning", nullptr);
+        g_signal_connect(cleaning_action, "activate", G_CALLBACK(on_cleaning), app);
+        g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(cleaning_action));
+        g_object_unref(cleaning_action);
+
         GSimpleAction* launcher_action = g_simple_action_new("launcher", nullptr);
         g_signal_connect(launcher_action, "activate", G_CALLBACK(on_launcher), app);
         g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(launcher_action));
@@ -162,6 +177,8 @@ namespace {
         }
 
         session->lock = std::make_unique<Lock>(session->cfg);
+        session->cleaning = std::make_unique<Cleaning>();
+        session->cleaning->start(app);
         session->brightness = std::make_unique<Brightness>();
         session->osd = std::make_unique<Osd>();
         session->volume = std::make_unique<Volume>();
@@ -244,6 +261,8 @@ namespace {
             const std::string arg = argv[i];
             if (arg == "lock") {
                 session->lock->engage();
+            } else if (arg == "cleaning") {
+                session->cleaning->confirm();
             } else if (arg == "launcher") {
                 if (session->launcher)
                     session->launcher->toggle(app);
@@ -334,7 +353,8 @@ int main(int argc, char** argv) {
     }
 
     int status = g_application_run(G_APPLICATION(app), argc, argv);
-    session.polkit.reset();  // tear surfaces down while GTK is still alive
+    session.polkit.reset(); // tear surfaces down while GTK is still alive
+    session.cleaning.reset();
     session.history.reset(); // holds a callback into notify, so it goes first
     session.notify.reset();
     session.osd.reset();
