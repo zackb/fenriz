@@ -103,6 +103,11 @@ int main() {
     assert(sent({"dispatch", "killactive"}) == sent({"killactive"}));
     assert(sent({"movetoworkspace", "3"}) == R"({"cmd":"dispatch","action":"movetoworkspace","arg":"3"})");
 
+    // cleaning takes an optional duration; bare toggles, "off" always stops.
+    assert(sent({"cleaning"}) == R"({"cmd":"dispatch","action":"cleaning"})");
+    assert(sent({"cleaning", "60"}) == R"({"cmd":"dispatch","action":"cleaning","arg":"60"})");
+    assert(sent({"cleaning", "off"}) == R"({"cmd":"dispatch","action":"cleaning","arg":"off"})");
+
     assert(sent({"exec", "foot", "-e", "sh"}) == R"({"cmd":"dispatch","action":"exec","arg":"foot -e sh"})");
     assert(sent({"exec", "sh -c \"echo hi\""}) == R"({"cmd":"dispatch","action":"exec","arg":"sh -c \"echo hi\""})");
 

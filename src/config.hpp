@@ -27,6 +27,7 @@ namespace fenriz {
         Workspace,       // arg = workspace number, 1..Config::workspaces
         MoveToWorkspace, // arg = workspace number, 1..Config::workspaces
         Pin,             // toggle pin (float shown on all workspaces) on focused view
+        Cleaning,        // arg = seconds (default 60); toggles keyboard cleaning mode
     };
 
     struct Bind {

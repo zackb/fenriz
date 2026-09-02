@@ -137,6 +137,11 @@ namespace fenriz {
         // only to the lock surface. Owned by src/lock.cpp; other modules just read it.
         bool locked = false;
 
+        // Keyboard cleaning mode: input is dropped for a fixed period so the keyboard and touchpad can be wiped.
+        bool cleaning = false;
+        uint32_t cleaning_seconds = 0;
+        wl_event_source* cleaning_timer = nullptr;
+
         // A split ratio changed and the layout needs recomputing. Set by tiling::resize_split
         // instead of arranging inline.
         bool layout_dirty = false;

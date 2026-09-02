@@ -133,6 +133,7 @@ add_executable(fenriz
     src/config.cpp
     src/layer.cpp
     src/lock.cpp
+    src/cleaning.cpp
     src/decoration.cpp
     src/ipc.cpp
     src/workspace_protocol.cpp

@@ -362,9 +362,13 @@ namespace fenriz::cursor {
                     focus_view(server, v, /*raise=*/false);
         }
 
+        // Cleaning mode drops pointer input in each handler rather than in process_motion
         void cursor_motion(wl_listener* listener, void* data) {
             Cursor* c = wl_container_of(listener, c, motion);
             auto* event = static_cast<wlr_pointer_motion_event*>(data);
+
+            if (c->server->cleaning)
+                return;
 
             // relative motion is what a pointer-locked client
             wlr_relative_pointer_manager_v1_send_relative_motion(c->relative_pointers,
@@ -397,6 +401,9 @@ namespace fenriz::cursor {
             Cursor* c = wl_container_of(listener, c, motion_absolute);
             auto* event = static_cast<wlr_pointer_motion_absolute_event*>(data);
 
+            if (c->server->cleaning)
+                return;
+
             double lx, ly;
             wlr_cursor_absolute_to_layout_coords(c->cursor, &event->pointer->base, event->x, event->y, &lx, &ly);
             const double ox = c->cursor->x, oy = c->cursor->y;
@@ -427,6 +434,9 @@ namespace fenriz::cursor {
             Cursor* c = wl_container_of(listener, c, button);
             auto* event = static_cast<wlr_pointer_button_event*>(data);
             Server& server = *c->server;
+
+            if (c->server->cleaning)
+                return;
 
             // Pointer focus is otherwise only refreshed on motion, so a click after the scene
             // changed under a stationary cursor (popup closed, window mapped, workspace switched)
@@ -535,6 +545,9 @@ namespace fenriz::cursor {
             Server& server = *c->server;
             auto* event = static_cast<wlr_pointer_axis_event*>(data);
 
+            if (c->server->cleaning)
+                return;
+
             process_motion(c, event->time_msec); // rebase pointer focus; see cursor_button
 
             // zoom_mod + scroll = screen zoom.
@@ -569,6 +582,9 @@ namespace fenriz::cursor {
         void cursor_frame(wl_listener* listener, void* data) {
             Cursor* c = wl_container_of(listener, c, frame);
             (void)data;
+
+            if (c->server->cleaning)
+                return;
             wlr_seat_pointer_notify_frame(c->server->seat);
         }
 
@@ -576,30 +592,40 @@ namespace fenriz::cursor {
         void gesture_swipe_begin(wl_listener* listener, void* data) {
             Cursor* c = wl_container_of(listener, c, swipe_begin);
             auto* e = static_cast<wlr_pointer_swipe_begin_event*>(data);
+            if (c->server->cleaning)
+                return;
             wlr_pointer_gestures_v1_send_swipe_begin(c->gestures, c->server->seat, e->time_msec, e->fingers);
         }
 
         void gesture_swipe_update(wl_listener* listener, void* data) {
             Cursor* c = wl_container_of(listener, c, swipe_update);
             auto* e = static_cast<wlr_pointer_swipe_update_event*>(data);
+            if (c->server->cleaning)
+                return;
             wlr_pointer_gestures_v1_send_swipe_update(c->gestures, c->server->seat, e->time_msec, e->dx, e->dy);
         }
 
         void gesture_swipe_end(wl_listener* listener, void* data) {
             Cursor* c = wl_container_of(listener, c, swipe_end);
             auto* e = static_cast<wlr_pointer_swipe_end_event*>(data);
+            if (c->server->cleaning)
+                return;
             wlr_pointer_gestures_v1_send_swipe_end(c->gestures, c->server->seat, e->time_msec, e->cancelled);
         }
 
         void gesture_pinch_begin(wl_listener* listener, void* data) {
             Cursor* c = wl_container_of(listener, c, pinch_begin);
             auto* e = static_cast<wlr_pointer_pinch_begin_event*>(data);
+            if (c->server->cleaning)
+                return;
             wlr_pointer_gestures_v1_send_pinch_begin(c->gestures, c->server->seat, e->time_msec, e->fingers);
         }
 
         void gesture_pinch_update(wl_listener* listener, void* data) {
             Cursor* c = wl_container_of(listener, c, pinch_update);
             auto* e = static_cast<wlr_pointer_pinch_update_event*>(data);
+            if (c->server->cleaning)
+                return;
             wlr_pointer_gestures_v1_send_pinch_update(
                 c->gestures, c->server->seat, e->time_msec, e->dx, e->dy, e->scale, e->rotation);
         }
@@ -607,18 +633,24 @@ namespace fenriz::cursor {
         void gesture_pinch_end(wl_listener* listener, void* data) {
             Cursor* c = wl_container_of(listener, c, pinch_end);
             auto* e = static_cast<wlr_pointer_pinch_end_event*>(data);
+            if (c->server->cleaning)
+                return;
             wlr_pointer_gestures_v1_send_pinch_end(c->gestures, c->server->seat, e->time_msec, e->cancelled);
         }
 
         void gesture_hold_begin(wl_listener* listener, void* data) {
             Cursor* c = wl_container_of(listener, c, hold_begin);
             auto* e = static_cast<wlr_pointer_hold_begin_event*>(data);
+            if (c->server->cleaning)
+                return;
             wlr_pointer_gestures_v1_send_hold_begin(c->gestures, c->server->seat, e->time_msec, e->fingers);
         }
 
         void gesture_hold_end(wl_listener* listener, void* data) {
             Cursor* c = wl_container_of(listener, c, hold_end);
             auto* e = static_cast<wlr_pointer_hold_end_event*>(data);
+            if (c->server->cleaning)
+                return;
             wlr_pointer_gestures_v1_send_hold_end(c->gestures, c->server->seat, e->time_msec, e->cancelled);
         }
 

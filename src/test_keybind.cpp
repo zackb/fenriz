@@ -27,8 +27,17 @@ int main() {
     // pressed key, plus the modifier mask. evdev KEY_T=20 -> xkb 28, KEY_E=18 -> xkb 26.
     Config c = Config::parse("bind = SUPER, T, exec, foo\n"
                              "bind = SUPER SHIFT, E, exit\n"
-                             "bind = SUPER, P, pin\n");
-    assert(c.binds.size() == 3);
+                             "bind = SUPER, P, pin\n"
+                             "bind = SUPER SHIFT CTRL, C, cleaning\n"
+                             "bind = SUPER, X, cleaning, 90\n");
+    assert(c.binds.size() == 5);
+
+    // "cleaning" parses with and without a duration; the arg is the seconds.
+    assert(c.binds[3].action == Action::Cleaning);
+    assert(c.binds[3].mods == (64u | 1u | 4u)); // LOGO+SHIFT+CTRL
+    assert(c.binds[3].arg.empty());
+    assert(c.binds[4].action == Action::Cleaning);
+    assert(c.binds[4].arg == "90");
 
     // "pin" keyword parses to Action::Pin (floating-only stay-across-workspaces).
     assert(c.binds[2].action == Action::Pin);

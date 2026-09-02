@@ -21,10 +21,12 @@ namespace fenriz {
         return sym - XKB_KEY_XF86Switch_VT_1 + 1;
     }
 
-    // Look up (mods, sym) in the config bind table and run the matching action.
-    // Returns the matched bind (key consumed) or nullptr to forward to the client.
-    // The pointer is into server.config.binds — valid only until the next config reload.
+    // Look up (mods, sym) in the config bind table. The pointer is into server.config.binds
     struct Bind;
+    const Bind* find_bind(Server& server, uint32_t mods, xkb_keysym_t sym);
+
+    // find_bind plus running the action. Returns the matched bind (key consumed) or
+    // nullptr to forward to the client.
     const Bind* handle_keybind(Server& server, uint32_t mods, xkb_keysym_t sym);
 
     // Run a bind's action.
