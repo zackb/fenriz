@@ -86,6 +86,7 @@ Power (Lock / Sleep / Log Out / Restart / Shut Down).
 
 Log Out uses `fenrizctl exit` under fenriz and falls back to
 `loginctl terminate-session` elsewhere.
+```
 
 ## Wallpaper picker
 
