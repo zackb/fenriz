@@ -63,7 +63,17 @@ namespace fenriz::desktop {
                                          const char* signal,
                                          GVariant* params,
                                          gpointer data);
+        static void on_logind_lock(GDBusConnection* bus,
+                                   const char* sender,
+                                   const char* path,
+                                   const char* iface,
+                                   const char* signal,
+                                   GVariant* params,
+                                   gpointer data);
         static gboolean on_wake_arm(gpointer data);
+
+        // Tells logind whether the session is locked
+        void set_locked_hint(bool locked);
 
         const Config& cfg_;
         Authenticator auth_;
@@ -71,8 +81,10 @@ namespace fenriz::desktop {
         GtkSessionLockInstance* instance_ = nullptr;
         std::vector<Surface> surfaces_;
         guint tick_id_ = 0;
-        GDBusConnection* system_bus_ = nullptr; // logind, for the resume-from-suspend signal
+        GDBusConnection* system_bus_ = nullptr; // logind: lock requests, suspend and resume
+        std::string session_path_;              // our own logind session
         guint sleep_sub_ = 0;
+        guint lock_sub_ = 0;
         guint wake_arm_id_ = 0;
         int sleep_fd_ = -1;
         bool suspend_pending_ = false;

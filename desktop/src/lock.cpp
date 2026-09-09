@@ -49,12 +49,52 @@ namespace fenriz::desktop {
             return fd;
         }
 
+        // Our own logind session.
+        std::string current_session_path(GDBusConnection* bus) {
+            GError* error = nullptr;
+            GVariant* reply = g_dbus_connection_call_sync(bus,
+                                                          "org.freedesktop.login1",
+                                                          "/org/freedesktop/login1",
+                                                          "org.freedesktop.login1.Manager",
+                                                          "GetSessionByPID",
+                                                          g_variant_new("(u)", static_cast<guint32>(getpid())),
+                                                          G_VARIANT_TYPE("(o)"),
+                                                          G_DBUS_CALL_FLAGS_NONE,
+                                                          -1,
+                                                          nullptr,
+                                                          &error);
+            if (!reply) {
+                g_warning("lock: no logind session: %s", error ? error->message : "unknown");
+                g_clear_error(&error);
+                return {};
+            }
+            const char* path = nullptr;
+            g_variant_get(reply, "(&o)", &path);
+            std::string result = path ? path : "";
+            g_variant_unref(reply);
+            return result;
+        }
+
     } // namespace
 
     Lock::Lock(const Config& cfg) : cfg_(cfg) {
         system_bus_ = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, nullptr);
         if (!system_bus_)
             return;
+        session_path_ = current_session_path(system_bus_);
+        // `loginctl lock-session`, and anything else that asks logind to lock,
+        // arrives as this signal. logind only relays it: acting on it is our job.
+        if (!session_path_.empty())
+            lock_sub_ = g_dbus_connection_signal_subscribe(system_bus_,
+                                                           "org.freedesktop.login1",
+                                                           "org.freedesktop.login1.Session",
+                                                           "Lock",
+                                                           session_path_.c_str(),
+                                                           nullptr,
+                                                           G_DBUS_SIGNAL_FLAGS_NONE,
+                                                           on_logind_lock,
+                                                           this,
+                                                           nullptr);
         sleep_sub_ = g_dbus_connection_signal_subscribe(system_bus_,
                                                         "org.freedesktop.login1",
                                                         "org.freedesktop.login1.Manager",
@@ -76,6 +116,8 @@ namespace fenriz::desktop {
             g_source_remove(wake_arm_id_);
         if (sleep_sub_)
             g_dbus_connection_signal_unsubscribe(system_bus_, sleep_sub_);
+        if (lock_sub_)
+            g_dbus_connection_signal_unsubscribe(system_bus_, lock_sub_);
         release_sleep_inhibitor();
         g_clear_object(&system_bus_);
         g_clear_object(&instance_);
@@ -138,6 +180,30 @@ namespace fenriz::desktop {
             return;
         close(sleep_fd_);
         sleep_fd_ = -1;
+    }
+
+    void Lock::on_logind_lock(
+        GDBusConnection*, const char*, const char*, const char*, const char*, GVariant*, gpointer data) {
+        auto* self = static_cast<Lock*>(data);
+        g_message("lock: logind asked for the session to lock");
+        self->engage();
+    }
+
+    void Lock::set_locked_hint(bool locked) {
+        if (!system_bus_ || session_path_.empty())
+            return;
+        g_dbus_connection_call(system_bus_,
+                               "org.freedesktop.login1",
+                               session_path_.c_str(),
+                               "org.freedesktop.login1.Session",
+                               "SetLockedHint",
+                               g_variant_new("(b)", locked),
+                               nullptr,
+                               G_DBUS_CALL_FLAGS_NONE,
+                               -1,
+                               nullptr,
+                               nullptr,
+                               nullptr);
     }
 
     void Lock::on_prepare_for_sleep(
@@ -361,6 +427,7 @@ namespace fenriz::desktop {
             self->suspend_pending_ = false;
             self->release_sleep_inhibitor();
         }
+        self->set_locked_hint(true);
         g_message("lock: session locked");
     }
 
@@ -389,6 +456,7 @@ namespace fenriz::desktop {
             self->wake_arm_id_ = 0;
         }
         g_clear_object(&self->instance_);
+        self->set_locked_hint(false);
         g_message("lock: session unlocked");
     }
 
