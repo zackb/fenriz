@@ -22,8 +22,10 @@ namespace fenriz::desktop {
     public:
         // Called on every transition between "nothing inhibiting" and "something inhibiting".
         using Handler = std::function<void(bool inhibited)>;
+        // Called for the interface's Lock method, which is what `xdg-screensaver lock` uses.
+        using LockHandler = std::function<void()>;
 
-        explicit Screensaver(Handler on_change);
+        Screensaver(Handler on_change, LockHandler on_lock);
         ~Screensaver();
 
         Screensaver(const Screensaver&) = delete;
@@ -43,6 +45,7 @@ namespace fenriz::desktop {
         void notify();
 
         Handler on_change_;
+        LockHandler on_lock_;
         // cookie -> the caller's unique bus name
         std::unordered_map<guint32, std::string> inhibitors_;
         std::vector<guint> owner_ids_;

@@ -118,7 +118,8 @@ namespace fenriz::desktop {
         return lower.find("audio") == std::string::npos || lower.find("video") != std::string::npos;
     }
 
-    Screensaver::Screensaver(Handler on_change) : on_change_(std::move(on_change)) {}
+    Screensaver::Screensaver(Handler on_change, LockHandler on_lock)
+        : on_change_(std::move(on_change)), on_lock_(std::move(on_lock)) {}
 
     Screensaver::~Screensaver() {
         for (guint id : owner_ids_)
@@ -228,6 +229,13 @@ namespace fenriz::desktop {
             g_dbus_method_invocation_return_value(invocation, nullptr);
             if (erased)
                 notify();
+            return;
+        }
+        if (g_strcmp0(method, "Lock") == 0) {
+            g_message("screensaver: lock requested by %s", sender ? sender : "?");
+            g_dbus_method_invocation_return_value(invocation, nullptr);
+            if (on_lock_)
+                on_lock_();
             return;
         }
         // We broker inhibitors rather than running a screensaver; the rest are stubs so

@@ -226,10 +226,12 @@ namespace {
             // The Wayland idle-inhibit protocol is the compositor's job; this covers the DBus
             // half, which browsers and VLC prefer and would otherwise inhibit nothing.
             if (cfg.idle_dim > 0 || cfg.idle_lock > 0 || cfg.idle_dpms > 0) {
-                session->screensaver = std::make_unique<Screensaver>([session](bool inhibited) {
-                    g_message("idle: %s by a DBus inhibitor", inhibited ? "suspended" : "resumed");
-                    session->idle->set_inhibited(inhibited);
-                });
+                session->screensaver = std::make_unique<Screensaver>(
+                    [session](bool inhibited) {
+                        g_message("idle: %s by a DBus inhibitor", inhibited ? "suspended" : "resumed");
+                        session->idle->set_inhibited(inhibited);
+                    },
+                    [session] { session->lock->engage(); });
                 session->screensaver->start();
             }
         }
