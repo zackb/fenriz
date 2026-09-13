@@ -13,6 +13,10 @@ namespace fenriz::bar {
 
     Charge charge_from_upower(guint32 state);
 
+    // The charge with AC as the authority: ac is -1 without a Mains supply, else its sysfs online (0/1).
+    // Some firmware reports the battery discharging on AC, so the battery state only tells Charging from Full.
+    Charge charge_from(int ac, guint32 upower_state, double percent);
+
     // "2 h 13 min", "45 min", "" for unknown (0).
     std::string format_duration(gint64 seconds);
 
@@ -62,14 +66,19 @@ namespace fenriz::bar {
         void read_battery();
         void read_profiles();
         void notify();
+        bool read_ac();
 
         static void on_battery_proxy(GObject* source, GAsyncResult* res, gpointer data);
+        static gboolean on_ac_tick(gpointer data);
         static void on_profiles_proxy(GObject* source, GAsyncResult* res, gpointer data);
 
         GCancellable* cancel_ = nullptr;
         GDBusProxy* battery_proxy_ = nullptr;
         GDBusProxy* profiles_proxy_ = nullptr;
         bool legacy_profiles_ = false; // net.hadess.PowerProfiles, before the daemon moved under UPower's name
+        std::string ac_online_path_;   // the Mains supply's sysfs online; empty without one
+        int ac_ = -1;
+        guint ac_tick_id_ = 0;
         Battery battery_;
         std::vector<std::string> profiles_;
         std::string profile_;

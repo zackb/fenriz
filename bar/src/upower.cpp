@@ -11,6 +11,32 @@ namespace fenriz::bar {
         constexpr const char* LEGACY_PROFILES_NAME = "net.hadess.PowerProfiles";
         constexpr const char* LEGACY_PROFILES_PATH = "/net/hadess/PowerProfiles";
 
+        // UPower's line-power device misses unplug uevents on some machines, so AC is polled from sysfs.
+        constexpr guint AC_POLL_SECONDS = 2;
+        constexpr const char* POWER_SUPPLY = "/sys/class/power_supply";
+
+        // The first Mains supply's online file; USB-C ports are type USB and can report phantom supplies.
+        std::string find_ac_online_path() {
+            GDir* dir = g_dir_open(POWER_SUPPLY, 0, nullptr);
+            if (!dir)
+                return "";
+            std::string found;
+            while (const char* entry = g_dir_read_name(dir)) {
+                const std::string base = std::string(POWER_SUPPLY) + "/" + entry;
+                char* type = nullptr;
+                if (g_file_get_contents((base + "/type").c_str(), &type, nullptr, nullptr)) {
+                    const bool mains = g_str_has_prefix(type, "Mains");
+                    g_free(type);
+                    if (mains) {
+                        found = base + "/online";
+                        break;
+                    }
+                }
+            }
+            g_dir_close(dir);
+            return found;
+        }
+
         GVariant* cached(GDBusProxy* proxy, const char* name, const GVariantType* type) {
             GVariant* v = g_dbus_proxy_get_cached_property(proxy, name);
             if (v && !g_variant_is_of_type(v, type)) {
@@ -36,6 +62,17 @@ namespace fenriz::bar {
         default:
             return Charge::Unknown;
         }
+    }
+
+    Charge charge_from(int ac, guint32 upower_state, double percent) {
+        const Charge upower = charge_from_upower(upower_state);
+        if (ac < 0)
+            return upower;
+        if (ac == 0)
+            return Charge::Discharging;
+        if (upower == Charge::Charging)
+            return Charge::Charging;
+        return upower == Charge::Full || percent >= 99 ? Charge::Full : Charge::Charging;
     }
 
     std::string format_duration(gint64 seconds) {
@@ -81,6 +118,8 @@ namespace fenriz::bar {
     }
 
     Power::~Power() {
+        if (ac_tick_id_)
+            g_source_remove(ac_tick_id_);
         if (cancel_) {
             g_cancellable_cancel(cancel_);
             g_object_unref(cancel_);
@@ -94,6 +133,11 @@ namespace fenriz::bar {
 
     void Power::start() {
         cancel_ = g_cancellable_new();
+        ac_online_path_ = find_ac_online_path();
+        if (!ac_online_path_.empty()) {
+            read_ac();
+            ac_tick_id_ = g_timeout_add_seconds(AC_POLL_SECONDS, on_ac_tick, this);
+        }
         g_dbus_proxy_new_for_bus(G_BUS_TYPE_SYSTEM,
                                  G_DBUS_PROXY_FLAGS_NONE,
                                  nullptr,
@@ -123,6 +167,28 @@ namespace fenriz::bar {
     void Power::notify() {
         for (auto& listener : listeners_)
             listener();
+    }
+
+    // Returns whether AC changed.
+    bool Power::read_ac() {
+        char* text = nullptr;
+        int ac = -1;
+        if (g_file_get_contents(ac_online_path_.c_str(), &text, nullptr, nullptr)) {
+            ac = text[0] == '1' ? 1 : 0;
+            g_free(text);
+        }
+        const bool changed = ac != ac_;
+        ac_ = ac;
+        return changed;
+    }
+
+    gboolean Power::on_ac_tick(gpointer data) {
+        auto* self = static_cast<Power*>(data);
+        if (self->read_ac() && self->battery_proxy_) {
+            self->read_battery();
+            self->notify();
+        }
+        return G_SOURCE_CONTINUE;
     }
 
     void Power::on_battery_proxy(GObject*, GAsyncResult* res, gpointer data) {
@@ -157,12 +223,19 @@ namespace fenriz::bar {
             b.percent = g_variant_get_double(v);
             g_variant_unref(v);
         }
+        guint32 state = 0;
         if (GVariant* v = cached(battery_proxy_, "State", G_VARIANT_TYPE_UINT32)) {
-            b.charge = charge_from_upower(g_variant_get_uint32(v));
+            state = g_variant_get_uint32(v);
             g_variant_unref(v);
         }
-        const char* left = b.charge == Charge::Charging ? "TimeToFull" : "TimeToEmpty";
-        if (GVariant* v = cached(battery_proxy_, left, G_VARIANT_TYPE_INT64)) {
+        b.charge = charge_from(ac_, state, b.percent);
+        // UPower's estimate follows its own state, so it only counts when that agrees
+        const char* left = nullptr;
+        if (b.charge == Charge::Charging && charge_from_upower(state) == Charge::Charging)
+            left = "TimeToFull";
+        else if (b.charge == Charge::Discharging && charge_from_upower(state) == Charge::Discharging)
+            left = "TimeToEmpty";
+        if (GVariant* v = left ? cached(battery_proxy_, left, G_VARIANT_TYPE_INT64) : nullptr) {
             b.seconds_left = g_variant_get_int64(v);
             g_variant_unref(v);
         }

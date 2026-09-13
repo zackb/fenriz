@@ -42,6 +42,18 @@ namespace {
         assert(charge_from_upower(6) == Charge::Discharging);
         assert(charge_from_upower(4) == Charge::Full);
         assert(charge_from_upower(0) == Charge::Unknown);
+
+        // without a Mains supply, UPower decides
+        assert(charge_from(-1, 2, 100) == Charge::Discharging);
+        assert(charge_from(-1, 1, 50) == Charge::Charging);
+        // on AC, a "discharging" battery is paused, not unplugged
+        assert(charge_from(1, 2, 100) == Charge::Full);
+        assert(charge_from(1, 2, 60) == Charge::Charging);
+        assert(charge_from(1, 1, 99) == Charge::Charging);
+        assert(charge_from(1, 4, 80) == Charge::Full);
+        // off AC, a stale "charging" is ignored
+        assert(charge_from(0, 1, 50) == Charge::Discharging);
+        assert(charge_from(0, 4, 100) == Charge::Discharging);
     }
 
     void test_battery_icons() {
