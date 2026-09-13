@@ -359,8 +359,8 @@ namespace fenriz::cursor {
             // floats. An exclusive layer surface keeps the keyboard until it lets go or the user clicks elsewhere.
             wlr_surface* kb = server.seat->keyboard_state.focused_surface;
             wlr_layer_surface_v1* layer = kb ? wlr_layer_surface_v1_try_from_wlr_surface(kb) : nullptr;
-            const bool held = layer && layer->current.keyboard_interactive ==
-                                           ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE;
+            const bool held =
+                layer && layer->current.keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE;
             if (server.config.focus_follows_pointer && !held)
                 if (View* v = hit ? view_from_node(hit) : nullptr)
                     focus_view(server, v, /*raise=*/false);
