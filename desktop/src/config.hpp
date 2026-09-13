@@ -38,6 +38,9 @@ namespace fenriz::desktop {
         std::string accent = "#16b8f3";
         std::string accent_gradient = "#ff2090";
 
+        // "wallpaper" derives the shell's colours from the wallpaper; "gtk" leaves them to the GTK theme.
+        std::string theme = "wallpaper";
+
         std::string source;
 
         // A runtime pick if there is one, else the image for `output`, else the global one.
@@ -57,5 +60,7 @@ namespace fenriz::desktop {
     std::string wallpaper_state_path();
     std::string load_selected_wallpaper();
     void save_selected_wallpaper(const std::string& path);
+    // The generated wallpaper palette, shared by fenriz-desktop and fenriz-bar.
+    std::string colors_path();
 
 } // namespace fenriz::desktop

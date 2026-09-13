@@ -15,6 +15,11 @@
 # behind them, so the transluent
 # shell_opacity = 0.80
 
+# `wallpaper` colours fenriz-desktop and fenriz-bar from the wallpaper (Material You, like matugen).
+# `gtk` uses your GTK theme and takes the accents from fenriz.conf's border colours.
+# The palette is written to ~/.local/state/fenriz/colors.css; @import it to reuse it elsewhere.
+# theme = wallpaper
+
 # --- Wallpaper -------------------------------------------------------------
 
 # Applies to every screen.

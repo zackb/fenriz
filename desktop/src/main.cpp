@@ -18,6 +18,7 @@
 #include "menu.hpp"
 #include "notify.hpp"
 #include "osd.hpp"
+#include "palette.hpp"
 #include "polkit.hpp"
 #include "power.hpp"
 #include "screensaver.hpp"
@@ -167,6 +168,14 @@ namespace {
 
         session->cfg = Config::load();
         fenriz::desktop::theme::install(session->cfg);
+        if (session->cfg.theme == "wallpaper") {
+            // Seeded from one image even when screens differ; refresh() is a no-op when the palette is unchanged.
+            const Config& cfg = session->cfg;
+            std::string seed_image = cfg.wallpaper_for("");
+            if (seed_image.empty() && !cfg.output_wallpaper.empty())
+                seed_image = cfg.output_wallpaper.begin()->second;
+            fenriz::desktop::palette::refresh(seed_image);
+        }
         if (session->cfg.shell_opacity < 1.0)
             fenriz::desktop::blur::init();
 

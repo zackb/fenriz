@@ -10,14 +10,15 @@ namespace fenriz::desktop::theme {
         std::string prelude(const Config& cfg) {
             const std::string a = std::to_string(cfg.shell_opacity);
             return "@define-color fenriz_accent " + cfg.accent + ";" + "@define-color fenriz_accent2 " +
-                   cfg.accent_gradient + ";" + "@define-color fenriz_fill_popover alpha(@popover_bg_color," + a + ");" +
+                   cfg.accent_gradient + ";" + "@define-color fenriz_on_accent white;" +
+                   "@define-color fenriz_error #f38ba8;" + "@define-color fenriz_on_error white;" +
+                   "@define-color fenriz_fill_popover alpha(@popover_bg_color," + a + ");" +
                    "@define-color fenriz_fill_base alpha(@theme_base_color," + a + ");" +
                    "@define-color fenriz_fill_window alpha(@window_bg_color," + a + ");" +
                    ".lock-wallpaper { filter: blur(" + std::to_string(cfg.lock_blur) + "px); }";
         }
 
         constexpr const char* SHEET = R"css(
-@define-color fenriz_error #f38ba8;
 
 .fenriz-background { background: transparent; }
 
@@ -203,7 +204,7 @@ window.fenriz-bar, window.fenriz-island { background: transparent; }
 .fenriz-bar .workspace:hover { background-color: alpha(currentColor, 0.1); color: currentColor; }
 .fenriz-bar .workspace.visible { color: currentColor; }
 .fenriz-bar .workspace.active {
-  color: white;
+  color: @fenriz_on_accent;
   background-image: linear-gradient(135deg, @fenriz_accent, @fenriz_accent2);
 }
 .fenriz-bar .workspace.urgent { color: @fenriz_error; }
@@ -226,7 +227,7 @@ window.fenriz-bar, window.fenriz-island { background: transparent; }
 .fenriz-island .island-date { color: alpha(currentColor, 0.7); }
 .fenriz-island calendar { border: none; background: transparent; }
 .fenriz-island calendar > grid > label.day-number:selected {
-  color: white;
+  color: @fenriz_on_accent;
   background-image: linear-gradient(135deg, @fenriz_accent, @fenriz_accent2);
 }
 
@@ -312,7 +313,7 @@ window.fenriz-bar, window.fenriz-island { background: transparent; }
 }
 .fenriz-island .island-tile:hover { background-color: alpha(currentColor, 0.12); }
 .fenriz-island .island-tile:checked {
-  color: white;
+  color: @fenriz_on_accent;
   background-image: linear-gradient(135deg, @fenriz_accent, @fenriz_accent2);
 }
 .fenriz-island .island-tile-label { font-size: 0.85em; font-weight: 600; }
@@ -327,7 +328,7 @@ window.fenriz-bar, window.fenriz-island { background: transparent; }
 .fenriz-island .island-battery { font-size: 1.4em; font-weight: 300; font-feature-settings: "tnum"; }
 .fenriz-island .island-profile { padding: 6px 10px; box-shadow: none; }
 .fenriz-island .island-profile:checked {
-  color: white;
+  color: @fenriz_on_accent;
   background-image: linear-gradient(135deg, @fenriz_accent, @fenriz_accent2);
 }
 .fenriz-island .island-actions { margin-top: 6px; }
@@ -339,7 +340,7 @@ window.fenriz-bar, window.fenriz-island { background: transparent; }
   background: transparent;
 }
 .fenriz-island .island-action:hover { background-color: alpha(currentColor, 0.08); }
-.fenriz-island .island-action.confirm { color: white; background-color: @fenriz_error; }
+.fenriz-island .island-action.confirm { color: @fenriz_on_error; background-color: @fenriz_error; }
 
 .fenriz-island .island-stats { margin-top: 4px; }
 .fenriz-island .island-stat { font-weight: 600; font-feature-settings: "tnum"; }
@@ -389,7 +390,7 @@ window.fenriz-bar, window.fenriz-island { background: transparent; }
   border: none;
   border-radius: 10px;
   box-shadow: none;
-  color: white;
+  color: @fenriz_on_accent;
   background-image: linear-gradient(135deg, @fenriz_accent, @fenriz_accent2);
 }
 .fenriz-island scrolledwindow { background: transparent; }
@@ -403,7 +404,51 @@ window.fenriz-bar, window.fenriz-island { background: transparent; }
 
     } // namespace
 
-    std::string sheet(const Config& cfg) { return prelude(cfg) + SHEET; }
+    std::string sheet(const Config& cfg, const std::string& palette) {
+        if (palette.empty())
+            return prelude(cfg) + SHEET;
+        // A @define-color only reaches references in its own sheet, so the GTK theme's rules keep the theme's
+        // foreground. Text is inherited, so the top levels carry it, plus the widgets themes colour explicitly.
+        std::string selectors;
+        for (const char* root : {"window.fenriz-shell",
+                                 "window.fenriz-bar",
+                                 "window.fenriz-island",
+                                 "window.fenriz-osd",
+                                 "window.fenriz-notify",
+                                 "popover > contents"})
+            for (const char* widget : {"", " button", " entry", " modelbutton"})
+                selectors += std::string(selectors.empty() ? "" : ", ") + root + widget;
+        return prelude(cfg) + palette + SHEET + selectors + " { color: @theme_fg_color; }";
+    }
+
+    namespace {
+
+        struct Watch {
+            Config cfg;
+            GtkCssProvider* provider = nullptr;
+            std::string palette;
+        };
+
+        std::string read_palette() {
+            gchar* text = nullptr;
+            if (!g_file_get_contents(colors_path().c_str(), &text, nullptr, nullptr))
+                return "";
+            std::string palette = text;
+            g_free(text);
+            return palette;
+        }
+
+        // Rewrites arrive as a rename over the file, so any event may carry new content.
+        void on_colors_changed(GFileMonitor*, GFile*, GFile*, GFileMonitorEvent, gpointer data) {
+            auto* watch = static_cast<Watch*>(data);
+            std::string palette = read_palette();
+            if (palette.empty() || palette == watch->palette)
+                return;
+            watch->palette = std::move(palette);
+            gtk_css_provider_load_from_string(watch->provider, sheet(watch->cfg, watch->palette).c_str());
+        }
+
+    } // namespace
 
     void install(const Config& cfg) {
         GtkCssProvider* fallback = gtk_css_provider_new();
@@ -415,12 +460,28 @@ window.fenriz-bar, window.fenriz-island { background: transparent; }
             gdk_display_get_default(), GTK_STYLE_PROVIDER(fallback), GTK_STYLE_PROVIDER_PRIORITY_FALLBACK);
         g_object_unref(fallback);
 
-        const std::string css = sheet(cfg);
         GtkCssProvider* provider = gtk_css_provider_new();
-        gtk_css_provider_load_from_string(provider, css.c_str());
         gtk_style_context_add_provider_for_display(
             gdk_display_get_default(), GTK_STYLE_PROVIDER(provider), GTK_STYLE_PROVIDER_PRIORITY_USER + 1);
         g_object_unref(provider);
+
+        if (cfg.theme != "wallpaper" || colors_path().empty()) {
+            gtk_css_provider_load_from_string(provider, sheet(cfg).c_str());
+            return;
+        }
+
+        // Lives for the process: the display holds the provider, the watch holds the monitor.
+        auto* watch = new Watch{cfg, provider, read_palette()};
+        gtk_css_provider_load_from_string(provider, sheet(cfg, watch->palette).c_str());
+
+        char* dir = g_path_get_dirname(colors_path().c_str());
+        g_mkdir_with_parents(dir, 0700);
+        g_free(dir);
+        GFile* file = g_file_new_for_path(colors_path().c_str());
+        GFileMonitor* monitor = g_file_monitor_file(file, G_FILE_MONITOR_NONE, nullptr, nullptr);
+        g_object_unref(file);
+        if (monitor)
+            g_signal_connect(monitor, "changed", G_CALLBACK(on_colors_changed), watch);
     }
 
 } // namespace fenriz::desktop::theme
