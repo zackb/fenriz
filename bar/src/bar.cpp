@@ -5,6 +5,7 @@
 #include <algorithm>
 
 #include "blur.hpp"
+#include "share.hpp"
 #include "volume.hpp"
 
 namespace fenriz::bar {
@@ -13,6 +14,8 @@ namespace fenriz::bar {
 
         constexpr int TOP_MARGIN = 4; // MUST match the island's
         constexpr int SIDE_MARGIN = 8;
+        constexpr int SPACING = 6;     // between capsules
+        constexpr int ISLAND_GAP = 12; // between the left cluster and the island's pill
 
         bool contains(const std::vector<int>& v, int n) { return std::find(v.begin(), v.end(), n) != v.end(); }
 
@@ -72,6 +75,10 @@ namespace fenriz::bar {
             for (auto& [monitor, surface] : surfaces_)
                 update_network(surface);
         });
+        island_.on_pill_resize([this] {
+            for (auto& [monitor, surface] : surfaces_)
+                gtk_widget_queue_allocate(surface.left);
+        });
     }
 
     void Bar::on_monitors_changed(GListModel*, guint, guint, guint, gpointer data) {
@@ -127,8 +134,10 @@ namespace fenriz::bar {
 
         GtkWidget* row = gtk_center_box_new();
         gtk_widget_add_css_class(row, "bar-row");
-        GtkWidget* left = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-        GtkWidget* right = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+        GtkWidget* left = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, SPACING);
+        g_object_set_data(G_OBJECT(left), "bar", this);
+        gtk_widget_set_layout_manager(left, gtk_custom_layout_new(nullptr, measure_left, allocate_left));
+        GtkWidget* right = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, SPACING);
         gtk_center_box_set_start_widget(GTK_CENTER_BOX(row), left);
         gtk_center_box_set_end_widget(GTK_CENTER_BOX(row), right);
 
@@ -151,7 +160,6 @@ namespace fenriz::bar {
         gtk_image_set_pixel_size(GTK_IMAGE(icon), 16);
         GtkWidget* title = gtk_label_new(nullptr);
         gtk_label_set_ellipsize(GTK_LABEL(title), PANGO_ELLIPSIZE_END);
-        gtk_label_set_max_width_chars(GTK_LABEL(title), 60);
         gtk_widget_add_css_class(title, "bar-title");
         gtk_box_append(GTK_BOX(window_box), icon);
         gtk_box_append(GTK_BOX(window_box), title);
@@ -161,7 +169,6 @@ namespace fenriz::bar {
         GtkWidget* media_icon = gtk_image_new_from_icon_name("media-playback-start-symbolic");
         GtkWidget* media_label = gtk_label_new(nullptr);
         gtk_label_set_ellipsize(GTK_LABEL(media_label), PANGO_ELLIPSIZE_END);
-        gtk_label_set_max_width_chars(GTK_LABEL(media_label), 40);
         gtk_box_append(GTK_BOX(media_box), media_icon);
         gtk_box_append(GTK_BOX(media_box), media_label);
         GtkWidget* media = page_button(monitor, "media", media_box, "bar-media");
@@ -203,6 +210,7 @@ namespace fenriz::bar {
         desktop::blur::attach(GTK_NATIVE(window));
 
         surfaces_[monitor] = Surface{.window = window,
+                                     .left = left,
                                      .workspaces = workspaces,
                                      .window_box = window_box,
                                      .window_icon = icon,
@@ -232,6 +240,71 @@ namespace fenriz::bar {
             return;
         gtk_window_destroy(it->second.window);
         surfaces_.erase(it);
+    }
+
+    void Bar::measure_left(GtkWidget* left, GtkOrientation orientation, int, int* minimum, int* natural, int*, int*) {
+        const bool horizontal = orientation == GTK_ORIENTATION_HORIZONTAL;
+        int shown = 0;
+        *minimum = *natural = 0;
+        for (GtkWidget* c = gtk_widget_get_first_child(left); c; c = gtk_widget_get_next_sibling(c)) {
+            if (!gtk_widget_should_layout(c))
+                continue;
+            int min = 0, nat = 0;
+            gtk_widget_measure(c, orientation, -1, &min, &nat, nullptr, nullptr);
+            if (horizontal) {
+                *minimum += min;
+                *natural += nat;
+                shown++;
+            } else {
+                *minimum = std::max(*minimum, min);
+                *natural = std::max(*natural, nat);
+            }
+        }
+        if (shown > 1) {
+            *minimum += (shown - 1) * SPACING;
+            *natural += (shown - 1) * SPACING;
+        }
+    }
+
+    // The row is centered on the monitor like the island, so the pill starts half its width left of the row's middle.
+    void Bar::allocate_left(GtkWidget* left, int width, int height, int) {
+        const auto* self = static_cast<const Bar*>(g_object_get_data(G_OBJECT(left), "bar"));
+        const int clear =
+            gtk_widget_get_width(gtk_widget_get_parent(left)) / 2 - self->island_.pill_width() / 2 - ISLAND_GAP;
+        int budget = std::min(width, clear);
+
+        struct Child {
+            GtkWidget* widget;
+            int min, nat;
+        };
+        std::vector<Child> fixed, flex;
+        for (GtkWidget* c = gtk_widget_get_first_child(left); c; c = gtk_widget_get_next_sibling(c)) {
+            if (!gtk_widget_should_layout(c))
+                continue;
+            Child child{c, 0, 0};
+            gtk_widget_measure(c, GTK_ORIENTATION_HORIZONTAL, -1, &child.min, &child.nat, nullptr, nullptr);
+            // the first child is the workspaces, which never shrink
+            (c == gtk_widget_get_first_child(left) ? fixed : flex).push_back(child);
+        }
+        const size_t shown = fixed.size() + flex.size();
+        if (shown > 1)
+            budget -= static_cast<int>(shown - 1) * SPACING;
+        for (const Child& c : fixed)
+            budget -= c.nat;
+
+        int x = 0;
+        const auto place = [&](GtkWidget* widget, int w) {
+            const GtkAllocation at{x, 0, w, height};
+            gtk_widget_size_allocate(widget, &at, -1);
+            x += w + SPACING;
+        };
+        for (const Child& c : fixed)
+            place(c.widget, c.nat);
+        // ponytail: a pair (title, song); a third flexible capsule would need a real n-way split
+        for (size_t i = 0; i < flex.size(); i++) {
+            const int other = flex.size() == 2 ? flex[1 - i].nat : 0;
+            place(flex[i].widget, std::max(flex[i].min, flex_share(flex[i].nat, other, budget)));
+        }
     }
 
     GdkMonitor* Bar::monitor_for(const std::string& connector) const {

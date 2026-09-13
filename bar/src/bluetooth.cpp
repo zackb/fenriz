@@ -208,7 +208,12 @@ namespace fenriz::bar {
         }
         g_list_free_full(objects, g_object_unref);
 
+        const bool was_powered = powered_;
         powered_ = adapter_ && bool_prop(adapter_, "Powered");
+        // BlueZ refuses discovery while off, so a scan the page asked for then starts now
+        if (powered_ && !was_powered && discover_wanted_ > 0)
+            call(
+                g_dbus_proxy_get_object_path(adapter_), "org.bluez.Adapter1", "StartDiscovery", nullptr, 5000, nullptr);
         discovering_ = adapter_ && bool_prop(adapter_, "Discovering");
         sort_devices(devices);
 

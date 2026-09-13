@@ -406,6 +406,15 @@ window.fenriz-bar, window.fenriz-island { background: transparent; }
     std::string sheet(const Config& cfg) { return prelude(cfg) + SHEET; }
 
     void install(const Config& cfg) {
+        GtkCssProvider* fallback = gtk_css_provider_new();
+        gtk_css_provider_load_from_string(fallback,
+                                          "@define-color window_bg_color @theme_bg_color;"
+                                          "@define-color popover_bg_color @theme_bg_color;"
+                                          "@define-color view_bg_color @theme_base_color;");
+        gtk_style_context_add_provider_for_display(
+            gdk_display_get_default(), GTK_STYLE_PROVIDER(fallback), GTK_STYLE_PROVIDER_PRIORITY_FALLBACK);
+        g_object_unref(fallback);
+
         const std::string css = sheet(cfg);
         GtkCssProvider* provider = gtk_css_provider_new();
         gtk_css_provider_load_from_string(provider, css.c_str());

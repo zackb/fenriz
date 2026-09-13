@@ -112,6 +112,9 @@ namespace fenriz::bar {
         nearby_ = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
         gtk_box_append(GTK_BOX(page), nearby_section_);
         gtk_box_append(GTK_BOX(page), nearby_);
+        searching_ = gtk_label_new("Searching…");
+        gtk_widget_add_css_class(searching_, "island-empty");
+        gtk_box_append(GTK_BOX(page), searching_);
         island_.add_page("bluetooth", page);
 
         // Scanning costs radio time (and audio quality on a connected headset), so only while the page shows.
@@ -164,6 +167,7 @@ namespace fenriz::bar {
         gtk_widget_set_visible(nearby_, on);
         gtk_spinner_set_spinning(GTK_SPINNER(spinner_), bt_.discovering());
         gtk_widget_set_visible(spinner_, bt_.discovering());
+        gtk_widget_set_visible(searching_, on && bt_.discovering() && nearby.empty());
         rebuild(paired_, paired, paired_shown_);
         rebuild(nearby_, nearby, nearby_shown_);
     }

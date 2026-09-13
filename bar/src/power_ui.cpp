@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <initializer_list>
 
 namespace fenriz::bar {
 
@@ -23,6 +24,20 @@ namespace fenriz::bar {
             if (profile == "performance")
                 return "Performance";
             return "Balanced";
+        }
+
+        // No standard name for "stay awake"; the first one the theme has wins, the last if none.
+        const char* themed(std::initializer_list<const char*> names) {
+            GtkIconTheme* theme = gtk_icon_theme_get_for_display(gdk_display_get_default());
+            for (const char* name : names)
+                if (gtk_icon_theme_has_icon(theme, name))
+                    return name;
+            return *(names.end() - 1);
+        }
+
+        const char* awake_icon(bool on) {
+            return on ? themed({"caffeine-cup-full-symbolic", "view-reveal-symbolic"})
+                      : themed({"caffeine-cup-empty-symbolic", "view-conceal-symbolic"});
         }
 
         std::string battery_text(const Power::Battery& b) {
@@ -64,11 +79,7 @@ namespace fenriz::bar {
         if (inhibitor_.available()) {
             GtkWidget* image = nullptr;
             awake_tile_ = tile(gtk_toggle_button_new(), nullptr, "Keep awake", &image, nullptr);
-            // no standard name for "stay awake"; the first one the theme has wins
-            const char* names[] = {"caffeine-cup-full-symbolic", "view-reveal-symbolic", nullptr};
-            GIcon* icon = g_themed_icon_new_from_names(const_cast<char**>(names), -1);
-            gtk_image_set_from_gicon(GTK_IMAGE(image), icon);
-            g_object_unref(icon);
+            gtk_image_set_from_icon_name(GTK_IMAGE(image), awake_icon(true));
             g_signal_connect(awake_tile_,
                              "toggled",
                              G_CALLBACK(+[](GtkToggleButton* b, gpointer data) {
@@ -202,8 +213,7 @@ namespace fenriz::bar {
         if (!awake_tile_)
             return false;
         gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(awake_tile_), !inhibitor_.active()); // "toggled" applies it
-        island_.show_event(inhibitor_.active() ? "view-reveal-symbolic" : "view-conceal-symbolic",
-                           inhibitor_.active() ? "Keeping awake" : "Idle as usual");
+        island_.show_event(awake_icon(inhibitor_.active()), inhibitor_.active() ? "Keeping awake" : "Idle as usual");
         return true;
     }
 

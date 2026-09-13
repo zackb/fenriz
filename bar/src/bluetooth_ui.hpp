@@ -33,6 +33,7 @@ namespace fenriz::bar {
         GtkWidget* nearby_section_ = nullptr;
         GtkWidget* nearby_ = nullptr;
         GtkWidget* spinner_ = nullptr;
+        GtkWidget* searching_ = nullptr;
         std::vector<BtDevice> paired_shown_;
         std::vector<BtDevice> nearby_shown_;
         bool updating_ = false;

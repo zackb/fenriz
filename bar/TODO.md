@@ -4,9 +4,6 @@ Full spec: `~/.claude/plans/i-d-like-to-spec-steady-twilight.md`.
 
 ## Findings (open)
 
-- [ ] **No GTK theme = no card backgrounds.** GTK's built-in theme does not define `@window_bg_color`, so every
-  `@fenriz_fill_*` surface (bar capsules, island, and fenriz-desktop's launcher/OSD/notifications) draws no background
-  when no theme is set. Fix: fall back to a literal color in `theme.cpp`'s prelude.
 - [ ] native pywal or matugen integration
 - [ ] **Island input is unverified on real hardware**: click the pill, hover grow, Escape, Backspace, click-away-to-close, blur. Headless has no pointer or keyboard.
 - [ ] **Keybind-opened island focus is unverified**: depends on the `src/layer.cpp` interactivity-change fix; only testable in a real session.
@@ -25,8 +22,6 @@ Full spec: `~/.claude/plans/i-d-like-to-spec-steady-twilight.md`.
 - [ ] **Sparklines start almost empty** because sampling only runs while the island is open (history is kept between
   opens). If that looks too bare, sample at a slow rate (10 s) while closed and accept the wakeups.
 - [ ] **Keep-awake is not persisted** across a bar restart. Probably right (a forgotten inhibitor drains a battery), but decide.
-- [ ] **Keep-awake uses two different icons**: the tile uses the first theme icon of `caffeine-cup-full-symbolic` /
-  `view-reveal-symbolic`, while the pill event always uses `view-reveal-symbolic`.
 - [ ] **Bluetooth actions unverified**: connect, disconnect, pair (+ trust + connect), forget, the power switch and tile.
   Not clicked (no pointer headless), and deliberately not driven from a test either: the live session was on Bluetooth
   earbuds. Reading adapter/devices/battery and the page-only scan were verified against the real BlueZ.
@@ -35,8 +30,6 @@ Full spec: `~/.claude/plans/i-d-like-to-spec-steady-twilight.md`.
 - [ ] **GTK baseline warning on the Bluetooth and Wi-Fi pages** ("GtkImage reported baselines of minimum -2147483648"):
   it is the page's `GtkSwitch` under the Catppuccin GTK theme. A bare switch in an empty window reproduces it; Adwaita
   does not. Not bar code, harmless. Swap the switch for a toggle button if the log noise matters.
-- [ ] **Nearby list shows only a spinner** when a scan finds nothing yet; maybe a "Searching…" line.
-- [ ] **Discovery wanted while the adapter is off** is not started when it powers on until the page is reopened.
 - [ ] **Wi-Fi actions unverified**: join (saved, open, new with password), wrong-password re-ask, disconnect, forget,
   the on/off switch and tile. Not driven from a test: the live session was on that wi-fi. Reading the device, networks,
   saved state, security and signal, and the page-only rescans were verified against the real NetworkManager.
@@ -52,7 +45,6 @@ Full spec: `~/.claude/plans/i-d-like-to-spec-steady-twilight.md`.
 - [ ] **Tray menu item icons are not shown** (`icon-name` / `icon-data` in DBusMenu), and radio items render as check marks.
 - [ ] **Tray coordinates**: Activate/ContextMenu get 0,0; a layer surface does not know its position on screen. Apps
   that place their own popup at those coordinates (rare) put it in the corner.
-- [ ] **`desktop/src/screensaver.cpp` owns its name with `FLAGS_NONE`**, so its "another idle daemon holds it" warning can never fire (see memory: g_bus_own_name queues silently). Pre-existing.
 
 ## Decisions
 
@@ -103,6 +95,11 @@ Full spec: `~/.claude/plans/i-d-like-to-spec-steady-twilight.md`.
 - Tray icons are plain boxes with one any-button gesture, not GtkButtons: a button eats the primary click.
 - `/NO_DBUSMENU` (what GTK apps without appindicator report) means no menu, so right click falls back to the item's own
   ContextMenu.
+- The left cluster uses a custom layout: workspaces at natural width, then title and song split what is left before
+  the island's collapsed pill (`flex_share`, a port of quickshell's `flexShare`). The pill width is the same reserve on
+  every screen, so a title does not jump when the island moves.
+- With no GTK theme, `window_bg_color`/`popover_bg_color`/`view_bg_color` fall back to the built-in theme's
+  `theme_bg_color`/`theme_base_color` through a FALLBACK-priority provider; any real theme outranks it.
 - Covers are `GtkImage` with a pixel size: a `GtkPicture`'s natural size is the image's own size.
 
 ## Done
@@ -115,12 +112,13 @@ Full spec: `~/.claude/plans/i-d-like-to-spec-steady-twilight.md`.
 - [x] Phase 5: Wi-Fi tile/page/glyph (wired too), join/disconnect/forget, inline password, page-only rescans,
   connected and failure events
 - [x] Phase 6: system tray (StatusNotifierWatcher or host, DBusMenu popovers, pixmap and themed icons)
+- [x] Left cluster shrinks to clear the island; no-theme fallback colors; discovery starts when the adapter powers on;
+  "Searching…" on an empty nearby list; one keep-awake icon set
 
 ## Future work
 
 - [ ] Per-app volume (stream list on the Sound page)
 - [ ] Config keys when needed: `bar_clock` format (12h users), `bar_position`
-- [ ] Left-cluster width sharing between title and song is fixed max-width-chars; share leftover space like the quickshell `Bar.qml` if long titles crowd it
 - [ ] Reconnect to `FENRIZ_SOCKET` uses a fixed 2 s retry; add backoff if it ever matters
 - [ ] Multi-monitor: the island lives on one screen and moves on open; decide whether each screen should get its own pill
 - [ ] `make preview` for island states (pill, pages) to PNG, like desktop's `desktop_preview`

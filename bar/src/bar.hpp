@@ -42,6 +42,7 @@ namespace fenriz::bar {
     private:
         struct Surface {
             GtkWindow* window;
+            GtkWidget* left;
             GtkWidget* workspaces;
             GtkWidget* window_box;
             GtkWidget* window_icon;
@@ -69,6 +70,17 @@ namespace fenriz::bar {
         void update_network(Surface& surface);
         // A capsule button that opens the island on `page`, on the screen it was clicked on.
         GtkWidget* page_button(GdkMonitor* monitor, const char* page, GtkWidget* child, const char* css_class);
+
+        // The left cluster's layout: workspaces at full width, then title and song sharing what is left before the
+        // island.
+        static void measure_left(GtkWidget* left,
+                                 GtkOrientation orientation,
+                                 int for_size,
+                                 int* minimum,
+                                 int* natural,
+                                 int* minimum_baseline,
+                                 int* natural_baseline);
+        static void allocate_left(GtkWidget* left, int width, int height, int baseline);
 
         static void on_monitors_changed(GListModel* model, guint position, guint removed, guint added, gpointer data);
         static void on_workspace_clicked(GtkButton* button, gpointer data);

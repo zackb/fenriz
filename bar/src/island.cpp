@@ -203,6 +203,7 @@ namespace fenriz::bar {
 
         GtkEventController* motion = gtk_event_controller_motion_new();
         g_signal_connect(motion, "enter", G_CALLBACK(on_enter), this);
+        g_signal_connect(motion, "motion", G_CALLBACK(on_motion), this);
         g_signal_connect(motion, "leave", G_CALLBACK(on_leave), this);
         gtk_widget_add_controller(root_, motion);
 
@@ -398,7 +399,11 @@ namespace fenriz::bar {
         }
         int pill_w = 0;
         gtk_widget_measure(pill_, GTK_ORIENTATION_HORIZONTAL, -1, nullptr, &pill_w, nullptr, nullptr);
-        pill_width_ = pill_w + 2 * PILL_PADDING;
+        if (pill_w + 2 * PILL_PADDING != pill_width_) {
+            pill_width_ = pill_w + 2 * PILL_PADDING;
+            for (auto& listener : pill_listeners_)
+                listener();
+        }
         double w = pill_width_, h = PILL_HEIGHT;
         if (hovered_) {
             w += HOVER_GROW_X;
@@ -450,6 +455,7 @@ namespace fenriz::bar {
             g_date_time_unref(now);
         }
         page_ = page;
+        armed_ = false; // the shape is about to change under the pointer
         gtk_stack_set_visible_child_full(GTK_STACK(stack_),
                                          page.c_str(),
                                          animate ? GTK_STACK_TRANSITION_TYPE_CROSSFADE
@@ -560,6 +566,7 @@ namespace fenriz::bar {
             return;
         expanded_ = false;
         hovered_ = false;
+        armed_ = false;
         for (auto& listener : close_listeners_)
             listener();
         gtk_widget_set_can_target(stack_, FALSE);
@@ -614,11 +621,21 @@ namespace fenriz::bar {
             self->retarget();
     }
 
+    // Only a pointer that has been inside the settled page closes it by leaving, so one opened from elsewhere, or
+    // shrunk out from under the pointer, stays open.
+    void Island::on_motion(GtkEventControllerMotion*, double, double, gpointer data) {
+        auto* self = static_cast<Island*>(data);
+        if (self->expanded_ && !self->tick_id_)
+            self->armed_ = true;
+    }
+
     void Island::on_leave(GtkEventControllerMotion*, gpointer data) {
         auto* self = static_cast<Island*>(data);
         self->hovered_ = false;
         if (!self->expanded_)
             self->retarget();
+        else if (self->armed_)
+            self->close();
     }
 
     gboolean Island::on_key(GtkEventControllerKey*, guint keyval, guint, GdkModifierType, gpointer data) {

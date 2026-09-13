@@ -46,6 +46,9 @@ namespace fenriz::bar {
         void on_open(std::function<void()> listener) { open_listeners_.push_back(std::move(listener)); }
         void on_close(std::function<void()> listener) { close_listeners_.push_back(std::move(listener)); }
         GtkWindow* window() const { return window_; }
+        // Collapsed pill width, and a listener for when it changes, so the bar can keep clear of it.
+        int pill_width() const { return pill_width_; }
+        void on_pill_resize(std::function<void()> listener) { pill_listeners_.push_back(std::move(listener)); }
 
         // A back-to-home button and a title, for the top of a page.
         GtkWidget* page_header(const char* title);
@@ -92,6 +95,7 @@ namespace fenriz::bar {
         static gboolean on_remeasure(gpointer data);
         static void on_pressed(GtkGestureClick* gesture, int n_press, double x, double y, gpointer data);
         static void on_enter(GtkEventControllerMotion* motion, double x, double y, gpointer data);
+        static void on_motion(GtkEventControllerMotion* motion, double x, double y, gpointer data);
         static void on_leave(GtkEventControllerMotion* motion, gpointer data);
         static gboolean
             on_key(GtkEventControllerKey* key, guint keyval, guint code, GdkModifierType mods, gpointer data);
@@ -126,6 +130,7 @@ namespace fenriz::bar {
         std::string page_ = "home";
         bool expanded_ = false;
         bool hovered_ = false;
+        bool armed_ = false; // the pointer has moved inside the settled, open island
         bool had_focus_ = false;
         int surface_width_ = 0;
         int surface_height_ = 0;
@@ -141,6 +146,7 @@ namespace fenriz::bar {
         guint remeasure_id_ = 0;
         std::vector<std::function<void()>> open_listeners_;
         std::vector<std::function<void()>> close_listeners_;
+        std::vector<std::function<void()>> pill_listeners_;
     };
 
 } // namespace fenriz::bar
