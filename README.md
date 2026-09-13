@@ -35,7 +35,9 @@ I use this as my daily driver. It is stable and usable, but still under active d
 ```
 yay -S fenriz
 
-yay -S fenriz-desktop # optional desktop shell
+yay -S fenriz-desktop       # optional desktop shell (wallpaper, lock screen, launcher, notifications, etc.)
+
+yay -S fenriz-bar           # optional bar (wifi, bluetooth, battery, volume, brightness, etc.)
 ```
 
 #### Other distros

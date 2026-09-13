@@ -30,6 +30,12 @@ namespace fenriz::desktop {
         // Puts back what dim_to() saved
         void restore();
 
+        // The first panel's level as a percentage of its maximum, or -1 when there is no panel.
+        int percent() const;
+
+        // Sets every panel to `percent` of its maximum, never 0.
+        void set_percent(int percent);
+
         // Steps every panel by `delta` percent of its maximum.
         // Returns the resulting percentage, or -1 when no panel.
         int adjust(int delta);

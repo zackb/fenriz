@@ -47,19 +47,23 @@ namespace fenriz::layer {
             arrange(*ls->server);
         }
 
+        // If this surface holds the keyboard, hand it back to the focused window.
+        void release_keyboard(LayerSurface* ls) {
+            Server& server = *ls->server;
+            if (server.seat->keyboard_state.focused_surface != ls->handle->surface)
+                return;
+            if (server.focused_view)
+                focus_surface(server, view_surface(server.focused_view));
+            else
+                wlr_seat_keyboard_notify_clear_focus(server.seat);
+        }
+
         void on_unmap(wl_listener* listener, void* data) {
             LayerSurface* ls = wl_container_of(listener, ls, unmap);
             (void)data;
-            Server& server = *ls->server;
             ls->mapped = false;
-            // If this surface held the keyboard, hand it back to the focused window.
-            if (server.seat->keyboard_state.focused_surface == ls->handle->surface) {
-                if (server.focused_view)
-                    focus_surface(server, view_surface(server.focused_view));
-                else
-                    wlr_seat_keyboard_notify_clear_focus(server.seat);
-            }
-            arrange(server);
+            release_keyboard(ls);
+            arrange(*ls->server);
         }
 
         void on_commit(wl_listener* listener, void* data) {
@@ -68,16 +72,14 @@ namespace fenriz::layer {
             // Restack only when the client actually moved between layers.
             if (ls->handle->current.committed & WLR_LAYER_SURFACE_V1_STATE_LAYER)
                 wlr_scene_node_reparent(&ls->scene->tree->node, tree_for_layer(*ls->server, ls->handle->current.layer));
-            // arrange() re-sends a configure to every layer surface (the wlroots helper does
-            // it unconditionally, with no dedup). Run it ONLY on the initial commit or when
-            // layout-affecting state changed. A plain buffer commit (the bar just repainting)
-            // has committed == 0; arranging there would send a fresh configure, forcing the
-            // client to relayout+repaint and commit again, a full-refresh feedback loop that
-            // pins the GPU at idle.
-            // ...and even then, only relayout the windows if the reserved space actually
-            // changed. A bar re-commits its size whenever a module's width changes (clock,
-            // workspace widget), roughly once a second, and that leaves usable_area
-            // identical, so the whole-compositor tiling::arrange is pure waste.
+            if (ls->mapped && (ls->handle->current.committed & WLR_LAYER_SURFACE_V1_STATE_KEYBOARD_INTERACTIVITY)) {
+                const auto mode = ls->handle->current.keyboard_interactive;
+                if (mode == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE && !ls->server->locked)
+                    focus_surface(*ls->server, ls->handle->surface);
+                else if (mode == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE)
+                    release_keyboard(ls);
+            }
+
             if (ls->handle->initial_commit || ls->handle->current.committed != 0)
                 if (reconfigure(*ls->server))
                     tiling::arrange(*ls->server);
@@ -86,8 +88,6 @@ namespace fenriz::layer {
         void on_new_popup(wl_listener* listener, void* data) {
             LayerSurface* ls = wl_container_of(listener, ls, new_popup);
             auto* popup = static_cast<wlr_xdg_popup*>(data);
-            // Parent the popup into the layer surface's scene tree; base->data lets nested
-            // popups find it via the xdg-shell new_popup handler (server.cpp).
             popup_create(*ls->server, popup, ls->scene->tree);
         }
 

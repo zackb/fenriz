@@ -130,6 +130,9 @@ namespace fenriz::desktop {
                 cfg.wallpaper_hook = value;
             } else if (key == "wallpaper_search") {
                 cfg.wallpaper_search = parse_bool(value, cfg.wallpaper_search);
+            } else if (key == "theme") {
+                if (value == "wallpaper" || value == "gtk")
+                    cfg.theme = value;
             } else if (key == "terminal") {
                 cfg.terminal = value;
             } else if (key == "shell_opacity") {
@@ -258,6 +261,11 @@ namespace fenriz::desktop {
         if (const char* home = std::getenv("HOME"); home && *home)
             return std::string(home) + "/.local/state/fenriz/wallpaper";
         return "";
+    }
+
+    std::string colors_path() {
+        const std::string state = wallpaper_state_path();
+        return state.empty() ? "" : std::filesystem::path(state).parent_path() / "colors.css";
     }
 
     std::string load_selected_wallpaper() {

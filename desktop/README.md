@@ -266,3 +266,5 @@ bind = SUPER, D, exec, fenriz-desktop launcher
 | `fenriz-desktop volume micmute` | toggles mute on the default source |
 
 A media-key command exits non-zero when it cannot do the job (no pipewire)
+
+The volume icons in `icons/` are from [Material Design Icons](https://pictogrammers.com/library/mdi/) (Apache-2.0).

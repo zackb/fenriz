@@ -37,8 +37,19 @@ wayland_client_protocol(PROTO_SRC
 wayland_client_protocol(PROTO_SRC
     ${WL_PROTO_DIR}/staging/ext-background-effect/ext-background-effect-v1.xml ext-background-effect-v1)
 
+# Material Color Utilities (Apache-2.0), vendored subset: quantize, score and HCT tonal palettes.
+set(MCU_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/third_party/mcu)
+file(GLOB_RECURSE MCU_SRC ${MCU_DIR}/cpp/*.cc)
+add_library(mcu STATIC ${MCU_SRC})
+target_include_directories(mcu SYSTEM PUBLIC ${MCU_DIR})
+target_compile_options(mcu PRIVATE -w)
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/icons/icons.cmake)
+
 add_executable(fenriz-desktop
+    ${FENRIZ_ICONS_SRC}
     src/main.cpp
+    src/palette.cpp
     src/config.cpp
     src/theme.cpp
     src/blur.cpp
@@ -67,7 +78,7 @@ add_executable(fenriz-desktop
     ${PROTO_SRC}
 )
 target_include_directories(fenriz-desktop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_BINARY_DIR})
-target_link_libraries(fenriz-desktop PRIVATE PkgConfig::GTK4 PkgConfig::LAYER_SHELL PkgConfig::GIO_UNIX PkgConfig::WAYLAND PkgConfig::POLKIT PkgConfig::WIREPLUMBER pam)
+target_link_libraries(fenriz-desktop PRIVATE PkgConfig::GTK4 PkgConfig::LAYER_SHELL PkgConfig::GIO_UNIX PkgConfig::WAYLAND PkgConfig::POLKIT PkgConfig::WIREPLUMBER pam mcu)
 
 include(GNUInstallDirs)
 install(TARGETS fenriz-desktop RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -157,6 +168,11 @@ target_include_directories(desktop_theme_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR
 target_link_libraries(desktop_theme_test PRIVATE PkgConfig::GTK4)
 target_compile_options(desktop_theme_test PRIVATE -UNDEBUG)
 
+add_executable(desktop_palette_test src/palette.cpp src/wallpaper.cpp src/theme.cpp src/config.cpp src/test_palette.cpp)
+target_include_directories(desktop_palette_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(desktop_palette_test PRIVATE PkgConfig::GTK4 mcu)
+target_compile_options(desktop_palette_test PRIVATE -UNDEBUG)
+
 set(CPACK_SET_DESTDIR ON)
 set(CPACK_PACKAGE_RELOCATABLE FALSE)
 set(CPACK_PACKAGE_NAME "fenriz-desktop")
@@ -197,3 +213,4 @@ add_test(NAME wallpaper COMMAND desktop_wallpaper_test)
 add_test(NAME screensaver COMMAND desktop_screensaver_test)
 add_test(NAME notify   COMMAND desktop_notify_test)
 add_test(NAME theme    COMMAND desktop_theme_test)
+add_test(NAME palette  COMMAND desktop_palette_test)

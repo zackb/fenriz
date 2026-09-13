@@ -140,6 +140,25 @@ namespace fenriz::desktop {
         return percent;
     }
 
+    int Brightness::percent() const {
+        for (const Device& dev : devices_) {
+            const int level = read_int(attr(dev.name, "brightness"));
+            if (level >= 0)
+                return level * 100 / dev.max;
+        }
+        return -1;
+    }
+
+    void Brightness::set_percent(int percent) {
+        adjusted_us_ = g_get_monotonic_time();
+        for (Device& dev : devices_) {
+            dev.level = dim_target(dev.max, percent);
+            dev.saved = -1;
+            dev.applied = -1;
+            write(dev, dev.level);
+        }
+    }
+
     void Brightness::restore() {
         if (!dimmed_)
             return;
