@@ -9,7 +9,7 @@
 
 namespace {
 
-    constexpr int PILL_HEIGHT = 30;  // MUST match .bar-capsule min-height in theme.cpp
+    constexpr int PILL_HEIGHT = 30;
     constexpr int PILL_PADDING = 16; // each side of the pill's content
     constexpr int HOVER_GROW_X = 8;  // total, split across both sides
     constexpr int HOVER_GROW_Y = 4;  // downwards only; the top edge stays on the bar

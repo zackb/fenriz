@@ -15,6 +15,8 @@ namespace fenriz::desktop::theme {
                    "@define-color fenriz_fill_popover alpha(@popover_bg_color," + a + ");" +
                    "@define-color fenriz_fill_base alpha(@theme_base_color," + a + ");" +
                    "@define-color fenriz_fill_window alpha(@window_bg_color," + a + ");" +
+                   "@define-color fenriz_fill_bar alpha(@window_bg_color," + std::to_string(cfg.shell_opacity * 0.6) +
+                   ");" +
                    ".lock-wallpaper { filter: blur(" + std::to_string(cfg.lock_blur) + "px); }";
         }
 
@@ -179,18 +181,17 @@ window.fenriz-shell { background: transparent; }
 
 window.fenriz-bar, window.fenriz-island { background: transparent; }
 
-/* MUST match PILL_HEIGHT in bar/src/island.cpp */
 .fenriz-bar .bar-capsule {
-  min-height: 30px;
-  padding: 3px;
+  min-height: 24px;
+  padding: 2px;
   border-radius: 999px;
-  background-color: @fenriz_fill_window;
+  background-color: @fenriz_fill_bar;
 }
-.fenriz-bar .bar-window { padding: 0 14px; }
+.fenriz-bar .bar-window { padding: 0 10px; }
 .fenriz-bar .bar-title { font-weight: 500; }
 .fenriz-bar .workspace {
-  min-width: 24px;
-  min-height: 24px;
+  min-width: 20px;
+  min-height: 20px;
   padding: 0;
   border: none;
   border-radius: 999px;
@@ -232,13 +233,13 @@ window.fenriz-bar, window.fenriz-island { background: transparent; }
 }
 
 .fenriz-bar button.bar-capsule {
-  padding: 0 12px;
+  padding: 0 10px;
   border: none;
   box-shadow: none;
   outline: none;
 }
-.fenriz-bar button.bar-capsule:hover { background-color: alpha(@fenriz_fill_window, 1); }
-.fenriz-bar .bar-glyph { padding: 0 10px; }
+.fenriz-bar button.bar-capsule:hover { background-color: @fenriz_fill_window; }
+.fenriz-bar .bar-glyph { padding: 0 8px; }
 
 .fenriz-island .island-title { font-weight: 600; }
 .fenriz-island .island-section {
