@@ -584,8 +584,8 @@ namespace fenriz::bar {
 
     void Island::update_clock() {
         GDateTime* now = g_date_time_new_now_local();
-        char* pill = g_date_time_format(now, "%H:%M  ·  %a %-d");
-        char* time = g_date_time_format(now, "%H:%M");
+        char* pill = g_date_time_format(now, "%a %-d  · %-l:%M");
+        char* time = g_date_time_format(now, "%-l:%M");
         char* date = g_date_time_format(now, "%A, %B %-d");
         gtk_label_set_text(GTK_LABEL(pill_label_), pill);
         gtk_label_set_text(GTK_LABEL(home_time_), time);
