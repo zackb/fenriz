@@ -200,6 +200,18 @@ namespace fenriz::bar {
         gtk_box_append(GTK_BOX(battery_box), battery_icon);
         gtk_box_append(GTK_BOX(battery_box), battery_label);
         GtkWidget* battery = page_button(monitor, "power", battery_box, "bar-glyph");
+        GtkGesture* battery_click = gtk_gesture_click_new();
+        gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(battery_click), GDK_BUTTON_SECONDARY);
+        g_signal_connect(battery_click,
+                         "released",
+                         G_CALLBACK(+[](GtkGestureClick*, int, double, double, gpointer data) {
+                             auto* self = static_cast<Bar*>(data);
+                             self->battery_percent_ = !self->battery_percent_;
+                             for (auto& [_, surface] : self->surfaces_)
+                                 self->update_battery(surface);
+                         }),
+                         this);
+        gtk_widget_add_controller(battery, GTK_EVENT_CONTROLLER(battery_click));
         gtk_box_append(GTK_BOX(right), battery);
 
         GtkWidget* shutdown =
@@ -401,6 +413,7 @@ namespace fenriz::bar {
         if (!b.present)
             return;
         gtk_image_set_from_icon_name(GTK_IMAGE(surface.battery_icon), b.icon.c_str());
+        gtk_widget_set_visible(surface.battery_label, battery_percent_);
         const std::string text = std::to_string(static_cast<int>(b.percent + 0.5)) + "%";
         gtk_label_set_text(GTK_LABEL(surface.battery_label), text.c_str());
     }

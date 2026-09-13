@@ -42,6 +42,15 @@ namespace {
         assert(charge_from_upower(0) == Charge::Unknown);
     }
 
+    void test_battery_icons() {
+        assert(battery_icon(70, Charge::Charging) == "battery-level-70-charging-symbolic");
+        assert(battery_icon(68, Charge::Discharging) == "battery-level-70-symbolic");
+        assert(battery_icon(4, Charge::Discharging) == "battery-level-0-symbolic");
+        assert(battery_icon(96, Charge::Unknown) == "battery-level-100-symbolic");
+        assert(battery_icon(100, Charge::Full) == "battery-level-100-charged-symbolic");
+        assert(battery_icon(80, Charge::Full) == "battery-level-80-plugged-in-symbolic");
+    }
+
     Battery reading(Charge charge, double percent) {
         Battery b;
         b.present = true;
@@ -81,6 +90,7 @@ int main() {
     test_memory();
     test_duration();
     test_charge_states();
+    test_battery_icons();
     test_battery_changes();
     return 0;
 }

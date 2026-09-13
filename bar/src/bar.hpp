@@ -97,6 +97,7 @@ namespace fenriz::bar {
         TrayUi& tray_;
         GtkApplication* app_ = nullptr;
         std::map<GdkMonitor*, Surface> surfaces_;
+        bool battery_percent_ = false; // right click on the battery toggles its percentage
         gulong monitors_handler_ = 0;
     };
 

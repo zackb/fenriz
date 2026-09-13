@@ -1,5 +1,7 @@
 #include "upower.hpp"
 
+#include <algorithm>
+
 namespace fenriz::bar {
 
     namespace {
@@ -44,6 +46,19 @@ namespace fenriz::bar {
             return std::to_string(minutes) + " min";
         const gint64 rest = minutes % 60;
         return std::to_string(minutes / 60) + " h" + (rest ? " " + std::to_string(rest) + " min" : "");
+    }
+
+    std::string battery_icon(double percent, Charge charge) {
+        const int level = std::clamp(static_cast<int>((percent + 5) / 10), 0, 10) * 10;
+        const std::string base = "battery-level-" + std::to_string(level);
+        switch (charge) {
+        case Charge::Charging:
+            return base + "-charging-symbolic";
+        case Charge::Full: // below 100 when a charge limit holds it on AC
+            return base + (level == 100 ? "-charged-symbolic" : "-plugged-in-symbolic");
+        default:
+            return base + "-symbolic";
+        }
     }
 
     BatteryChange battery_change(const Battery& before, const Battery& now, bool first) {
@@ -151,10 +166,7 @@ namespace fenriz::bar {
             b.seconds_left = g_variant_get_int64(v);
             g_variant_unref(v);
         }
-        if (GVariant* v = cached(battery_proxy_, "IconName", G_VARIANT_TYPE_STRING)) {
-            b.icon = g_variant_get_string(v, nullptr);
-            g_variant_unref(v);
-        }
+        b.icon = battery_icon(b.percent, b.charge);
         battery_ = b;
     }
 

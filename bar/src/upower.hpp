@@ -16,6 +16,9 @@ namespace fenriz::bar {
     // "2 h 13 min", "45 min", "" for unknown (0).
     std::string format_duration(gint64 seconds);
 
+    // A battery-level-N icon in 10% steps; UPower's own IconName only knows full/good/low/caution.
+    std::string battery_icon(double percent, Charge charge);
+
     struct Battery {
         bool present = false;
         double percent = 0;
