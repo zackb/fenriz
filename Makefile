@@ -44,6 +44,17 @@ package-desktop:
 run-desktop:
 	$(MAKE) -C desktop run
 
+# fenriz-bar
+.PHONY: bar install-bar run-bar
+bar:
+	$(MAKE) -C bar
+
+install-bar:
+	$(MAKE) -C bar install
+
+run-bar:
+	$(MAKE) -C bar run
+
 SOURCES = find ./src ./tests \( -name "*.cpp" -o -name "*.hpp" -o -name "*.c" -o -name "*.h" \) -print0
 
 .PHONY: fmt fmt-check

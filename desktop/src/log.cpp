@@ -69,17 +69,20 @@ namespace fenriz::desktop::log {
 
     } // namespace
 
-    std::string path() {
-        if (const char* p = g_getenv("FENRIZ_DESKTOP_LOG"); p && *p)
+    std::string path(const std::string& name) {
+        std::string env = name + "_log";
+        for (char& c : env)
+            c = c == '-' ? '_' : g_ascii_toupper(c);
+        if (const char* p = g_getenv(env.c_str()); p && *p)
             return p;
         const char* state = g_getenv("XDG_STATE_HOME");
         if (state && *state)
-            return std::string(state) + "/fenriz/fenriz-desktop.log";
-        return std::string(g_get_home_dir()) + "/.local/state/fenriz/fenriz-desktop.log";
+            return std::string(state) + "/fenriz/" + name + ".log";
+        return std::string(g_get_home_dir()) + "/.local/state/fenriz/" + name + ".log";
     }
 
-    void init() {
-        const std::string p = path();
+    void init(const std::string& name) {
+        const std::string p = path(name);
         char* dir = g_path_get_dirname(p.c_str());
         g_mkdir_with_parents(dir, 0700);
         g_free(dir);

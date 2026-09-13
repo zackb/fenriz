@@ -9,6 +9,21 @@ namespace fenriz::desktop {
 
     int volume_percent(double level);
 
+    // Icon theme names from the standard audio set, picked to match the level.
+    inline const char* volume_icon(int percent, bool muted) {
+        if (muted || percent == 0)
+            return "audio-volume-muted-symbolic";
+        if (percent < 34)
+            return "audio-volume-low-symbolic";
+        if (percent < 67)
+            return "audio-volume-medium-symbolic";
+        return "audio-volume-high-symbolic";
+    }
+
+    inline const char* mic_icon(bool muted) {
+        return muted ? "microphone-disabled-symbolic" : "audio-input-microphone-symbolic";
+    }
+
     // Default sink and source volume, through wireplumber mixer-api
     class Volume {
     public:

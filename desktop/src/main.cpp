@@ -35,12 +35,14 @@ namespace {
     using fenriz::desktop::Idle;
     using fenriz::desktop::Launcher;
     using fenriz::desktop::Lock;
+    using fenriz::desktop::mic_icon;
     using fenriz::desktop::Notifications;
     using fenriz::desktop::Osd;
     using fenriz::desktop::OutputPower;
     using fenriz::desktop::Polkit;
     using fenriz::desktop::Screensaver;
     using fenriz::desktop::Volume;
+    using fenriz::desktop::volume_icon;
     using fenriz::desktop::WallpaperPicker;
 
     struct Session {
@@ -61,15 +63,45 @@ namespace {
         std::unique_ptr<History> history;
     };
 
-    // Icons come from the theme's standard audio set, picked to match the level.
-    const char* volume_icon(int percent, bool muted) {
-        if (muted || percent == 0)
-            return "audio-volume-muted-symbolic";
-        if (percent < 34)
-            return "audio-volume-low-symbolic";
-        if (percent < 67)
-            return "audio-volume-medium-symbolic";
-        return "audio-volume-high-symbolic";
+    struct OsdRequest {
+        GtkApplication* app;
+        Session* session;
+        std::string icon;
+        int percent;
+    };
+
+    void on_bar_osd(GObject* source, GAsyncResult* res, gpointer data) {
+        std::unique_ptr<OsdRequest> req(static_cast<OsdRequest*>(data));
+        if (GVariant* reply = g_dbus_connection_call_finish(G_DBUS_CONNECTION(source), res, nullptr)) {
+            g_variant_unref(reply);
+            return;
+        }
+        if (req->session->osd)
+            req->session->osd->show(req->app, req->icon.c_str(), req->percent);
+    }
+
+    // fenriz-bar draws the level in its island when it is running; the pill is the fallback when it is not.
+    void show_osd(GtkApplication* app, Session* session, const char* icon, int percent) {
+        GDBusConnection* bus = g_application_get_dbus_connection(G_APPLICATION(app));
+        if (!bus) {
+            session->osd->show(app, icon, percent);
+            return;
+        }
+        GVariantBuilder params;
+        g_variant_builder_init(&params, G_VARIANT_TYPE("av"));
+        g_variant_builder_add(&params, "v", g_variant_new("(si)", icon, percent));
+        g_dbus_connection_call(bus,
+                               "dev.fenriz.Bar",
+                               "/dev/fenriz/Bar",
+                               "org.gtk.Actions",
+                               "Activate",
+                               g_variant_new("(sava{sv})", "osd", &params, nullptr),
+                               nullptr,
+                               G_DBUS_CALL_FLAGS_NO_AUTO_START,
+                               500,
+                               nullptr,
+                               on_bar_osd,
+                               new OsdRequest{app, session, icon, percent});
     }
 
     gboolean on_terminate(gpointer data) {
@@ -291,7 +323,7 @@ namespace {
                     g_warning("brightness: no backlight to adjust (external monitors need DDC/CI)");
                     status = 1;
                 } else {
-                    session->osd->show(app, "display-brightness-symbolic", percent);
+                    show_osd(app, session, "display-brightness-symbolic", percent);
                 }
             } else if (arg == "volume") {
                 if (i + 1 >= argc) {
@@ -313,12 +345,9 @@ namespace {
                     g_warning("volume: no audio to adjust");
                     status = 1;
                 } else if (mic) {
-                    session->osd->show(app,
-                                       session->volume->mic_muted() ? "microphone-disabled-symbolic"
-                                                                    : "audio-input-microphone-symbolic",
-                                       percent);
+                    show_osd(app, session, mic_icon(session->volume->mic_muted()), percent);
                 } else {
-                    session->osd->show(app, volume_icon(percent, session->volume->muted()), percent);
+                    show_osd(app, session, volume_icon(percent, session->volume->muted()), percent);
                 }
             } else {
                 g_application_command_line_printerr(cmdline, "unknown command: %s\n", argv[i]);
