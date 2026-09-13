@@ -26,6 +26,7 @@ Or from the fenriz root: `make bar`, `make run-bar`, `make install-bar`.
 # fenriz.conf
 exec-once = fenriz-bar
 bind = SUPER, C, exec, fenriz-bar open calendar
+bind = , XF86PowerOff, exec, fenriz-bar open power
 ```
 
 | command | effect |
