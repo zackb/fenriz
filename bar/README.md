@@ -87,8 +87,9 @@ running, the desktop hands the level to the island instead of showing its own OS
 
 ## Config and theme
 
-There is no separate config. The bar reads `fenriz-desktop.conf` (`shell_opacity`) and the
-accent colors from `fenriz.conf`, and uses the same GTK theme as fenriz-desktop.
+There is no separate config. The bar reads `fenriz-desktop.conf` (`shell_opacity`, `theme`).
+`theme` defaults to `wallpaper` which will use the matugen colors from the wallpaper. The other 
+option is `gtk` which will use the colors from the GTK theme.
 
 ## Requirements
 

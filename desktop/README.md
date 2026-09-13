@@ -10,7 +10,7 @@ with them and always will.
 
 ## Status
 
-This is early alpha. I use it as my daily driver and it works for me.
+This is beta. I use it as my daily driver and it works for me. I love it.
 
 ## Scope
 
@@ -23,6 +23,8 @@ Bar, system tray, dock, mpris/media controls, clipboard manager, network or blue
 Every one of those has a good existing tool that fenriz will always work with: 
 waybar, swaync, wlogout, lxqt-policykit. 
 This is not meant to be a worse version of [quickshell](https://quickshell.org), which is the right tool if you want to build a shell of your own.
+
+If you want an out-of-the-box bar, try [fenriz-bar](../bar/README.md).
 
 ## Portability
 

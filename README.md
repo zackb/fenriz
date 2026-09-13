@@ -124,7 +124,7 @@ Override with `FENRIZ_LOG=<path>`, raise the level with `FENRIZ_DEBUG=1`.
 If you are new to tilers, or just don't want to configure the typical wayland tools (quickshell, waybar, rofi, wlogout, hypridle, etc.), and just want a working minimal desktop, try the [fenriz-desktop](desktop). If you already have the stack you like, don't use it. It's for people that don't want to bring all their own tools.
 
 `fenriz-desktop` is a small desktop environment that compliments tilers well. It includes:
-- Wallpaper - with a switcher
+- Wallpaper - with a switcher with automatic matugen color
 - Lock screen  - with PAM integration for password, fingerprint, face recognition (gaze)
 - Launcher - launch apps with a menu (like rofi, spotlight)
 - Desktop context menu - right click on the desktop to get a menu with a bunch of stuff
@@ -132,6 +132,20 @@ If you are new to tilers, or just don't want to configure the typical wayland to
 - Notifications - the daemon apps expect, so notify-send and friends aren't swallowed, with a history panel for the ones you missed
 - OSD - On screen display for volume, brightness
 - Polkit Agent - for authentication prompts
+
+## Bar
+Likewise, if you want a bar that works out of the box, try [fenriz-bar](bar). It includes:
+- Dynamic Island - with all features accessible
+- Battery, AC status
+- Volume and brightness OSD
+- Network status (wifi, ethernet, vpn)
+- Bluetooth status and control
+- Tray for apps that use the StatusNotifier protocol (Discord, Slack, Zoom, etc.)
+- Power menu - shutdown, reboot, suspend, lock, logout
+- Clock and calendar
+- Workspace switcher
+- Media controls - play/pause, next/prev, volume, etc. (MPRIS)
+- Theme - respects the same colors from the wallpaper as [desktop](#desktop)
 
 ## Multi-monitor and clamshell
 
