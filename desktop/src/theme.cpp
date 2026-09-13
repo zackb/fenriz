@@ -51,20 +51,20 @@ namespace fenriz::desktop::theme {
 
 .lock-scrim { background-color: rgba(0,0,0,0.45); }
 .lock-clock { font-size: 76px; font-weight: 300; color: white; }
-.lock-date  { font-size: 18px; color: alpha(white, 0.85); }
+.lock-date  { font-size: 1.1em; color: alpha(white, 0.85); }
 /* The fill has to be opaque or the ring gradient bleeds through the interior. */
 .lock-entry { --fenriz-fill: #1e1e2e; color: white; }
 .lock-entry, .lock-entry text {
   caret-color: transparent;
   -gtk-secondary-caret-color: transparent;
 }
-.lock-error { font-size: 14px; color: #ff8080; }
+.lock-error { font-size: 0.9em; color: #ff8080; }
 .lock-error.status { color: alpha(white, 0.85); }
 
 .cleaning-scrim { background-color: rgba(0,0,0,0.88); }
-.cleaning-label { font-size: 26px; color: white; }
+.cleaning-label { font-size: 1.6em; color: white; }
 .cleaning-time  { font-size: 76px; font-weight: 300; color: white; font-feature-settings: "tnum"; }
-.cleaning-hint  { font-size: 16px; color: alpha(white, 0.75); }
+.cleaning-hint  { font-size: 1em; color: alpha(white, 0.75); }
 
 window.fenriz-osd { background: transparent; }
 
