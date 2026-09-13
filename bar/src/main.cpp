@@ -82,7 +82,7 @@ namespace {
         int percent = 0;
         g_variant_get(param, "(&si)", &icon, &percent);
         session->island->show_osd(icon, percent);
-        if (g_str_has_prefix(icon, "display-brightness"))
+        if (g_str_has_prefix(icon, "fenriz-brightness"))
             session->audio_ui->brightness_changed(percent);
     }
 

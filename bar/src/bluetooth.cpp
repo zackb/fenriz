@@ -80,7 +80,7 @@ namespace fenriz::bar {
     }
 
     std::string bt_device_icon(const std::string& icon) {
-        return icon.empty() ? "bluetooth-symbolic" : icon + "-symbolic";
+        return icon.empty() ? "fenriz-bluetooth-symbolic" : icon + "-symbolic";
     }
 
     struct Bluetooth::Op {

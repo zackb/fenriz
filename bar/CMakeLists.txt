@@ -37,7 +37,10 @@ wayland_client_protocol(PROTO_SRC
 wayland_client_protocol(PROTO_SRC
     ${WL_PROTO_DIR}/unstable/idle-inhibit/idle-inhibit-unstable-v1.xml idle-inhibit-unstable-v1)
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/../desktop/icons/icons.cmake)
+
 add_executable(fenriz-bar
+    ${FENRIZ_ICONS_SRC}
     src/main.cpp
     src/bar.cpp
     src/island.cpp
@@ -86,6 +89,7 @@ add_executable(bar_sysstat_test src/sysstat.cpp src/upower.cpp src/test_sysstat.
 target_include_directories(bar_sysstat_test PRIVATE src)
 target_link_libraries(bar_sysstat_test PRIVATE PkgConfig::GIO_UNIX)
 target_compile_options(bar_sysstat_test PRIVATE -UNDEBUG)
+target_compile_definitions(bar_sysstat_test PRIVATE FENRIZ_ICONS_DIR="${FENRIZ_ICONS_DIR}")
 
 add_executable(bar_bluetooth_test src/bluetooth.cpp src/test_bluetooth.cpp)
 target_include_directories(bar_bluetooth_test PRIVATE src)

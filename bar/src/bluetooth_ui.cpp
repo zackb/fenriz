@@ -14,7 +14,7 @@ namespace fenriz::bar {
         // The device's own icon if the theme has it, else a generic one.
         GIcon* device_icon(const BtDevice& d) {
             const std::string name = bt_device_icon(d.icon);
-            const char* names[] = {name.c_str(), "bluetooth-symbolic", nullptr};
+            const char* names[] = {name.c_str(), "fenriz-bluetooth-symbolic", nullptr};
             return g_themed_icon_new_from_names(const_cast<char**>(names), -1);
         }
 
@@ -51,7 +51,7 @@ namespace fenriz::bar {
         gtk_widget_add_css_class(tile_toggle_, "island-tile");
         gtk_widget_set_hexpand(tile_toggle_, TRUE);
         GtkWidget* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
-        tile_icon_ = gtk_image_new_from_icon_name("bluetooth-symbolic");
+        tile_icon_ = gtk_image_new_from_icon_name("fenriz-bluetooth-symbolic");
         gtk_image_set_pixel_size(GTK_IMAGE(tile_icon_), 20);
         tile_label_ = gtk_label_new("Bluetooth");
         gtk_widget_add_css_class(tile_label_, "island-tile-label");
@@ -156,9 +156,9 @@ namespace fenriz::bar {
         updating_ = false;
         gtk_label_set_text(GTK_LABEL(tile_label_), connected ? connected->name.c_str() : "Bluetooth");
         gtk_image_set_from_icon_name(GTK_IMAGE(tile_icon_),
-                                     !on         ? "bluetooth-disabled-symbolic"
-                                     : connected ? "bluetooth-active-symbolic"
-                                                 : "bluetooth-symbolic");
+                                     !on         ? "fenriz-bluetooth-off-symbolic"
+                                     : connected ? "fenriz-bluetooth-connect-symbolic"
+                                                 : "fenriz-bluetooth-symbolic");
 
         gtk_widget_set_visible(off_label_, !on);
         gtk_widget_set_visible(paired_section_, on && !paired.empty());

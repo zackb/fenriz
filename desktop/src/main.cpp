@@ -30,6 +30,7 @@ namespace {
 
     using fenriz::desktop::Background;
     using fenriz::desktop::Brightness;
+    using fenriz::desktop::brightness_icon;
     using fenriz::desktop::Cleaning;
     using fenriz::desktop::Config;
     using fenriz::desktop::History;
@@ -332,7 +333,7 @@ namespace {
                     g_warning("brightness: no backlight to adjust (external monitors need DDC/CI)");
                     status = 1;
                 } else {
-                    show_osd(app, session, "display-brightness-symbolic", percent);
+                    show_osd(app, session, brightness_icon(percent), percent);
                 }
             } else if (arg == "volume") {
                 if (i + 1 >= argc) {

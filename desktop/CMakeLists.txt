@@ -44,7 +44,10 @@ add_library(mcu STATIC ${MCU_SRC})
 target_include_directories(mcu SYSTEM PUBLIC ${MCU_DIR})
 target_compile_options(mcu PRIVATE -w)
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/icons/icons.cmake)
+
 add_executable(fenriz-desktop
+    ${FENRIZ_ICONS_SRC}
     src/main.cpp
     src/palette.cpp
     src/config.cpp

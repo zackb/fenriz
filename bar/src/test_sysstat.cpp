@@ -1,3 +1,5 @@
+#include <unistd.h>
+
 #include <cassert>
 
 #include "sysstat.hpp"
@@ -43,12 +45,20 @@ namespace {
     }
 
     void test_battery_icons() {
-        assert(battery_icon(70, Charge::Charging) == "battery-level-70-charging-symbolic");
-        assert(battery_icon(68, Charge::Discharging) == "battery-level-70-symbolic");
-        assert(battery_icon(4, Charge::Discharging) == "battery-level-0-symbolic");
-        assert(battery_icon(96, Charge::Unknown) == "battery-level-100-symbolic");
-        assert(battery_icon(100, Charge::Full) == "battery-level-100-charged-symbolic");
-        assert(battery_icon(80, Charge::Full) == "battery-level-80-plugged-in-symbolic");
+        assert(battery_icon(70, Charge::Charging) == "fenriz-battery-charging-70-symbolic");
+        assert(battery_icon(68, Charge::Discharging) == "fenriz-battery-70-symbolic");
+        assert(battery_icon(4, Charge::Discharging) == "fenriz-battery-outline-symbolic");
+        assert(battery_icon(2, Charge::Charging) == "fenriz-battery-charging-outline-symbolic");
+        assert(battery_icon(96, Charge::Unknown) == "fenriz-battery-symbolic");
+        assert(battery_icon(100, Charge::Full) == "fenriz-battery-charging-100-symbolic");
+        assert(battery_icon(80, Charge::Full) == "fenriz-battery-charging-80-symbolic");
+
+        // every name must have a bundled SVG, or GTK draws a missing-icon image
+        for (int percent = 0; percent <= 100; percent += 10)
+            for (Charge charge : {Charge::Discharging, Charge::Charging, Charge::Full}) {
+                const std::string svg = std::string(FENRIZ_ICONS_DIR) + "/" + battery_icon(percent, charge) + ".svg";
+                assert(access(svg.c_str(), R_OK) == 0);
+            }
     }
 
     Battery reading(Charge charge, double percent) {

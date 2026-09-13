@@ -50,15 +50,15 @@ namespace fenriz::bar {
 
     std::string battery_icon(double percent, Charge charge) {
         const int level = std::clamp(static_cast<int>((percent + 5) / 10), 0, 10) * 10;
-        const std::string base = "battery-level-" + std::to_string(level);
-        switch (charge) {
-        case Charge::Charging:
-            return base + "-charging-symbolic";
-        case Charge::Full: // below 100 when a charge limit holds it on AC
-            return base + (level == 100 ? "-charged-symbolic" : "-plugged-in-symbolic");
-        default:
-            return base + "-symbolic";
-        }
+        // Full is below 100 when a charge limit holds it on AC; MDI has no plugged-in glyph, so it shows as charging.
+        if (charge == Charge::Charging || charge == Charge::Full)
+            return level == 0 ? "fenriz-battery-charging-outline-symbolic"
+                              : "fenriz-battery-charging-" + std::to_string(level) + "-symbolic";
+        if (level == 0)
+            return "fenriz-battery-outline-symbolic";
+        if (level == 100)
+            return "fenriz-battery-symbolic";
+        return "fenriz-battery-" + std::to_string(level) + "-symbolic";
     }
 
     BatteryChange battery_change(const Battery& before, const Battery& now, bool first) {

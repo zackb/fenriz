@@ -61,11 +61,11 @@ namespace fenriz::bar {
     }
 
     const char* signal_icon(int strength) {
-        static constexpr const char* ICONS[] = {"network-wireless-signal-none-symbolic",
-                                                "network-wireless-signal-weak-symbolic",
-                                                "network-wireless-signal-ok-symbolic",
-                                                "network-wireless-signal-good-symbolic",
-                                                "network-wireless-signal-excellent-symbolic"};
+        static constexpr const char* ICONS[] = {"fenriz-wifi-strength-outline-symbolic",
+                                                "fenriz-wifi-strength-1-symbolic",
+                                                "fenriz-wifi-strength-2-symbolic",
+                                                "fenriz-wifi-strength-3-symbolic",
+                                                "fenriz-wifi-strength-4-symbolic"};
         return ICONS[signal_bars(strength)];
     }
 
@@ -248,16 +248,16 @@ namespace fenriz::bar {
 
     const char* Network::icon() const {
         if (wired_)
-            return "network-wired-symbolic";
+            return "fenriz-ethernet-symbolic";
         if (!enabled_)
-            return "network-wireless-disabled-symbolic";
+            return "fenriz-wifi-off-symbolic";
         for (const WifiNetwork& n : networks_) {
             if (n.active)
                 return signal_icon(n.strength);
             if (n.connecting)
-                return "network-wireless-acquiring-symbolic";
+                return "fenriz-wifi-sync-symbolic";
         }
-        return "network-wireless-offline-symbolic";
+        return "fenriz-wifi-strength-off-symbolic";
     }
 
     const WifiNetwork* Network::active() const {

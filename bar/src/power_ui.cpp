@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <initializer_list>
 
 namespace fenriz::bar {
 
@@ -12,10 +11,10 @@ namespace fenriz::bar {
 
         const char* profile_icon(const std::string& profile) {
             if (profile == "power-saver")
-                return "power-profile-power-saver-symbolic";
+                return "fenriz-leaf-symbolic";
             if (profile == "performance")
-                return "power-profile-performance-symbolic";
-            return "power-profile-balanced-symbolic";
+                return "fenriz-lightning-bolt-symbolic";
+            return "fenriz-scale-balance-symbolic";
         }
 
         const char* profile_label(const std::string& profile) {
@@ -26,19 +25,7 @@ namespace fenriz::bar {
             return "Balanced";
         }
 
-        // No standard name for "stay awake"; the first one the theme has wins, the last if none.
-        const char* themed(std::initializer_list<const char*> names) {
-            GtkIconTheme* theme = gtk_icon_theme_get_for_display(gdk_display_get_default());
-            for (const char* name : names)
-                if (gtk_icon_theme_has_icon(theme, name))
-                    return name;
-            return *(names.end() - 1);
-        }
-
-        const char* awake_icon(bool on) {
-            return on ? themed({"caffeine-cup-full-symbolic", "view-reveal-symbolic"})
-                      : themed({"caffeine-cup-empty-symbolic", "view-conceal-symbolic"});
-        }
+        const char* awake_icon(bool on) { return on ? "fenriz-eye-symbolic" : "fenriz-eye-off-symbolic"; }
 
         std::string battery_text(const Power::Battery& b) {
             std::string text = std::to_string(static_cast<int>(std::lround(b.percent))) + "%";
@@ -123,7 +110,7 @@ namespace fenriz::bar {
         gtk_widget_set_visible(battery_footer_, FALSE);
         island_.add_to_footer(battery_footer_);
 
-        GtkWidget* power_button = gtk_button_new_from_icon_name("system-shutdown-symbolic");
+        GtkWidget* power_button = gtk_button_new_from_icon_name("fenriz-power-symbolic");
         gtk_widget_add_css_class(power_button, "island-icon-button");
         g_signal_connect_swapped(
             power_button, "clicked", G_CALLBACK(+[](Island* i) { i->navigate("power"); }), &island_);
@@ -146,13 +133,13 @@ namespace fenriz::bar {
 
         actions_ = {
             {"Lock",
-             "system-lock-screen-symbolic",
+             "fenriz-lock-symbolic",
              nullptr,
              [](PowerUi&) {
                  logind("/org/freedesktop/login1/session/auto", "org.freedesktop.login1.Session", "Lock", nullptr);
              }},
             {"Sleep",
-             "weather-clear-night-symbolic",
+             "fenriz-sleep-symbolic",
              nullptr,
              [](PowerUi&) {
                  logind("/org/freedesktop/login1",
@@ -161,7 +148,7 @@ namespace fenriz::bar {
                         g_variant_new("(b)", TRUE));
              }},
             {"Log out",
-             "system-log-out-symbolic",
+             "fenriz-logout-symbolic",
              "Click again to log out",
              [](PowerUi& self) {
                  if (self.compositor_.connected())
@@ -173,14 +160,14 @@ namespace fenriz::bar {
                             nullptr);
              }},
             {"Restart",
-             "system-reboot-symbolic",
+             "fenriz-restart-symbolic",
              "Click again to restart",
              [](PowerUi&) {
                  logind(
                      "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "Reboot", g_variant_new("(b)", TRUE));
              }},
             {"Shut down",
-             "system-shutdown-symbolic",
+             "fenriz-power-symbolic",
              "Click again to shut down",
              [](PowerUi&) {
                  logind("/org/freedesktop/login1",

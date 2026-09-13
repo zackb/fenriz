@@ -55,7 +55,7 @@ namespace {
 
     void test_icon() {
         assert(bt_device_icon("audio-headphones") == "audio-headphones-symbolic");
-        assert(bt_device_icon("") == "bluetooth-symbolic");
+        assert(bt_device_icon("") == "fenriz-bluetooth-symbolic");
     }
 
 } // namespace

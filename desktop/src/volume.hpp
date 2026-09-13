@@ -9,19 +9,27 @@ namespace fenriz::desktop {
 
     int volume_percent(double level);
 
-    // Icon theme names from the standard audio set, picked to match the level.
+    // Material Design speaker icons bundled from desktop/icons, picked to match the level.
     inline const char* volume_icon(int percent, bool muted) {
         if (muted || percent == 0)
-            return "audio-volume-muted-symbolic";
+            return "fenriz-volume-mute-symbolic";
         if (percent < 34)
-            return "audio-volume-low-symbolic";
+            return "fenriz-volume-low-symbolic";
         if (percent < 67)
-            return "audio-volume-medium-symbolic";
-        return "audio-volume-high-symbolic";
+            return "fenriz-volume-medium-symbolic";
+        return "fenriz-volume-high-symbolic";
+    }
+
+    inline const char* brightness_icon(int percent) {
+        if (percent < 34)
+            return "fenriz-brightness-5-symbolic";
+        if (percent < 67)
+            return "fenriz-brightness-6-symbolic";
+        return "fenriz-brightness-7-symbolic";
     }
 
     inline const char* mic_icon(bool muted) {
-        return muted ? "microphone-disabled-symbolic" : "audio-input-microphone-symbolic";
+        return muted ? "fenriz-microphone-off-symbolic" : "fenriz-microphone-symbolic";
     }
 
     // Default sink and source volume, through wireplumber mixer-api

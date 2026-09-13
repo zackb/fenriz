@@ -39,7 +39,7 @@ namespace fenriz::bar {
         gtk_widget_add_css_class(tile_toggle_, "island-tile");
         gtk_widget_set_hexpand(tile_toggle_, TRUE);
         GtkWidget* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
-        tile_icon_ = gtk_image_new_from_icon_name("network-wireless-symbolic");
+        tile_icon_ = gtk_image_new_from_icon_name("fenriz-wifi-symbolic");
         gtk_image_set_pixel_size(GTK_IMAGE(tile_icon_), 20);
         tile_label_ = gtk_label_new("Wi-Fi");
         gtk_widget_add_css_class(tile_label_, "island-tile-label");
@@ -122,7 +122,7 @@ namespace fenriz::bar {
         net_.subscribe([this] { update(); });
         net_.on_connected([this](const std::string& ssid) { island_.show_event(net_.icon(), "Connected to " + ssid); });
         net_.on_error([this](const std::string& message, const std::string& ssid) {
-            island_.show_event("network-wireless-no-route-symbolic", message);
+            island_.show_event("fenriz-wifi-strength-alert-outline-symbolic", message);
             if (!ssid.empty())
                 expand(ssid); // ask again, in place
         });
@@ -146,7 +146,7 @@ namespace fenriz::bar {
         updating_ = false;
         gtk_label_set_text(GTK_LABEL(tile_label_), active ? active->ssid.c_str() : "Wi-Fi");
         gtk_image_set_from_icon_name(GTK_IMAGE(tile_icon_),
-                                     usable ? net_.icon() : "network-wireless-disabled-symbolic");
+                                     usable ? net_.icon() : "fenriz-wifi-off-symbolic");
 
         const char* message = !net_.running()    ? "NetworkManager is not running"
                               : !net_.has_wifi() ? "No Wi-Fi device"

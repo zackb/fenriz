@@ -44,7 +44,7 @@ namespace fenriz::bar {
         : island_(island), audio_(audio), brightness_(brightness) {
         // home: volume
         volume_row_ = row();
-        mute_ = icon_button("audio-volume-high-symbolic", "island-icon-button");
+        mute_ = icon_button("fenriz-volume-high-symbolic", "island-icon-button");
         g_signal_connect_swapped(
             mute_,
             "clicked",
@@ -63,7 +63,7 @@ namespace fenriz::bar {
 
         // home: brightness
         brightness_row_ = row();
-        GtkWidget* sun = gtk_image_new_from_icon_name("display-brightness-symbolic");
+        GtkWidget* sun = gtk_image_new_from_icon_name("fenriz-brightness-6-symbolic");
         gtk_widget_add_css_class(sun, "island-row-icon");
         brightness_scale_ = slider();
         gtk_range_set_range(GTK_RANGE(brightness_scale_), 1, 100); // 0 reads as a dead screen
@@ -87,7 +87,7 @@ namespace fenriz::bar {
         inputs_.list = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
         gtk_box_append(GTK_BOX(page), inputs_.list);
         GtkWidget* mic = row();
-        mic_mute_ = icon_button("audio-input-microphone-symbolic", "island-icon-button");
+        mic_mute_ = icon_button("fenriz-microphone-symbolic", "island-icon-button");
         g_signal_connect_swapped(
             mic_mute_,
             "clicked",

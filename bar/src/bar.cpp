@@ -166,7 +166,7 @@ namespace fenriz::bar {
         gtk_box_append(GTK_BOX(left), window_box);
 
         GtkWidget* media_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-        GtkWidget* media_icon = gtk_image_new_from_icon_name("media-playback-start-symbolic");
+        GtkWidget* media_icon = gtk_image_new_from_icon_name("fenriz-play-symbolic");
         GtkWidget* media_label = gtk_label_new(nullptr);
         gtk_label_set_ellipsize(GTK_LABEL(media_label), PANGO_ELLIPSIZE_END);
         gtk_box_append(GTK_BOX(media_box), media_icon);
@@ -190,7 +190,7 @@ namespace fenriz::bar {
         gtk_box_insert_child_after(GTK_BOX(right), tray_.create(), nullptr); // app icons lead the status glyphs
 
         GtkWidget* stats = page_button(
-            monitor, "system", gtk_image_new_from_icon_name("utilities-system-monitor-symbolic"), "bar-glyph");
+            monitor, "system", gtk_image_new_from_icon_name("fenriz-monitor-dashboard-symbolic"), "bar-glyph");
         gtk_box_append(GTK_BOX(right), stats);
 
         GtkWidget* battery_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
@@ -215,7 +215,7 @@ namespace fenriz::bar {
         gtk_box_append(GTK_BOX(right), battery);
 
         GtkWidget* shutdown =
-            page_button(monitor, "power", gtk_image_new_from_icon_name("system-shutdown-symbolic"), "bar-glyph");
+            page_button(monitor, "power", gtk_image_new_from_icon_name("fenriz-power-symbolic"), "bar-glyph");
         gtk_box_append(GTK_BOX(right), shutdown);
 
         gtk_window_set_child(window, row);
@@ -397,7 +397,7 @@ namespace fenriz::bar {
         const std::string text = p->track.artist.empty() ? p->track.title : p->track.artist + " – " + p->track.title;
         gtk_label_set_text(GTK_LABEL(surface.media_label), text.c_str());
         gtk_image_set_from_icon_name(GTK_IMAGE(surface.media_icon),
-                                     p->playing() ? "media-playback-start-symbolic" : "media-playback-pause-symbolic");
+                                     p->playing() ? "fenriz-play-symbolic" : "fenriz-pause-symbolic");
     }
 
     void Bar::update_volume(Surface& surface) {
@@ -423,9 +423,9 @@ namespace fenriz::bar {
         const bool connected = std::any_of(
             bluetooth_.devices().begin(), bluetooth_.devices().end(), [](const BtDevice& d) { return d.connected; });
         gtk_image_set_from_icon_name(GTK_IMAGE(gtk_button_get_child(GTK_BUTTON(surface.bluetooth))),
-                                     !bluetooth_.powered() ? "bluetooth-disabled-symbolic"
-                                     : connected           ? "bluetooth-active-symbolic"
-                                                           : "bluetooth-symbolic");
+                                     !bluetooth_.powered() ? "fenriz-bluetooth-off-symbolic"
+                                     : connected           ? "fenriz-bluetooth-connect-symbolic"
+                                                           : "fenriz-bluetooth-symbolic");
     }
 
     void Bar::update_network(Surface& surface) {

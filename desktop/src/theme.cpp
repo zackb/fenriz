@@ -452,6 +452,8 @@ window.fenriz-bar, window.fenriz-island { background: transparent; }
     } // namespace
 
     void install(const Config& cfg) {
+        gtk_icon_theme_add_resource_path(gtk_icon_theme_get_for_display(gdk_display_get_default()), "/dev/fenriz/icons");
+
         GtkCssProvider* fallback = gtk_css_provider_new();
         gtk_css_provider_load_from_string(fallback,
                                           "@define-color window_bg_color @theme_bg_color;"

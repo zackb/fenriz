@@ -133,9 +133,9 @@ namespace fenriz::bar {
     }
 
     MediaUi::Controls MediaUi::controls(const char* css_class) {
-        Controls c{gtk_button_new_from_icon_name("media-skip-backward-symbolic"),
-                   gtk_button_new_from_icon_name("media-playback-start-symbolic"),
-                   gtk_button_new_from_icon_name("media-skip-forward-symbolic")};
+        Controls c{gtk_button_new_from_icon_name("fenriz-skip-previous-symbolic"),
+                   gtk_button_new_from_icon_name("fenriz-play-symbolic"),
+                   gtk_button_new_from_icon_name("fenriz-skip-next-symbolic")};
         for (GtkWidget* w : {c.previous, c.play, c.next}) {
             gtk_widget_add_css_class(w, css_class);
             gtk_widget_set_valign(w, GTK_ALIGN_CENTER);
@@ -148,7 +148,7 @@ namespace fenriz::bar {
 
     void MediaUi::update_controls(const Controls& c, const Player& p) {
         gtk_button_set_icon_name(GTK_BUTTON(c.play),
-                                 p.playing() ? "media-playback-pause-symbolic" : "media-playback-start-symbolic");
+                                 p.playing() ? "fenriz-pause-symbolic" : "fenriz-play-symbolic");
         gtk_widget_set_sensitive(c.previous, p.can_previous);
         gtk_widget_set_sensitive(c.next, p.can_next);
     }
