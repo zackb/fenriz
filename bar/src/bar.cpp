@@ -174,6 +174,8 @@ namespace fenriz::bar {
         GtkWidget* media = page_button(monitor, "media", media_box, "bar-media");
         gtk_box_append(GTK_BOX(left), media);
 
+        gtk_box_append(GTK_BOX(right), tray_.create()); // app icons lead the status glyphs
+
         GtkWidget* volume = page_button(monitor, "audio", gtk_image_new(), "bar-glyph");
         GtkEventController* volume_scroll = gtk_event_controller_scroll_new(static_cast<GtkEventControllerScrollFlags>(
             GTK_EVENT_CONTROLLER_SCROLL_VERTICAL | GTK_EVENT_CONTROLLER_SCROLL_DISCRETE));
@@ -182,16 +184,14 @@ namespace fenriz::bar {
         gtk_box_append(GTK_BOX(right), volume);
 
         GtkWidget* bluetooth = page_button(monitor, "bluetooth", gtk_image_new(), "bar-glyph");
-        gtk_box_insert_child_after(GTK_BOX(right), bluetooth, nullptr); // leftmost of the glyphs
-
-        GtkWidget* network = page_button(monitor, "wifi", gtk_image_new(), "bar-glyph");
-        gtk_box_insert_child_after(GTK_BOX(right), network, nullptr);
-
-        gtk_box_insert_child_after(GTK_BOX(right), tray_.create(), nullptr); // app icons lead the status glyphs
+        gtk_box_append(GTK_BOX(right), bluetooth);
 
         GtkWidget* stats = page_button(
             monitor, "system", gtk_image_new_from_icon_name("fenriz-monitor-dashboard-symbolic"), "bar-glyph");
         gtk_box_append(GTK_BOX(right), stats);
+
+        GtkWidget* network = page_button(monitor, "wifi", gtk_image_new(), "bar-glyph");
+        gtk_box_append(GTK_BOX(right), network);
 
         GtkWidget* battery_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
         GtkWidget* battery_icon = gtk_image_new();
