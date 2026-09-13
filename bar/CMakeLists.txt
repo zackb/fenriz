@@ -128,3 +128,29 @@ add_test(NAME bluetooth  COMMAND bar_bluetooth_test)
 add_test(NAME network    COMMAND bar_network_test)
 add_test(NAME tray       COMMAND bar_tray_test)
 add_test(NAME share      COMMAND bar_share_test)
+
+set(CPACK_SET_DESTDIR ON)
+set(CPACK_PACKAGE_RELOCATABLE FALSE)
+set(CPACK_PACKAGE_NAME "fenriz-bar")
+set(CPACK_PACKAGE_VENDOR "zackb")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Status bar for the fenriz Wayland compositor")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_CONTACT "zack@bartel.com")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/../LICENSE")
+set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+# drop the -Linux suffix so the name matches the release tag
+set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}")
+
+# gtk4-layer-shell and wireplumber have no stable package name across Debian/Fedora
+# releases, so they are absent here. Arch is the supported path; deb/rpm are convenience.
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "zack@bartel.com")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libgtk-4-1, libglib2.0-0, libwayland-client0, libjson-glib-1.0-0, libnm0")
+set(CPACK_DEBIAN_PACKAGE_SECTION "x11")
+set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/zackb/fenriz")
+
+set(CPACK_RPM_PACKAGE_REQUIRES "gtk4, glib2, libwayland-client, json-glib, NetworkManager-libnm")
+set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+set(CPACK_RPM_PACKAGE_RELOCATABLE FALSE)
+
+set(CPACK_GENERATOR "TGZ;DEB;RPM")
+include(CPack)

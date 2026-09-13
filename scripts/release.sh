@@ -4,8 +4,8 @@
 # Usage: ./scripts/release.sh <version>
 # Example: ./scripts/release.sh 0.1.0
 #
-# Releases the compositor and fenriz-desktop together under one tag: six assets
-# (tar.gz + deb + rpm each) on one GitHub release, and four AUR packages.
+# Releases the compositor, fenriz-desktop and fenriz-bar together under one tag: nine
+# assets (tar.gz + deb + rpm each) on one GitHub release, and six AUR packages.
 
 set -e
 
@@ -20,6 +20,7 @@ TAG="v$VERSION"
 REPO_ROOT=$(git rev-parse --show-toplevel)
 ASSET_DIR="$REPO_ROOT/build/release"
 DESKTOP_ASSET_DIR="$REPO_ROOT/desktop/build/release"
+BAR_ASSET_DIR="$REPO_ROOT/bar/build/release"
 
 # Publishes packaging/aur/<name>/PKGBUILD into the sibling AUR checkout. pkgver and,
 # for -bin packages, sha256sums are the only fields rewritten; the rest is verbatim.
@@ -29,7 +30,7 @@ update_aur() {
     local dir="$REPO_ROOT/../$name"
 
     if [ ! -d "$dir" ]; then
-        echo "⚠️  Warning: $dir not found, run packaging/aur/bootstrap.sh. Skipping."
+        echo "⚠️  Warning: $dir not found, clone ssh://aur@aur.archlinux.org/$name.git next to fenriz. Skipping."
         return
     fi
 
@@ -75,10 +76,11 @@ fi
 
 echo "🚀 Starting release process for $TAG..."
 
-# 2. Update both project versions (this is what CPack names the tarballs after)
+# 2. Update all project versions (this is what CPack names the tarballs after)
 sed -i "s/project(fenriz VERSION [0-9.]*/project(fenriz VERSION $VERSION/" "$REPO_ROOT/CMakeLists.txt"
 sed -i "s/project(fenriz-desktop VERSION [0-9.]*/project(fenriz-desktop VERSION $VERSION/" "$REPO_ROOT/desktop/CMakeLists.txt"
-git add "$REPO_ROOT/CMakeLists.txt" "$REPO_ROOT/desktop/CMakeLists.txt"
+sed -i "s/project(fenriz-bar VERSION [0-9.]*/project(fenriz-bar VERSION $VERSION/" "$REPO_ROOT/bar/CMakeLists.txt"
+git add "$REPO_ROOT/CMakeLists.txt" "$REPO_ROOT/desktop/CMakeLists.txt" "$REPO_ROOT/bar/CMakeLists.txt"
 git commit -m "chore: bump version to $VERSION" || true
 
 # 3. Tag and Push
@@ -93,12 +95,14 @@ git push origin "$TAG"
 
 # 4. Build Packages
 echo "📦 Building packages..."
-rm -rf "$ASSET_DIR" "$DESKTOP_ASSET_DIR"
+rm -rf "$ASSET_DIR" "$DESKTOP_ASSET_DIR" "$BAR_ASSET_DIR"
 make package
 make package-desktop
+make package-bar
 
 TARBALL="$ASSET_DIR/fenriz-$VERSION.tar.gz"
 DESKTOP_TARBALL="$DESKTOP_ASSET_DIR/fenriz-desktop-$VERSION.tar.gz"
+BAR_TARBALL="$BAR_ASSET_DIR/fenriz-bar-$VERSION.tar.gz"
 
 # 5. Create GitHub Release
 echo "🌐 Creating GitHub Release..."
@@ -109,6 +113,9 @@ gh release create "$TAG" \
     "$DESKTOP_TARBALL" \
     "$(ls "$DESKTOP_ASSET_DIR"/fenriz-desktop-"$VERSION"*.deb | head -n 1)" \
     "$(ls "$DESKTOP_ASSET_DIR"/fenriz-desktop-"$VERSION"*.rpm | head -n 1)" \
+    "$BAR_TARBALL" \
+    "$(ls "$BAR_ASSET_DIR"/fenriz-bar-"$VERSION"*.deb | head -n 1)" \
+    "$(ls "$BAR_ASSET_DIR"/fenriz-bar-"$VERSION"*.rpm | head -n 1)" \
     --title "Release $TAG" --generate-notes
 
 # 6. Update AUR
@@ -117,5 +124,7 @@ update_aur fenriz-git "$VERSION"
 update_aur fenriz-bin "$VERSION" "$TARBALL"
 update_aur fenriz-desktop-git "$VERSION"
 update_aur fenriz-desktop-bin "$VERSION" "$DESKTOP_TARBALL"
+update_aur fenriz-bar-git "$VERSION"
+update_aur fenriz-bar-bin "$VERSION" "$BAR_TARBALL"
 
 echo "✅ Full release $VERSION successfully deployed to GitHub and AUR!"
