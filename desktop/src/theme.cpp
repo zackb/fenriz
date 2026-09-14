@@ -196,6 +196,7 @@ window.fenriz-bar, window.fenriz-island { background: transparent; }
   border: none;
   border-radius: 999px;
   box-shadow: none;
+  outline: none;
   background: transparent;
   font-weight: 600;
   font-feature-settings: "tnum";
