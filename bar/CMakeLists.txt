@@ -58,6 +58,8 @@ add_executable(fenriz-bar
     src/bluetooth_ui.cpp
     src/network.cpp
     src/wifi_ui.cpp
+    src/plugin.cpp
+    src/plugin_ui.cpp
     src/tray.cpp
     src/tray_ui.cpp
     src/dbusmenu.cpp
@@ -106,6 +108,11 @@ target_include_directories(bar_tray_test PRIVATE src)
 target_link_libraries(bar_tray_test PRIVATE PkgConfig::GTK4)
 target_compile_options(bar_tray_test PRIVATE -UNDEBUG)
 
+add_executable(bar_plugin_test src/plugin.cpp src/test_plugin.cpp)
+target_include_directories(bar_plugin_test PRIVATE src)
+target_link_libraries(bar_plugin_test PRIVATE PkgConfig::JSON_GLIB PkgConfig::GIO_UNIX)
+target_compile_options(bar_plugin_test PRIVATE -UNDEBUG)
+
 add_executable(bar_activity_test src/test_activity.cpp)
 target_include_directories(bar_activity_test PRIVATE src)
 target_compile_options(bar_activity_test PRIVATE -UNDEBUG)
@@ -128,6 +135,7 @@ add_test(NAME bluetooth  COMMAND bar_bluetooth_test)
 add_test(NAME network    COMMAND bar_network_test)
 add_test(NAME tray       COMMAND bar_tray_test)
 add_test(NAME share      COMMAND bar_share_test)
+add_test(NAME plugin     COMMAND bar_plugin_test)
 
 set(CPACK_SET_DESTDIR ON)
 set(CPACK_PACKAGE_RELOCATABLE FALSE)

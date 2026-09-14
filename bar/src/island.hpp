@@ -40,6 +40,7 @@ namespace fenriz::bar {
         void add_page(const std::string& name, GtkWidget* page);
         void add_to_home(GtkWidget* widget);
         bool has_page(const std::string& page) const;
+        GtkWidget* page(const std::string& page) const; // null when there is none
         void navigate(const std::string& page);
         bool expanded() const { return expanded_; }
         // Runs each time the island opens, so pages can refresh what nothing signals (brightness).
@@ -60,6 +61,8 @@ namespace fenriz::bar {
         void set_media_art(GdkPaintable* art);
         // A passing event (charger plugged in) for a few seconds.
         void show_event(const char* icon, const std::string& text);
+        // A plugin's passing notice: like an event, but yields to one. `image` wins over `icon` when set.
+        void show_notice(const char* icon, GdkPaintable* image, const std::string& text);
         // Stays under everything timed until dismissed or the island is opened (battery low).
         void show_alert(const char* icon, const std::string& text);
         void dismiss_alert();
@@ -67,6 +70,8 @@ namespace fenriz::bar {
         // Home page sections, in order: header, tiles, controls, footer.
         void add_tile(GtkWidget* tile);
         void add_to_footer(GtkWidget* widget);
+        // Pinned to the footer's right end, after everything added with add_to_footer.
+        void add_to_footer_end(GtkWidget* widget);
 
         // Widget vfuncs, forwarded from the GtkWidget subclass in island.cpp.
         void measure(GtkOrientation orientation, int* minimum, int* natural) const;
@@ -119,6 +124,7 @@ namespace fenriz::bar {
         GtkWidget* home_box_ = nullptr;
         GtkWidget* tiles_ = nullptr;
         GtkWidget* footer_ = nullptr;
+        GtkWidget* footer_end_ = nullptr;
         GtkWidget* stack_ = nullptr;
         GtkWidget* home_time_ = nullptr;
         GtkWidget* home_date_ = nullptr;

@@ -160,10 +160,10 @@ namespace fenriz::desktop {
                 cfg.notify_position = value;
             } else if (key == "notify_history") {
                 cfg.notify_history = parse_int(value, cfg.notify_history, 0, 500);
-            } else if (key == "menu") {
+            } else if (key == "menu" || key == "plugin") {
                 std::vector<std::string> f = split_n(value, ',', 2);
                 if (f.size() == 2 && !f[0].empty() && !f[1].empty())
-                    cfg.menu.emplace_back(f[0], f[1]);
+                    (key == "menu" ? cfg.menu : cfg.plugins).emplace_back(f[0], f[1]);
             }
         }
         return cfg;

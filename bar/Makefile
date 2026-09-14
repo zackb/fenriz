@@ -21,10 +21,19 @@ package: release
 
 test: debug
 	ctest --test-dir build/debug --output-on-failure
+	cd plugins && go test ./...
+
+plugins:
+	cd plugins && go build -o ../build/plugins/ ./cmd/...
+
+install-plugins: plugins
+	sudo install -Dm755 -t /usr/local/bin build/plugins/*
 
 .PHONY: fmt
 fmt:
 	@find ./src \( -name "*.cpp" -o -name "*.hpp" \) -print0 | xargs -0 -n 1 clang-format -i
+
+.PHONY: plugins install-plugins
 
 clean:
 	rm -rf build

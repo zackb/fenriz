@@ -92,6 +92,10 @@ namespace fenriz::bar {
         return gtk_stack_get_child_by_name(GTK_STACK(stack_), page.c_str()) != nullptr;
     }
 
+    GtkWidget* Island::page(const std::string& page) const {
+        return gtk_stack_get_child_by_name(GTK_STACK(stack_), page.c_str());
+    }
+
     void Island::add_page(const std::string& name, GtkWidget* page) {
         gtk_widget_add_css_class(page, "island-page");
         gtk_stack_add_named(GTK_STACK(stack_), page, name.c_str());
@@ -105,7 +109,12 @@ namespace fenriz::bar {
     }
 
     void Island::add_to_footer(GtkWidget* widget) {
-        gtk_box_append(GTK_BOX(footer_), widget);
+        gtk_box_insert_child_after(GTK_BOX(footer_), widget, gtk_widget_get_prev_sibling(footer_end_));
+        gtk_widget_set_visible(footer_, TRUE);
+    }
+
+    void Island::add_to_footer_end(GtkWidget* widget) {
+        gtk_box_append(GTK_BOX(footer_end_), widget);
         gtk_widget_set_visible(footer_, TRUE);
     }
 
@@ -252,6 +261,8 @@ namespace fenriz::bar {
         footer_ = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
         gtk_widget_add_css_class(footer_, "island-footer");
         gtk_widget_set_visible(footer_, FALSE);
+        footer_end_ = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+        gtk_box_append(GTK_BOX(footer_), footer_end_);
         gtk_box_append(GTK_BOX(home), footer_);
         gtk_stack_add_named(GTK_STACK(stack_), home, "home");
 
@@ -518,6 +529,17 @@ namespace fenriz::bar {
         gtk_image_set_from_icon_name(GTK_IMAGE(event_icon_), icon);
         gtk_label_set_text(GTK_LABEL(event_label_), text.c_str());
         set_activity({"event", ActivityQueue::EVENT}, 3000);
+    }
+
+    void Island::show_notice(const char* icon, GdkPaintable* image, const std::string& text) {
+        if (activities_.current_priority() > ActivityQueue::MEDIA)
+            return;
+        if (image)
+            gtk_image_set_from_paintable(GTK_IMAGE(event_icon_), image);
+        else
+            gtk_image_set_from_icon_name(GTK_IMAGE(event_icon_), icon);
+        gtk_label_set_text(GTK_LABEL(event_label_), text.c_str());
+        set_activity({"event", ActivityQueue::MEDIA}, 4000);
     }
 
     void Island::show_alert(const char* icon, const std::string& text) {

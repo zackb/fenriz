@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "audio.hpp"
 #include "audio_ui.hpp"
@@ -20,6 +21,7 @@
 #include "media_ui.hpp"
 #include "mpris.hpp"
 #include "network.hpp"
+#include "plugin_ui.hpp"
 #include "power_ui.hpp"
 #include "sysstat.hpp"
 #include "system_ui.hpp"
@@ -42,6 +44,7 @@ namespace {
     using fenriz::bar::MediaUi;
     using fenriz::bar::Mpris;
     using fenriz::bar::Network;
+    using fenriz::bar::PluginUi;
     using fenriz::bar::Power;
     using fenriz::bar::PowerUi;
     using fenriz::bar::SysStat;
@@ -72,6 +75,7 @@ namespace {
         std::unique_ptr<PowerUi> power_ui;
         std::unique_ptr<AudioUi> audio_ui;
         std::unique_ptr<MediaUi> media_ui;
+        std::vector<std::unique_ptr<PluginUi>> plugins;
         std::unique_ptr<Bar> bar;
     };
 
@@ -84,6 +88,42 @@ namespace {
         session->island->show_osd(icon, percent);
         if (g_str_has_prefix(icon, "fenriz-brightness"))
             session->audio_ui->brightness_changed(percent);
+    }
+
+    // Plugin poll timers freeze across suspend, so they are told when the machine wakes.
+    void on_prepare_for_sleep(
+        GDBusConnection*, const char*, const char*, const char*, const char*, GVariant* params, gpointer data) {
+        gboolean sleeping = FALSE;
+        g_variant_get(params, "(b)", &sleeping);
+        if (sleeping)
+            return;
+        for (auto& plugin : static_cast<Session*>(data)->plugins)
+            plugin->send(fenriz::bar::plugin_event("resume"));
+    }
+
+    void start_plugins(Session* session) {
+        for (const auto& [name, command] : session->cfg.plugins) {
+            if (name == "home") {
+                g_warning("plugin %s: home is not a plugin page", name.c_str());
+                continue;
+            }
+            session->plugins.push_back(std::make_unique<PluginUi>(*session->island, name, command));
+        }
+        if (session->plugins.empty())
+            return;
+        if (GDBusConnection* system = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, nullptr)) {
+            g_dbus_connection_signal_subscribe(system,
+                                               "org.freedesktop.login1",
+                                               "org.freedesktop.login1.Manager",
+                                               "PrepareForSleep",
+                                               "/org/freedesktop/login1",
+                                               nullptr,
+                                               G_DBUS_SIGNAL_FLAGS_NONE,
+                                               on_prepare_for_sleep,
+                                               session,
+                                               nullptr);
+            g_object_unref(system); // the bus singleton outlives this reference and keeps the subscription
+        }
     }
 
     gboolean on_terminate(gpointer data) {
@@ -128,6 +168,7 @@ namespace {
             std::make_unique<PowerUi>(*session->island, *session->power, *session->compositor, *session->inhibitor);
         session->audio_ui = std::make_unique<AudioUi>(*session->island, *session->audio, *session->brightness);
         session->media_ui = std::make_unique<MediaUi>(*session->island, *session->mpris);
+        start_plugins(session);
         session->bar = std::make_unique<Bar>(*session->compositor,
                                              *session->island,
                                              *session->audio,
@@ -216,6 +257,7 @@ int main(int argc, char** argv) {
     session.bar.reset(); // tear surfaces down while GTK is still alive
     session.tray_ui.reset();
     session.tray.reset();
+    session.plugins.clear();
     session.media_ui.reset();
     session.audio_ui.reset();
     session.power_ui.reset();
