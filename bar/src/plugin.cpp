@@ -88,6 +88,9 @@ namespace fenriz::bar {
 
         PluginPill parse_pill(JsonObject* o) { return {str(o, "text"), str(o, "icon"), str(o, "image")}; }
         PluginChip parse_chip(JsonObject* o) { return {str(o, "text"), str(o, "icon")}; }
+        PluginStatus parse_status(JsonObject* o) {
+            return {str(o, "text"), str(o, "icon"), str(o, "tooltip"), str(o, "action")};
+        }
         PluginTile parse_tile(JsonObject* o) { return {str(o, "title"), str(o, "icon"), str(o, "image")}; }
 
         PluginPage parse_page(JsonObject* o) {
@@ -135,6 +138,7 @@ namespace fenriz::bar {
             changed |= update(state.chip, o, "chip", parse_chip) ? SLOT_CHIP : 0;
             changed |= update(state.tile, o, "tile", parse_tile) ? SLOT_TILE : 0;
             changed |= update(state.page, o, "page", parse_page) ? SLOT_PAGE : 0;
+            changed |= update(state.status, o, "status", parse_status) ? SLOT_STATUS : 0;
         }
         g_object_unref(parser);
         return changed;
@@ -162,8 +166,11 @@ namespace fenriz::bar {
         return out;
     }
 
-    Plugin::Plugin(std::string name, std::string command)
-        : name_(std::move(name)), command_(std::move(command)), cancellable_(g_cancellable_new()) {}
+    Plugin::Plugin(std::string name, std::string command, std::string terminal)
+        : name_(std::move(name))
+        , command_(std::move(command))
+        , terminal_(std::move(terminal))
+        , cancellable_(g_cancellable_new()) {}
 
     Plugin::~Plugin() {
         if (restart_id_)
@@ -184,6 +191,8 @@ namespace fenriz::bar {
             G_SUBPROCESS_FLAGS_STDIN_PIPE | G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_PIPE));
         // GIO ignores SIGPIPE process-wide; a plugin's own pipelines (curl | jq) expect the default.
         g_subprocess_launcher_set_child_setup(launcher, [](gpointer) { signal(SIGPIPE, SIG_DFL); }, nullptr, nullptr);
+        if (!terminal_.empty())
+            g_subprocess_launcher_setenv(launcher, "TERMINAL", terminal_.c_str(), TRUE);
         GError* err = nullptr;
         process_ = g_subprocess_launcher_spawn(launcher, &err, "/bin/sh", "-c", command_.c_str(), nullptr);
         g_object_unref(launcher);
@@ -274,7 +283,8 @@ namespace fenriz::bar {
         g_clear_object(&process_);
 
         unsigned cleared = (state_.pill ? SLOT_PILL : 0) | (state_.chip ? SLOT_CHIP : 0) |
-                           (state_.tile ? SLOT_TILE : 0) | (state_.page ? SLOT_PAGE : 0);
+                           (state_.tile ? SLOT_TILE : 0) | (state_.page ? SLOT_PAGE : 0) |
+                           (state_.status ? SLOT_STATUS : 0);
         state_ = {};
         if (cleared && listener_)
             listener_(cleared);

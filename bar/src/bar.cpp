@@ -174,6 +174,8 @@ namespace fenriz::bar {
         GtkWidget* media = page_button(monitor, "media", media_box, "bar-media");
         gtk_box_append(GTK_BOX(left), media);
 
+        for (const auto& create : statuses_)
+            gtk_box_append(GTK_BOX(right), create());
         gtk_box_append(GTK_BOX(right), tray_.create()); // app icons lead the status glyphs
 
         GtkWidget* volume = page_button(monitor, "audio", gtk_image_new(), "bar-glyph");

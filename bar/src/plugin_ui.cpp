@@ -48,8 +48,8 @@ namespace fenriz::bar {
 
     } // namespace
 
-    PluginUi::PluginUi(Island& island, const std::string& name, const std::string& command)
-        : island_(island), plugin_(name, command) {
+    PluginUi::PluginUi(Island& island, const std::string& name, const std::string& command, const std::string& terminal)
+        : island_(island), plugin_(name, command, terminal) {
         tile_ = gtk_button_new();
         gtk_widget_add_css_class(tile_, "island-tile");
         GtkWidget* tile_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
@@ -127,6 +127,48 @@ namespace fenriz::bar {
         }
         if (slots & SLOT_PAGE)
             build_page();
+        if (slots & SLOT_STATUS)
+            for (GtkWidget* capsule : statuses_)
+                update_status(capsule);
+    }
+
+    GtkWidget* PluginUi::create_status() {
+        GtkWidget* capsule = gtk_button_new();
+        gtk_widget_add_css_class(capsule, "bar-capsule");
+        GtkWidget* box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+        gtk_box_append(GTK_BOX(box), gtk_image_new());
+        gtk_box_append(GTK_BOX(box), gtk_label_new(nullptr));
+        gtk_button_set_child(GTK_BUTTON(capsule), box);
+        g_signal_connect(capsule,
+                         "clicked",
+                         G_CALLBACK(+[](GtkButton*, gpointer data) {
+                             auto* self = static_cast<PluginUi*>(data);
+                             const auto& status = self->plugin_.state().status;
+                             if (status && !status->action.empty())
+                                 self->send(plugin_event("action", status->action));
+                         }),
+                         this);
+        g_signal_connect(
+            capsule,
+            "destroy",
+            G_CALLBACK(+[](GtkWidget* w, gpointer data) { std::erase(static_cast<PluginUi*>(data)->statuses_, w); }),
+            this);
+        statuses_.push_back(capsule);
+        update_status(capsule);
+        return capsule;
+    }
+
+    void PluginUi::update_status(GtkWidget* capsule) {
+        const auto& status = plugin_.state().status;
+        gtk_widget_set_visible(capsule, status.has_value());
+        if (!status)
+            return;
+        GtkWidget* icon = gtk_widget_get_first_child(gtk_button_get_child(GTK_BUTTON(capsule)));
+        GtkWidget* text = gtk_widget_get_next_sibling(icon);
+        set_image(icon, status->icon, {});
+        gtk_label_set_text(GTK_LABEL(text), status->text.c_str());
+        gtk_widget_set_visible(text, !status->text.empty());
+        gtk_widget_set_tooltip_text(capsule, status->tooltip.empty() ? nullptr : status->tooltip.c_str());
     }
 
     // Rebuilt whole on every change; plugins report every few minutes at most.

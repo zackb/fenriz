@@ -30,6 +30,14 @@ namespace fenriz::bar {
         bool operator==(const PluginTile&) const = default;
     };
 
+    struct PluginStatus { // a capsule on the bar, left of the tray
+        std::string text;
+        std::string icon;
+        std::string tooltip;
+        std::string action; // sent on click; empty is not clickable
+        bool operator==(const PluginStatus&) const = default;
+    };
+
     // One block of a page. `type` picks which fields matter:
     // row (image/icon, text, subtitle, trailing, action), text (text, style), table (columns, rows, highlight),
     // list (items: rows), level (value 0..1), button (text, action).
@@ -61,6 +69,7 @@ namespace fenriz::bar {
         std::optional<PluginChip> chip;
         std::optional<PluginTile> tile;
         std::optional<PluginPage> page;
+        std::optional<PluginStatus> status;
     };
 
     enum PluginSlot : unsigned {
@@ -68,6 +77,7 @@ namespace fenriz::bar {
         SLOT_CHIP = 2,
         SLOT_TILE = 4,
         SLOT_PAGE = 8,
+        SLOT_STATUS = 16,
     };
 
     // Applies one line of plugin output: each slot present replaces that slot, null clears it. Returns the slots
@@ -78,10 +88,10 @@ namespace fenriz::bar {
     std::string plugin_event(const char* event, const std::string& id = {});
 
     // A running plugin: `sh -c COMMAND` with NDJSON state on stdout, events on stdin and stderr in the log. Restarted
-    // with backoff when it exits, its state cleared meanwhile.
+    // with backoff when it exits, its state cleared meanwhile. A non-empty `terminal` is exported as $TERMINAL.
     class Plugin {
     public:
-        Plugin(std::string name, std::string command);
+        Plugin(std::string name, std::string command, std::string terminal = {});
         ~Plugin();
 
         Plugin(const Plugin&) = delete;
@@ -106,6 +116,7 @@ namespace fenriz::bar {
 
         std::string name_;
         std::string command_;
+        std::string terminal_;
         PluginState state_;
         std::function<void(unsigned)> listener_;
         GCancellable* cancellable_ = nullptr;

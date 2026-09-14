@@ -2,6 +2,7 @@
 
 #include <gtk/gtk.h>
 
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -35,6 +36,9 @@ namespace fenriz::bar {
 
         void start(GtkApplication* app);
         void update(const CompositorState& state);
+
+        // Adds a plugin's status capsule to every bar, left of the tray, in call order. Call before start().
+        void add_status(std::function<GtkWidget*()> create) { statuses_.push_back(std::move(create)); }
 
         // The monitor for a connector name, or null.
         GdkMonitor* monitor_for(const std::string& connector) const;
@@ -95,6 +99,7 @@ namespace fenriz::bar {
         Bluetooth& bluetooth_;
         Network& network_;
         TrayUi& tray_;
+        std::vector<std::function<GtkWidget*()>> statuses_;
         GtkApplication* app_ = nullptr;
         std::map<GdkMonitor*, Surface> surfaces_;
         bool battery_percent_ = false; // right click on the battery toggles its percentage

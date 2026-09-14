@@ -1,0 +1,70 @@
+#!/bin/bash
+# fenriz-bar plugin: a bar capsule with the number of pending updates (repo, AUR, Flatpak).
+# Clicking it runs the installer in $TERMINAL and recounts once that window closes.
+#
+#   fenriz-plugin-updates [-interval SECONDS] [-run COMMAND]
+#
+# Needs pacman-contrib (checkupdates), yay or paru, and flatpak are counted when present.
+
+interval=1800
+run=""
+while [ $# -gt 0 ]; do
+    case $1 in
+        -interval) interval=$2; shift 2 ;;
+        -run) run=$2; shift 2 ;;
+        *) echo "unknown option: $1" >&2; shift ;;
+    esac
+done
+
+helper=$(command -v yay || command -v paru)
+if [ -z "$run" ]; then
+    run="${helper:-sudo pacman} -Syu; echo; read -rp 'Press Enter to close'"
+fi
+
+# Waits for the bar to close stdin, so a misconfigured plugin is not restarted in a loop.
+idle() {
+    while read -r _; do :; done
+    exit 0
+}
+
+if ! command -v checkupdates >/dev/null; then
+    echo "checkupdates not found (pacman-contrib)" >&2
+    idle
+fi
+
+count() {
+    local repo aur=0 flatpak=0
+    repo=$(checkupdates 2>/dev/null | wc -l)
+    [ -n "$helper" ] && aur=$("$helper" -Qua 2>/dev/null | wc -l)
+    command -v flatpak >/dev/null && flatpak=$(flatpak remote-ls --updates 2>/dev/null | wc -l)
+    local total=$((repo + aur + flatpak))
+    if [ "$total" -eq 0 ]; then
+        echo '{"status": null}'
+        return
+    fi
+    printf '{"status": {"text": "%d", "icon": "software-update-available-symbolic", "tooltip": "Repo %d · AUR %d · Flatpak %d", "action": "install"}}\n' \
+        "$total" "$repo" "$aur" "$flatpak"
+}
+
+install() {
+    # stdout is the bar's protocol, so the terminal's chatter goes to the log
+    if [ -n "$TERMINAL" ]; then
+        $TERMINAL -e bash -c "$run" >&2
+    else
+        xdg-terminal-exec bash -c "$run" >&2
+    fi
+}
+
+count
+while :; do
+    if read -r -t "$interval" line; then
+        case $line in
+            *'"action"'*) install; count ;;
+            *'"resume"'*) count ;;
+        esac
+    elif [ $? -gt 128 ]; then # timed out
+        count
+    else # the bar closed stdin
+        exit 0
+    fi
+done

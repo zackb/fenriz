@@ -52,6 +52,15 @@ namespace {
         assert(s.page->blocks[3].value == 1.0);
     }
 
+    void test_status() {
+        PluginState s;
+        assert(apply_plugin_line(
+                   s, R"({"status": {"text": 37, "icon": "i", "tooltip": "Repo 30", "action": "install"}})") ==
+               fenriz::bar::SLOT_STATUS);
+        assert(s.status && s.status->text == "37" && s.status->tooltip == "Repo 30" && s.status->action == "install");
+        assert(apply_plugin_line(s, R"({"status": null})") == fenriz::bar::SLOT_STATUS && !s.status);
+    }
+
     void test_garbage_is_skipped() {
         PluginState s;
         bool valid = true;
@@ -73,15 +82,16 @@ namespace {
             g_main_context_iteration(nullptr, TRUE);
     }
 
-    // A real process: answers an event on stdin, and its state is cleared when it exits.
+    // A real process: sees $TERMINAL, answers an event on stdin, and its state is cleared when it exits.
     void test_process_round_trip() {
         Plugin p("echo",
-                 R"(read line; case "$line" in *open*) echo '{"chip": {"text": "opened"}}';; esac; )"
-                 R"(read line; echo '{"tile": {"title": "bye"}}')");
+                 R"(read line; case "$line" in *open*) echo "{\"chip\": {\"text\": \"opened $TERMINAL\"}}";; esac; )"
+                 R"(read line; echo '{"tile": {"title": "bye"}}')",
+                 "foot");
         bool opened = false, tiled = false, cleared = false;
         p.on_change([&](unsigned slots) {
             if ((slots & fenriz::bar::SLOT_CHIP) && p.state().chip)
-                opened = p.state().chip->text == "opened";
+                opened = p.state().chip->text == "opened foot";
             if ((slots & fenriz::bar::SLOT_TILE) && p.state().tile)
                 tiled = true;
             if (tiled && !p.state().tile && !p.state().chip)
@@ -102,6 +112,7 @@ int main() {
     test_slots_replace_and_clear();
     test_unchanged_is_not_a_change();
     test_page_blocks();
+    test_status();
     test_garbage_is_skipped();
     test_events_are_json();
     test_process_round_trip();

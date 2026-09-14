@@ -25,6 +25,7 @@ test: debug
 
 plugins:
 	cd plugins && go build -o ../build/plugins/ ./cmd/...
+	install -m755 plugins/scripts/* build/plugins/
 
 install-plugins: plugins
 	sudo install -Dm755 -t /usr/local/bin build/plugins/*

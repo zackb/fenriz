@@ -107,7 +107,8 @@ namespace {
                 g_warning("plugin %s: home is not a plugin page", name.c_str());
                 continue;
             }
-            session->plugins.push_back(std::make_unique<PluginUi>(*session->island, name, command));
+            session->plugins.push_back(
+                std::make_unique<PluginUi>(*session->island, name, command, session->cfg.terminal));
         }
         if (session->plugins.empty())
             return;
@@ -177,6 +178,8 @@ namespace {
                                              *session->bluetooth,
                                              *session->network,
                                              *session->tray_ui);
+        for (auto& plugin : session->plugins)
+            session->bar->add_status([p = plugin.get()] { return p->create_status(); });
         session->bar->start(app);
         session->compositor->start([session](const auto& state) { session->bar->update(state); });
         session->audio->start();
