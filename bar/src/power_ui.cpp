@@ -27,8 +27,12 @@ namespace fenriz::bar {
 
         const char* awake_icon(bool on) { return on ? "fenriz-eye-symbolic" : "fenriz-eye-off-symbolic"; }
 
+        std::string battery_text_short(const Power::Battery& b) {
+            return std::to_string(static_cast<int>(std::lround(b.percent))) + "%";
+        }
+
         std::string battery_text(const Power::Battery& b) {
-            std::string text = std::to_string(static_cast<int>(std::lround(b.percent))) + "%";
+            std::string text = battery_text_short(b);
             const std::string left = format_duration(b.seconds_left);
             if (b.charge == Charge::Full)
                 text += " · Full";
@@ -216,13 +220,14 @@ namespace fenriz::bar {
 
     void PowerUi::update() {
         const Power::Battery& b = power_.battery();
+        const std::string short_text = battery_text_short(b);
         const std::string text = battery_text(b);
 
         gtk_widget_set_visible(battery_footer_, b.present);
         gtk_widget_set_visible(battery_line_, b.present);
         if (b.present) {
             gtk_image_set_from_icon_name(GTK_IMAGE(battery_footer_icon_), b.icon.c_str());
-            gtk_label_set_text(GTK_LABEL(battery_footer_label_), text.c_str());
+            gtk_label_set_text(GTK_LABEL(battery_footer_label_), short_text.c_str());
             gtk_label_set_text(GTK_LABEL(battery_line_), text.c_str());
         }
         announce(last_, b);

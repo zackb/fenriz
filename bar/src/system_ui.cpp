@@ -96,8 +96,10 @@ namespace fenriz::bar {
         const std::string temp = s.celsius < 0 ? "–" : std::to_string(static_cast<int>(std::lround(s.celsius))) + "°";
 
         std::string readout = "CPU " + percent(s.cpu) + "  ·  RAM " + percent(s.memory);
+        /*
         if (s.celsius >= 0)
             readout += "  ·  " + temp;
+        */
         gtk_button_set_label(GTK_BUTTON(readout_), readout.c_str());
 
         gtk_label_set_text(GTK_LABEL(cpu_), percent(s.cpu).c_str());
