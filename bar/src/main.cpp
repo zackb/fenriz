@@ -77,6 +77,7 @@ namespace {
         std::unique_ptr<MediaUi> media_ui;
         std::vector<std::unique_ptr<PluginUi>> plugins;
         std::unique_ptr<Bar> bar;
+        std::string bt_sink_prefix;
     };
 
     // fenriz-desktop hands its media-key levels here: org.gtk.Actions.Activate("osd", [<("icon", percent)>]).
@@ -181,6 +182,28 @@ namespace {
         for (auto& plugin : session->plugins)
             session->bar->add_status([p = plugin.get()] { return p->create_status(); });
         session->bar->start(app);
+        // bluetooth device connected becomes the default sink once PipeWire creates its node.
+        session->bluetooth->on_connection([session](const fenriz::bar::BtDevice& d, bool connected) {
+            const auto dev = d.path.rfind("dev_");
+            if (dev == std::string::npos)
+                return;
+            const std::string prefix = "bluez_output." + d.path.substr(dev + 4) + ".";
+            if (connected)
+                session->bt_sink_prefix = prefix;
+            else if (session->bt_sink_prefix == prefix)
+                session->bt_sink_prefix.clear();
+        });
+        session->audio->subscribe([session] {
+            if (session->bt_sink_prefix.empty())
+                return;
+            for (const Audio::Device& dev : session->audio->sink().devices)
+                if (dev.name.starts_with(session->bt_sink_prefix)) {
+                    session->bt_sink_prefix.clear();
+                    if (dev.id != session->audio->sink().id)
+                        session->audio->set_default(false, dev.name);
+                    return;
+                }
+        });
         session->compositor->start([session](const auto& state) { session->bar->update(state); });
         session->audio->start();
         session->mpris->start(g_application_get_dbus_connection(G_APPLICATION(app)));
