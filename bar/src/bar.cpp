@@ -189,7 +189,7 @@ namespace fenriz::bar {
         gtk_box_append(GTK_BOX(right), bluetooth);
 
         GtkWidget* stats = page_button(
-            monitor, "system", gtk_image_new_from_icon_name("fenriz-monitor-dashboard-symbolic"), "bar-glyph");
+            monitor, "system", gtk_image_new_from_icon_name("fenriz-chip-symbolic"), "bar-glyph");
         gtk_box_append(GTK_BOX(right), stats);
 
         GtkWidget* network = page_button(monitor, "wifi", gtk_image_new(), "bar-glyph");
