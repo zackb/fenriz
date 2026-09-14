@@ -160,6 +160,16 @@ namespace {
         assert(c.menu[0].second == "grim -g \"$(slurp)\" - | satty -f -, x");
     }
 
+    void test_plugins_keep_order() {
+        Config c = Config::parse("plugin = mlb, fenriz-plugin-mlb -team SEA\n"
+                                 "plugin = weather, ~/bin/weather\n"
+                                 "plugin = broken\n");
+        assert(c.plugins.size() == 2);
+        assert(c.plugins[0].first == "mlb" && c.plugins[0].second == "fenriz-plugin-mlb -team SEA");
+        assert(c.plugins[1].first == "weather");
+        assert(c.menu.empty());
+    }
+
     void test_menu_garbage_is_ignored() {
         Config c = Config::parse("menu = NoCommand\n"
                                  "menu = , nolabel\n"
@@ -262,6 +272,7 @@ int main() {
     test_lock_on_suspend();
     test_launcher_toggle();
     test_menu_entries_keep_order();
+    test_plugins_keep_order();
     test_menu_command_with_comma();
     test_menu_garbage_is_ignored();
     test_hash_in_command_is_a_comment();

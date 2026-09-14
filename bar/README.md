@@ -7,8 +7,8 @@ island in the middle that opens into everything else. A companion to
 ## Status
 
 Early. Workspaces, window title, clock, calendar, volume and brightness, audio devices, media
-players, battery, power modes, keep-awake, session actions, system stats, bluetooth, wi-fi and the system
-tray work.
+players, battery, power modes, keep-awake, session actions, system stats, bluetooth, wi-fi, the system
+tray and plugins work.
 
 ## Build
 
@@ -84,6 +84,44 @@ brightness key, plugging in or unplugging the charger, a bluetooth device connec
 disconnecting, joining a wi-fi network, and toggling keep-awake. A low battery (10%)
 stays in the pill until you open the island or plug in. Volume and brightness keys are still fenriz-desktop's (`fenriz-desktop volume +5`); when the bar is
 running, the desktop hands the level to the island instead of showing its own OSD.
+
+## Plugins
+
+A plugin is any program that prints what to show as JSON lines. The bar draws it in its own style: a notice in the
+pill, a tile and a footer chip on Home, and a page named after the plugin (`fenriz-bar open NAME`).
+
+```ini
+# fenriz-desktop.conf
+plugin = mlb,      fenriz-plugin-mlb -team SEA
+plugin = weather,  fenriz-plugin-weather -lat 45.43 -lon -122.77 -fahrenheit
+plugin = calendar, fenriz-plugin-calendar
+```
+
+The three above live in `plugins/` (Go): `make -C bar plugins`, `make -C bar install-plugins`. MLB scores and
+standings, Open-Meteo weather, and upcoming events from a vdirsyncer store in `~/.local/share/calendars`.
+
+Each line replaces the slots it names; `null` clears one. Unchanged slots cost nothing, so a plugin may resend
+everything each poll.
+
+```json
+{"pill": {"text": "SEA 3 – 2 LAD", "image": "/path/logo.svg"}}
+{"chip": {"text": "61°", "icon": "weather-overcast-symbolic"}, "tile": {"title": "Mariners", "image": "…"}}
+{"page": {"title": "AL West", "blocks": [
+  {"type": "row", "icon": "…", "text": "Seattle", "subtitle": "…", "trailing": "7", "action": "open"},
+  {"type": "text", "text": "Final", "style": "dim | section | title"},
+  {"type": "table", "columns": ["", "W", "L"], "rows": [["SEA", 70, 80]], "highlight": 0},
+  {"type": "list", "items": [{"text": "Standup", "subtitle": "9:30am"}]},
+  {"type": "level", "value": 0.4},
+  {"type": "button", "text": "Refresh", "action": "refresh"}
+]}}
+```
+
+`image` is a file path and wins over `icon`. The chip and tile open the page once there is one.
+
+The bar writes events to the plugin's stdin: `{"event": "open"}` and `"close"` as the island opens and closes,
+`"resume"` after suspend, and `{"event": "action", "id": "refresh"}` for a clicked row or button. A plugin must exit
+when stdin closes. Its stderr goes to the bar's log; if it exits, its slots clear and it is restarted, backing off to
+a minute. A plugin named after a built-in page (`calendar`) adds its page to the bottom of that one.
 
 ## Config and theme
 

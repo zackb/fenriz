@@ -386,6 +386,8 @@ window.fenriz-bar, window.fenriz-island { background: transparent; }
 .fenriz-island .island-device-row:hover .island-forget { opacity: 0.7; }
 .fenriz-island .island-forget:hover { opacity: 1; background-color: alpha(@fenriz_error, 0.2); }
 .fenriz-island .island-dim { color: alpha(currentColor, 0.5); }
+.fenriz-island .island-cell { font-size: 0.9em; font-feature-settings: "tnum"; }
+.fenriz-island .island-highlight { color: @fenriz_accent; font-weight: 600; }
 .fenriz-island .island-password { padding: 2px 8px 8px 38px; }
 .fenriz-island .island-password .fenriz-field { --fenriz-fill: alpha(currentColor, 0.06); padding: 0 8px; min-height: 34px; }
 .fenriz-island .island-join {

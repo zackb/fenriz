@@ -125,3 +125,11 @@ idle_dpms = 900
 # menu = Files,      nautilus
 # menu = Browser,    firefox
 # menu = Screenshot, grim -g "$(slurp)" - | wl-copy
+
+# --- Bar plugins -----------------------------------------------------------
+# fenriz-bar runs each plugin and shows what it reports in the island:
+# plugin = NAME, COMMAND. NAME is its page (`fenriz-bar open NAME`).
+#
+# plugin = mlb,      fenriz-plugin-mlb -team SEA
+# plugin = weather,  fenriz-plugin-weather -lat 47.61 -lon -122.33 -fahrenheit
+# plugin = calendar, fenriz-plugin-calendar

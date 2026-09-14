@@ -108,13 +108,13 @@ namespace fenriz::bar {
         g_signal_connect_swapped(
             battery_footer_, "clicked", G_CALLBACK(+[](Island* i) { i->navigate("power"); }), &island_);
         gtk_widget_set_visible(battery_footer_, FALSE);
-        island_.add_to_footer(battery_footer_);
+        island_.add_to_footer_end(battery_footer_);
 
         GtkWidget* power_button = gtk_button_new_from_icon_name("fenriz-power-symbolic");
         gtk_widget_add_css_class(power_button, "island-icon-button");
         g_signal_connect_swapped(
             power_button, "clicked", G_CALLBACK(+[](Island* i) { i->navigate("power"); }), &island_);
-        island_.add_to_footer(power_button);
+        island_.add_to_footer_end(power_button);
 
         // the Power page
         GtkWidget* page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
