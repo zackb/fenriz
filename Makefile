@@ -20,6 +20,8 @@ reinstall: release
 	sudo cmake --install build/release
 	$(MAKE) -C desktop release
 	sudo $(MAKE) -C desktop install
+	$(MAKE) -C bar release
+	sudo $(MAKE) -C bar install
 
 package: release
 	cd build/release && cpack
