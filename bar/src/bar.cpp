@@ -194,6 +194,7 @@ namespace fenriz::bar {
         gtk_box_append(GTK_BOX(right), network);
 
         GtkWidget* battery_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+        gtk_widget_set_halign(battery_box, GTK_ALIGN_CENTER);
         GtkWidget* battery_icon = gtk_image_new();
         GtkWidget* battery_label = gtk_label_new(nullptr);
         gtk_widget_add_css_class(battery_label, "bar-battery");

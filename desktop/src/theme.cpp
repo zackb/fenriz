@@ -240,7 +240,8 @@ window.fenriz-bar, window.fenriz-island { background: transparent; }
   outline: none;
 }
 .fenriz-bar button.bar-capsule:hover { background-color: @fenriz_fill_window; }
-.fenriz-bar .bar-glyph { padding: 0 8px; }
+/* GtkButton gives an image child .image-button (min-width 24px); match it for box children like the battery */
+.fenriz-bar button.bar-glyph { padding: 0 4px; min-width: 24px; }
 
 .fenriz-island .island-title { font-weight: 600; }
 .fenriz-island .island-section {
