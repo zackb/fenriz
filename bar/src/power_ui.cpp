@@ -63,18 +63,6 @@ namespace fenriz::bar {
     PowerUi::PowerUi(Island& island, Power& power, Compositor& compositor, IdleInhibitor& inhibitor)
         : island_(island), power_(power), compositor_(compositor), inhibitor_(inhibitor) {
         // tiles
-        if (inhibitor_.available()) {
-            GtkWidget* image = nullptr;
-            awake_tile_ = tile(gtk_toggle_button_new(), nullptr, "Keep awake", &image, nullptr);
-            gtk_image_set_from_icon_name(GTK_IMAGE(image), awake_icon(true));
-            g_signal_connect(awake_tile_,
-                             "toggled",
-                             G_CALLBACK(+[](GtkToggleButton* b, gpointer data) {
-                                 static_cast<PowerUi*>(data)->inhibitor_.set(gtk_toggle_button_get_active(b));
-                             }),
-                             this);
-            island_.add_tile(awake_tile_);
-        }
         mode_tile_ = tile(gtk_button_new(), profile_icon("balanced"), "Balanced", &mode_icon_, &mode_label_);
         g_signal_connect_swapped(mode_tile_,
                                  "clicked",
@@ -91,7 +79,7 @@ namespace fenriz::bar {
         gtk_widget_set_visible(mode_tile_, FALSE);
         island_.add_tile(mode_tile_);
 
-        // footer, after the system readout: spacer, battery, power
+        // footer, after the system readout: spacer, keep-awake, battery, power
         GtkWidget* spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
         gtk_widget_set_hexpand(spacer, TRUE);
         island_.add_to_footer(spacer);
@@ -108,6 +96,22 @@ namespace fenriz::bar {
         g_signal_connect_swapped(
             battery_footer_, "clicked", G_CALLBACK(+[](Island* i) { i->navigate("power"); }), &island_);
         gtk_widget_set_visible(battery_footer_, FALSE);
+
+        if (inhibitor_.available()) {
+            awake_button_ = gtk_toggle_button_new();
+            gtk_button_set_icon_name(GTK_BUTTON(awake_button_), awake_icon(false));
+            gtk_widget_add_css_class(awake_button_, "island-icon-button");
+            gtk_widget_set_tooltip_text(awake_button_, "Keep awake");
+            g_signal_connect(awake_button_,
+                             "toggled",
+                             G_CALLBACK(+[](GtkToggleButton* b, gpointer data) {
+                                 const bool on = gtk_toggle_button_get_active(b);
+                                 static_cast<PowerUi*>(data)->inhibitor_.set(on);
+                                 gtk_button_set_icon_name(GTK_BUTTON(b), awake_icon(on));
+                             }),
+                             this);
+            island_.add_to_footer_end(awake_button_);
+        }
         island_.add_to_footer_end(battery_footer_);
 
         GtkWidget* power_button = gtk_button_new_from_icon_name("fenriz-power-symbolic");
@@ -197,9 +201,9 @@ namespace fenriz::bar {
     }
 
     bool PowerUi::toggle_awake() {
-        if (!awake_tile_)
+        if (!awake_button_)
             return false;
-        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(awake_tile_), !inhibitor_.active()); // "toggled" applies it
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(awake_button_), !inhibitor_.active()); // "toggled" applies it
         island_.show_event(awake_icon(inhibitor_.active()), inhibitor_.active() ? "Keeping awake" : "Idle as usual");
         return true;
     }

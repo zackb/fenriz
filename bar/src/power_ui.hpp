@@ -9,7 +9,7 @@
 
 namespace fenriz::bar {
 
-    // Battery, power modes, keep-awake, and the session actions: the Home tiles and footer, and the Power page.
+    // Battery, power modes, keep-awake, and the session actions: the Home tile and footer, and the Power page.
     class PowerUi {
     public:
         PowerUi(Island& island, Power& power, Compositor& compositor, IdleInhibitor& inhibitor);
@@ -18,7 +18,7 @@ namespace fenriz::bar {
         PowerUi(const PowerUi&) = delete;
         PowerUi& operator=(const PowerUi&) = delete;
 
-        // Flips keep-awake and the tile with it. False when the compositor cannot inhibit idle.
+        // Flips keep-awake and its footer button with it. False when the compositor cannot inhibit idle.
         bool toggle_awake();
 
     private:
@@ -43,7 +43,7 @@ namespace fenriz::bar {
         Compositor& compositor_;
         IdleInhibitor& inhibitor_;
 
-        GtkWidget* awake_tile_ = nullptr;
+        GtkWidget* awake_button_ = nullptr;
         GtkWidget* mode_tile_ = nullptr;
         GtkWidget* mode_icon_ = nullptr;
         GtkWidget* mode_label_ = nullptr;

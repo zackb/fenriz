@@ -266,6 +266,7 @@ window.fenriz-bar, window.fenriz-island { background: transparent; }
 .fenriz-island .island-flat:hover,
 .fenriz-island .island-player:hover { background-color: alpha(currentColor, 0.08); }
 .fenriz-island .island-player:checked { background-color: alpha(currentColor, 0.14); }
+.fenriz-island .island-icon-button:checked { color: @fenriz_accent; }
 .fenriz-island .island-row-icon { min-width: 44px; } /* a 32px icon button plus its padding */
 
 .fenriz-island scale.island-slider trough { min-height: 6px; border-radius: 3px; background-color: alpha(currentColor, 0.15); }

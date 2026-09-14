@@ -40,8 +40,8 @@ Escape or clicking anywhere else closes it. Backspace goes back to `home`.
 
 ## Island
 
-Click the clock for home: wi-fi, bluetooth, keep-awake and power mode tiles, volume and brightness sliders, whatever
-is playing, and a footer with CPU, memory, temperature and battery. The now-playing chip on the
+Click the clock for home: wi-fi, bluetooth and power mode tiles, volume and brightness sliders, whatever
+is playing, and a footer with CPU, memory, temperature, a keep-awake eye and battery. The now-playing chip on the
 left opens `media`. On the right, the speaker opens `audio` (scroll it to change the volume), the
 monitor opens `system`, the network icon opens `wifi`, the bluetooth icon opens `bluetooth`, and the battery and power button open `power`: power mode, Lock, Sleep,
 Log out, Restart and Shut down. The last three ask for a second click.
