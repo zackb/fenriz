@@ -6,6 +6,7 @@
 #include <algorithm>
 
 #include "blur.hpp"
+#include "calc.hpp"
 #include "spawn.hpp"
 
 namespace fenriz::desktop {
@@ -19,6 +20,27 @@ namespace fenriz::desktop {
         constexpr size_t MAX_ROWS = 20;
 
         std::string str_or_empty(const char* s) { return s ? std::string(s) : std::string(); }
+
+        GtkWidget* make_row(GtkWidget* icon, const char* text) {
+            GtkWidget* row = gtk_list_box_row_new();
+            GtkWidget* box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+            gtk_widget_set_margin_start(box, 10);
+            gtk_widget_set_margin_end(box, 10);
+            gtk_widget_set_margin_top(box, 6);
+            gtk_widget_set_margin_bottom(box, 6);
+
+            gtk_image_set_pixel_size(GTK_IMAGE(icon), 28);
+            gtk_box_append(GTK_BOX(box), icon);
+
+            GtkWidget* label = gtk_label_new(text);
+            gtk_label_set_xalign(GTK_LABEL(label), 0.0);
+            gtk_widget_set_hexpand(label, TRUE);
+            gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_END);
+            gtk_box_append(GTK_BOX(box), label);
+
+            gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), box);
+            return row;
+        }
     } // namespace
 
     Launcher::Launcher(const Config& cfg) : cfg_(cfg) { usage_.load(); }
@@ -78,10 +100,14 @@ namespace fenriz::desktop {
         const std::string query = raw ? raw : "";
         const int64_t now = now_ms();
 
+        // "=" is an explicit calculator query, so apps are not searched.
+        calc_result_ = calc::detect(query);
+        const bool calc_only = !query.empty() && query.front() == '=';
+
         // An empty query scores everything alike, leaving frecency to order the whole list.
         std::vector<int> scores(entries_.size(), 0);
         shown_.clear();
-        for (size_t i = 0; i < entries_.size(); i++) {
+        for (size_t i = 0; i < entries_.size() && !calc_only; i++) {
             if (!query.empty()) {
                 const int s = match_score(entries_[i].fields, query);
                 if (s < 0)
@@ -106,25 +132,15 @@ namespace fenriz::desktop {
             shown_.resize(cap);
 
         gtk_list_box_remove_all(GTK_LIST_BOX(list_));
+        if (calc_result_) {
+            const std::string text = "= " + *calc_result_;
+            GtkWidget* row = make_row(gtk_image_new_from_icon_name("accessories-calculator-symbolic"), text.c_str());
+            g_object_set_data(G_OBJECT(row), "calc", GINT_TO_POINTER(1));
+            gtk_list_box_append(GTK_LIST_BOX(list_), row);
+        }
         for (int idx : shown_) {
-            GtkWidget* row = gtk_list_box_row_new();
-            GtkWidget* box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-            gtk_widget_set_margin_start(box, 10);
-            gtk_widget_set_margin_end(box, 10);
-            gtk_widget_set_margin_top(box, 6);
-            gtk_widget_set_margin_bottom(box, 6);
-
-            GtkWidget* icon = gtk_image_new_from_gicon(g_app_info_get_icon(entries_[idx].info));
-            gtk_image_set_pixel_size(GTK_IMAGE(icon), 28);
-            gtk_box_append(GTK_BOX(box), icon);
-
-            GtkWidget* label = gtk_label_new(entries_[idx].fields.name.c_str());
-            gtk_label_set_xalign(GTK_LABEL(label), 0.0);
-            gtk_widget_set_hexpand(label, TRUE);
-            gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_END);
-            gtk_box_append(GTK_BOX(box), label);
-
-            gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), box);
+            GtkWidget* row = make_row(gtk_image_new_from_gicon(g_app_info_get_icon(entries_[idx].info)),
+                                      entries_[idx].fields.name.c_str());
             g_object_set_data(G_OBJECT(row), "entry-index", GINT_TO_POINTER(idx));
             gtk_list_box_append(GTK_LIST_BOX(list_), row);
         }
@@ -136,6 +152,12 @@ namespace fenriz::desktop {
     void Launcher::activate_row(GtkListBoxRow* row) {
         if (!row)
             return;
+        if (g_object_get_data(G_OBJECT(row), "calc")) {
+            if (calc_result_)
+                gdk_clipboard_set_text(gtk_widget_get_clipboard(GTK_WIDGET(window_)), calc_result_->c_str());
+            close();
+            return;
+        }
         const int idx = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(row), "entry-index"));
         if (idx < 0 || idx >= static_cast<int>(entries_.size()))
             return;
@@ -151,7 +173,7 @@ namespace fenriz::desktop {
         GtkListBox* box = GTK_LIST_BOX(list_);
         GtkListBoxRow* current = gtk_list_box_get_selected_row(box);
         int index = current ? gtk_list_box_row_get_index(current) : -1;
-        const int count = static_cast<int>(shown_.size());
+        const int count = static_cast<int>(shown_.size()) + (calc_result_ ? 1 : 0);
         if (count == 0)
             return;
         index = std::clamp(index + delta, 0, count - 1);

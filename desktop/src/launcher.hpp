@@ -2,6 +2,7 @@
 
 #include <gtk/gtk.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -12,6 +13,7 @@
 namespace fenriz::desktop {
 
     // Application launcher: desktop entries, ranked by match quality then frecency.
+    // plus a calculator... because.
     class Launcher {
     public:
         explicit Launcher(const Config& cfg);
@@ -48,6 +50,7 @@ namespace fenriz::desktop {
         std::vector<Entry> entries_;
         bool entries_stale_ = true;
         std::vector<int> shown_;
+        std::optional<std::string> calc_result_; // shown as the first row when set
         GAppInfoMonitor* app_monitor_ = nullptr; // owned
         GtkWindow* window_ = nullptr;
         GtkWidget* search_ = nullptr;

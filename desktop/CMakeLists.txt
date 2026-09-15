@@ -67,6 +67,7 @@ add_executable(fenriz-desktop
     src/launcher.cpp
     src/frecency.cpp
     src/search.cpp
+    src/calc.cpp
     src/spawn.cpp
     src/auth.cpp
     src/lock.cpp
@@ -121,6 +122,10 @@ add_executable(desktop_search_test src/search.cpp src/test_search.cpp)
 target_include_directories(desktop_search_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(desktop_search_test PRIVATE PkgConfig::GIO_UNIX)
 target_compile_options(desktop_search_test PRIVATE -UNDEBUG)
+
+add_executable(desktop_calc_test src/calc.cpp src/test_calc.cpp)
+target_include_directories(desktop_calc_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_options(desktop_calc_test PRIVATE -UNDEBUG)
 
 add_executable(desktop_auth_test src/auth.cpp src/test_auth.cpp)
 target_include_directories(desktop_auth_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -206,6 +211,7 @@ add_test(NAME config   COMMAND desktop_config_test)
 add_test(NAME menu     COMMAND desktop_menu_test)
 add_test(NAME frecency COMMAND desktop_frecency_test)
 add_test(NAME search   COMMAND desktop_search_test)
+add_test(NAME calc     COMMAND desktop_calc_test)
 add_test(NAME auth     COMMAND desktop_auth_test)
 add_test(NAME brightness COMMAND desktop_brightness_test)
 add_test(NAME volume   COMMAND desktop_volume_test)
