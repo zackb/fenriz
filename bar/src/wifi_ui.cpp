@@ -145,8 +145,7 @@ namespace fenriz::bar {
         gtk_widget_set_sensitive(power_, usable);
         updating_ = false;
         gtk_label_set_text(GTK_LABEL(tile_label_), active ? active->ssid.c_str() : "Wi-Fi");
-        gtk_image_set_from_icon_name(GTK_IMAGE(tile_icon_),
-                                     usable ? net_.icon() : "fenriz-wifi-off-symbolic");
+        gtk_image_set_from_icon_name(GTK_IMAGE(tile_icon_), usable ? net_.icon() : "fenriz-wifi-off-symbolic");
 
         const char* message = !net_.running()    ? "NetworkManager is not running"
                               : !net_.has_wifi() ? "No Wi-Fi device"
@@ -168,6 +167,7 @@ namespace fenriz::bar {
             gtk_box_remove(GTK_BOX(list_), child);
         for (const WifiNetwork& n : shown_)
             gtk_box_append(GTK_BOX(list_), row(n));
+        gtk_box_append(GTK_BOX(list_), hidden_row());
         if (entry_)
             gtk_widget_grab_focus(entry_); // only once it is in the window
     }
@@ -244,40 +244,104 @@ namespace fenriz::bar {
         }
         gtk_box_append(GTK_BOX(outer), line);
 
-        if (n.ssid == expanded_) {
-            GtkWidget* ask = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+        if (n.ssid == expanded_)
+            gtk_box_append(GTK_BOX(outer), password_line());
+        return outer;
+    }
+
+    GtkWidget* WifiUi::password_line() {
+        GtkWidget* ask = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+        gtk_widget_add_css_class(ask, "island-password");
+        entry_ = gtk_password_entry_new();
+        gtk_password_entry_set_show_peek_icon(GTK_PASSWORD_ENTRY(entry_), TRUE);
+        gtk_widget_set_hexpand(entry_, TRUE);
+        gtk_widget_add_css_class(entry_, "fenriz-field");
+        gtk_editable_set_text(GTK_EDITABLE(entry_), password_.c_str());
+        g_signal_connect_swapped(entry_, "activate", G_CALLBACK(+[](WifiUi* self) { self->submit(); }), this);
+        g_signal_connect(entry_,
+                         "changed",
+                         G_CALLBACK(+[](GtkEditable* e, gpointer data) {
+                             static_cast<WifiUi*>(data)->password_ = gtk_editable_get_text(e);
+                         }),
+                         this);
+        GtkWidget* join = gtk_button_new_with_label("Connect");
+        gtk_widget_add_css_class(join, "island-join");
+        g_signal_connect_swapped(join, "clicked", G_CALLBACK(+[](WifiUi* self) { self->submit(); }), this);
+        gtk_box_append(GTK_BOX(ask), entry_);
+        gtk_box_append(GTK_BOX(ask), join);
+        return ask;
+    }
+
+    // A hidden network beacons no SSID, so it is never in the list and has to be typed.
+    GtkWidget* WifiUi::hidden_row() {
+        GtkWidget* outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+        gtk_widget_add_css_class(outer, "island-device-row");
+
+        GtkWidget* button = gtk_button_new();
+        gtk_widget_add_css_class(button, "island-device-button");
+        gtk_widget_set_hexpand(button, TRUE);
+        GtkWidget* content = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+        gtk_box_append(GTK_BOX(content), gtk_image_new_from_icon_name("list-add-symbolic"));
+        GtkWidget* name = gtk_label_new("Join a hidden network");
+        gtk_label_set_xalign(GTK_LABEL(name), 0);
+        gtk_widget_set_hexpand(name, TRUE);
+        gtk_box_append(GTK_BOX(content), name);
+        gtk_button_set_child(GTK_BUTTON(button), content);
+        g_signal_connect_swapped(
+            button, "clicked", G_CALLBACK(+[](WifiUi* self) { self->expand_hidden(!self->hidden_open_); }), this);
+        gtk_box_append(GTK_BOX(outer), button);
+
+        if (hidden_open_) {
+            GtkWidget* ask = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
             gtk_widget_add_css_class(ask, "island-password");
-            entry_ = gtk_password_entry_new();
-            gtk_password_entry_set_show_peek_icon(GTK_PASSWORD_ENTRY(entry_), TRUE);
-            gtk_widget_set_hexpand(entry_, TRUE);
-            gtk_widget_add_css_class(entry_, "fenriz-field");
-            gtk_editable_set_text(GTK_EDITABLE(entry_), password_.c_str());
-            g_signal_connect_swapped(entry_, "activate", G_CALLBACK(+[](WifiUi* self) { self->submit(); }), this);
-            g_signal_connect(entry_,
+            GtkWidget* ssid = gtk_entry_new();
+            gtk_entry_set_placeholder_text(GTK_ENTRY(ssid), "Network name");
+            gtk_widget_add_css_class(ssid, "fenriz-field");
+            gtk_editable_set_text(GTK_EDITABLE(ssid), hidden_ssid_.c_str());
+            g_signal_connect_swapped(ssid, "activate", G_CALLBACK(+[](WifiUi* self) { self->submit(); }), this);
+            g_signal_connect(ssid,
                              "changed",
                              G_CALLBACK(+[](GtkEditable* e, gpointer data) {
-                                 static_cast<WifiUi*>(data)->password_ = gtk_editable_get_text(e);
+                                 static_cast<WifiUi*>(data)->hidden_ssid_ = gtk_editable_get_text(e);
                              }),
                              this);
-            GtkWidget* join = gtk_button_new_with_label("Connect");
-            gtk_widget_add_css_class(join, "island-join");
-            g_signal_connect_swapped(join, "clicked", G_CALLBACK(+[](WifiUi* self) { self->submit(); }), this);
-            gtk_box_append(GTK_BOX(ask), entry_);
-            gtk_box_append(GTK_BOX(ask), join);
+            gtk_box_append(GTK_BOX(ask), ssid);
+            gtk_box_append(GTK_BOX(ask), password_line());
             gtk_box_append(GTK_BOX(outer), ask);
+            entry_ = ssid; // the name comes first
         }
         return outer;
     }
 
     void WifiUi::expand(const std::string& ssid) {
-        if (ssid == expanded_)
+        if (ssid == expanded_ && !hidden_open_)
             return;
         expanded_ = ssid;
+        hidden_open_ = false;
+        hidden_ssid_.clear();
+        password_.clear();
+        rebuild();
+    }
+
+    void WifiUi::expand_hidden(bool on) {
+        if (on == hidden_open_)
+            return;
+        hidden_open_ = on;
+        expanded_.clear();
+        hidden_ssid_.clear();
         password_.clear();
         rebuild();
     }
 
     void WifiUi::submit() {
+        if (hidden_open_) {
+            if (hidden_ssid_.empty()) // an open hidden network needs no password, a name is the whole requirement
+                return;
+            const std::string ssid = hidden_ssid_, password = password_;
+            expand_hidden(false);
+            net_.connect_hidden(ssid, password);
+            return;
+        }
         if (expanded_.empty() || password_.empty())
             return;
         const std::string ssid = expanded_, password = password_;

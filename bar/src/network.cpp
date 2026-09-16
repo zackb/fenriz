@@ -48,6 +48,11 @@ namespace fenriz::bar {
         return WifiSecurity::Open;
     }
 
+    bool wifi_secrets_failure(guint32 reason) {
+        return reason == NM_DEVICE_STATE_REASON_NO_SECRETS || reason == NM_DEVICE_STATE_REASON_SUPPLICANT_DISCONNECT ||
+               reason == NM_DEVICE_STATE_REASON_SUPPLICANT_TIMEOUT;
+    }
+
     int signal_bars(int strength) {
         if (strength >= 80)
             return 4;
@@ -234,6 +239,9 @@ namespace fenriz::bar {
             }
         }
         networks_ = merge_networks(std::move(aps));
+        for (const WifiNetwork& n : networks_)
+            if (n.connecting && !n.ssid.empty())
+                last_connecting_ = n.ssid;
 
         const WifiNetwork* now = active();
         const std::string current = now ? now->ssid : "";
@@ -270,25 +278,27 @@ namespace fenriz::bar {
     void Network::on_device_state(NMDevice*, guint new_state, guint, guint reason, gpointer data) {
         auto* self = static_cast<Network*>(data);
         self->schedule_refresh();
-        if (self->pending_ssid_.empty())
-            return;
+        const bool ours = !self->pending_ssid_.empty();
         if (new_state == NM_DEVICE_STATE_ACTIVATED) {
             self->pending_ssid_.clear();
             self->pending_added_.clear();
-        } else if (new_state == NM_DEVICE_STATE_FAILED) {
-            const std::string ssid = self->pending_ssid_;
-            const bool secrets = reason == NM_DEVICE_STATE_REASON_NO_SECRETS ||
-                                 reason == NM_DEVICE_STATE_REASON_SUPPLICANT_DISCONNECT ||
-                                 reason == NM_DEVICE_STATE_REASON_SUPPLICANT_TIMEOUT;
-            // a connection we just made with a wrong password is not worth keeping
-            if (!self->pending_added_.empty())
-                if (NMRemoteConnection* c =
-                        nm_client_get_connection_by_path(self->client_, self->pending_added_.c_str()))
-                    nm_remote_connection_delete_async(c, nullptr, nullptr, nullptr);
-            self->pending_ssid_.clear();
-            self->pending_added_.clear();
-            self->fail(secrets ? "Wrong password for " + ssid : "Couldn't connect to " + ssid, secrets ? ssid : "");
+            return;
         }
+        if (new_state != NM_DEVICE_STATE_FAILED)
+            return;
+        // NetworkManager auto-connects on its own, so a failure worth reporting is not always one we started.
+        const std::string ssid = ours ? self->pending_ssid_ : self->last_connecting_;
+        if (ssid.empty())
+            return;
+        const bool secrets = wifi_secrets_failure(reason);
+        // a connection we just made with a wrong password is not worth keeping
+        if (ours && !self->pending_added_.empty())
+            if (NMRemoteConnection* c = nm_client_get_connection_by_path(self->client_, self->pending_added_.c_str()))
+                nm_remote_connection_delete_async(c, nullptr, nullptr, nullptr);
+        self->pending_ssid_.clear();
+        self->pending_added_.clear();
+        self->last_connecting_.clear();
+        self->fail(secrets ? "Wrong password for " + ssid : "Couldn't connect to " + ssid, secrets ? ssid : "");
     }
 
     void Network::fail(const std::string& message, const std::string& ssid) {
@@ -333,6 +343,26 @@ namespace fenriz::bar {
         if (matching)
             g_ptr_array_unref(matching);
         return c;
+    }
+
+    void Network::on_added_and_activated(GObject* source, GAsyncResult* res, gpointer data) {
+        GError* err = nullptr;
+        NMActiveConnection* ac = nm_client_add_and_activate_connection_finish(NM_CLIENT(source), res, &err);
+        if (g_error_matches(err, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+            g_error_free(err);
+            return;
+        }
+        auto* self = static_cast<Network*>(data);
+        if (ac) {
+            if (NMRemoteConnection* c = nm_active_connection_get_connection(ac))
+                self->pending_added_ = nm_object_get_path(NM_OBJECT(c));
+            g_object_unref(ac);
+        } else {
+            const std::string ssid = self->pending_ssid_;
+            self->pending_ssid_.clear();
+            self->fail("Couldn't connect to " + ssid + ": " + (err ? err->message : "unknown error"), "");
+        }
+        g_clear_error(&err);
     }
 
     void Network::connect(const std::string& ssid, const std::string& password) {
@@ -404,33 +434,39 @@ namespace fenriz::bar {
             nm_connection_add_setting(partial, sec);
         }
         nm_client_add_and_activate_connection_async(
-            client_,
-            partial,
-            NM_DEVICE(wifi_),
-            n.ap_path.c_str(),
-            cancel_,
-            +[](GObject* source, GAsyncResult* res, gpointer data) {
-                GError* err = nullptr;
-                NMActiveConnection* ac = nm_client_add_and_activate_connection_finish(NM_CLIENT(source), res, &err);
-                if (g_error_matches(err, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
-                    g_error_free(err);
-                    return;
-                }
-                auto* self = static_cast<Network*>(data);
-                if (ac) {
-                    if (NMRemoteConnection* c = nm_active_connection_get_connection(ac))
-                        self->pending_added_ = nm_object_get_path(NM_OBJECT(c));
-                    g_object_unref(ac);
-                } else {
-                    const std::string ssid = self->pending_ssid_;
-                    self->pending_ssid_.clear();
-                    self->fail("Couldn't connect to " + ssid + ": " + (err ? err->message : "unknown error"), "");
-                }
-                g_clear_error(&err);
-            },
-            this);
+            client_, partial, NM_DEVICE(wifi_), n.ap_path.c_str(), cancel_, on_added_and_activated, this);
         if (partial)
             g_object_unref(partial);
+    }
+
+    void Network::connect_hidden(const std::string& ssid, const std::string& password) {
+        if (!wifi_ || ssid.empty())
+            return;
+        pending_ssid_ = ssid;
+        pending_added_.clear();
+        last_connecting_ = ssid;
+
+        // No access point to activate against: the one we can see beacons no SSID, so the connection carries it.
+        NMConnection* partial = nm_simple_connection_new();
+        NMSetting* wifi = nm_setting_wireless_new();
+        GBytes* raw = g_bytes_new(ssid.data(), ssid.size());
+        g_object_set(wifi, NM_SETTING_WIRELESS_SSID, raw, NM_SETTING_WIRELESS_HIDDEN, TRUE, nullptr);
+        g_bytes_unref(raw);
+        nm_connection_add_setting(partial, wifi);
+        if (!password.empty()) {
+            // Nothing beacons the security, so a typed password means WPA/WPA2/WPA3 personal and none means open.
+            NMSetting* sec = nm_setting_wireless_security_new();
+            g_object_set(sec,
+                         NM_SETTING_WIRELESS_SECURITY_KEY_MGMT,
+                         "wpa-psk",
+                         NM_SETTING_WIRELESS_SECURITY_PSK,
+                         password.c_str(),
+                         nullptr);
+            nm_connection_add_setting(partial, sec);
+        }
+        nm_client_add_and_activate_connection_async(
+            client_, partial, NM_DEVICE(wifi_), nullptr, cancel_, on_added_and_activated, this);
+        g_object_unref(partial);
     }
 
     void Network::disconnect() {

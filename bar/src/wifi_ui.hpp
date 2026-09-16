@@ -20,7 +20,10 @@ namespace fenriz::bar {
         void update();
         void rebuild();
         GtkWidget* row(const WifiNetwork& n);
+        GtkWidget* hidden_row();
+        GtkWidget* password_line();
         void expand(const std::string& ssid);
+        void expand_hidden(bool on);
         void submit();
 
         Island& island_;
@@ -32,10 +35,12 @@ namespace fenriz::bar {
         GtkWidget* power_ = nullptr;
         GtkWidget* status_ = nullptr;
         GtkWidget* list_ = nullptr;
-        GtkWidget* entry_ = nullptr; // the password entry, while a row is expanded
+        GtkWidget* entry_ = nullptr; // the field to focus once a rebuild puts it in the window
         std::vector<WifiNetwork> shown_;
-        std::string expanded_; // SSID whose password entry is open
-        std::string password_; // what was typed, kept across list rebuilds
+        std::string expanded_;    // SSID whose password entry is open
+        std::string password_;    // what was typed, kept across list rebuilds
+        std::string hidden_ssid_; // the name typed into the hidden-network row
+        bool hidden_open_ = false;
         guint scan_id_ = 0;
         bool updating_ = false;
     };

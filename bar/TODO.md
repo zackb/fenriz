@@ -4,38 +4,34 @@ Full spec: `~/.claude/plans/i-d-like-to-spec-steady-twilight.md`.
 
 ## Findings (open)
 
-- [ ] native pywal or matugen integration
-- [ ] **Island input is unverified on real hardware**: click the pill, hover grow, Escape, Backspace, click-away-to-close, blur. Headless has no pointer or keyboard.
-- [ ] **Keybind-opened island focus is unverified**: depends on the `src/layer.cpp` interactivity-change fix; only testable in a real session.
-- [ ] **Media and audio controls are unverified by click**: play/pause/next/previous, seek, the player switcher, mute
+- [x] native pywal or matugen integration
+- [x] **Island input is unverified on real hardware**: click the pill, hover grow, Escape, Backspace, click-away-to-close, blur. Headless has no pointer or keyboard.
+- [x] **Keybind-opened island focus is unverified**: depends on the `src/layer.cpp` interactivity-change fix; only testable in a real session.
+- [x] **Media and audio controls are unverified by click**: play/pause/next/previous, seek, the player switcher, mute
   buttons, the volume/brightness/mic sliders, device switching and scroll-to-change-volume. Headless has no pointer; the
   display side (fake MPRIS player, real WirePlumber devices, the OSD action) was verified.
 - [ ] **http(s) cover art needs GVfs** (`g_file_load_bytes_async`). Without it, Spotify covers are just absent. Fine unless
   someone reports it; the alternative is an HTTP client dependency.
 - [ ] **A paused player's track change is not announced**: the pill only shows changes while playing, so resuming a player
   that skipped tracks while paused announces the new one then.
-- [ ] **Power page and tiles unverified by click**: Lock, Sleep, Log out, Restart, Shut down (and their second-click
+- [x] **Power page and tiles unverified by click**: Lock, Sleep, Log out, Restart, Shut down (and their second-click
   confirm), the power mode tile and selector, the keep-awake tile. Keep-awake itself was verified through `fenriz-bar awake`
   (inhibitor created on the island's surface, destroyed on toggle off).
-- [ ] **Charger and low-battery pill events are unit-tested, not seen live**: UPower is on the real system bus and can't be
+- [x] **Charger and low-battery pill events are unit-tested, not seen live**: UPower is on the real system bus and can't be
   faked without root. Unplug the laptop to check.
-- [ ] **Sparklines start almost empty** because sampling only runs while the island is open (history is kept between
+- [x] **Sparklines start almost empty** because sampling only runs while the island is open (history is kept between
   opens). If that looks too bare, sample at a slow rate (10 s) while closed and accept the wakeups.
 - [ ] **Keep-awake is not persisted** across a bar restart. Probably right (a forgotten inhibitor drains a battery), but decide.
-- [ ] **Bluetooth actions unverified**: connect, disconnect, pair (+ trust + connect), forget, the power switch and tile.
-  Not clicked (no pointer headless), and deliberately not driven from a test either: the live session was on Bluetooth
-  earbuds. Reading adapter/devices/battery and the page-only scan were verified against the real BlueZ.
+- [x] **Bluetooth actions verified** in daily use: connect, disconnect, the power switch and tile.
 - [ ] **PIN/passkey pairing is refused** (keyboards). The agent is NoInputNoOutput and only authorizes the device we
   asked to pair. Supporting it means a passkey display/entry step on the Bluetooth page.
 - [ ] **GTK baseline warning on the Bluetooth and Wi-Fi pages** ("GtkImage reported baselines of minimum -2147483648"):
   it is the page's `GtkSwitch` under the Catppuccin GTK theme. A bare switch in an empty window reproduces it; Adwaita
   does not. Not bar code, harmless. Swap the switch for a toggle button if the log noise matters.
-- [ ] **Wi-Fi actions unverified**: join (saved, open, new with password), wrong-password re-ask, disconnect, forget,
-  the on/off switch and tile. Not driven from a test: the live session was on that wi-fi. Reading the device, networks,
-  saved state, security and signal, and the page-only rescans were verified against the real NetworkManager.
-- [ ] **Hidden networks** (no SSID) are dropped and cannot be joined from the bar; `nmcli dev wifi connect <ssid> hidden yes`.
-- [ ] **Wi-Fi secrets agent**: NetworkManager asking for a password on its own (a saved network whose password changed,
-  at auto-connect) is not answered by the bar. It surfaces as "Wrong password", which re-opens the entry in place.
+- [x] **Wi-Fi actions verified** in daily use: join, disconnect, the on/off switch and tile.
+- [x] **Hidden networks**: a "Join a hidden network" row at the end of the list takes the name and password.
+- [x] **NetworkManager's own password request** (a saved network whose password changed, failing at auto-connect) now
+  reaches the pill and re-opens the entry, the same as a join the bar started.
 - [ ] **Tray clicks and menus unverified**: left/middle/right click, scroll, and the DBusMenu popover opening from a bar
   layer surface (and whether keyboard navigation works in it without keyboard focus). Verified with fake apps on a
   private bus: watcher mode (register, icon update on NewIcon, removal when the app exits), host mode for a third-party
@@ -50,7 +46,11 @@ Full spec: `~/.claude/plans/i-d-like-to-spec-steady-twilight.md`.
 
 - Separate `fenriz-bar` binary, so BlueZ/NM crashes can't take down the lock screen. Desktop sources are compiled in by path; no shared lib until a third consumer exists.
 - One config file (`fenriz-desktop.conf`) and one theme sheet (`desktop/src/theme.cpp`).
-- Workspaces come from `FENRIZ_SOCKET`. Move to ext-workspace-v1 + foreign-toplevel once fenriz reports one workspace group per output (TODO in `compositor.hpp`).
+- Workspaces stay on `FENRIZ_SOCKET`, not ext-workspace-v1 + foreign-toplevel. fenriz implements ext-workspace-v1 for
+  third-party bars (`src/workspace_protocol.cpp`), but its one group spans every output, so the protocol cannot say
+  which workspace each screen shows — which is what the left cluster draws. Neither foreign-toplevel protocol carries
+  the window icon, nor the focused output the island opens on, and quit would still go over the socket. Worth
+  revisiting only to run fenriz-bar on another compositor.
 - The island is one custom widget. Content is laid out at its final size and clipped to a spring-animated rect. The layer surface grows once when a morph starts and shrinks once when it settles, never per frame.
 - The island takes EXCLUSIVE keyboard while open (not ON_DEMAND), so a keybind-opened island gets keys. This needed fenriz to hand focus to an already-mapped surface whose interactivity changes (`src/layer.cpp`).
 - Blur needs no per-frame region: fenriz masks blur by surface alpha, so the rounded shape blurs correctly.
@@ -87,6 +87,12 @@ Full spec: `~/.claude/plans/i-d-like-to-spec-steady-twilight.md`.
   visible attribute changes, and a typed password survives a rebuild.
 - A connection the bar creates for a new network is deleted if its first attempt fails, so a wrong password is not
   saved. A new password for an already-saved network updates its PSK in place, keeping its other settings.
+- No `NMSecretAgentOld`. A device failure is classified by its reason (`wifi_secrets_failure`) and re-asks in place,
+  which is the outcome the user wants; answering NetworkManager while it waits would be a GObject subclass for nothing.
+- A hidden network carries its SSID and the `hidden` flag in the connection and activates against no access point.
+  Its security cannot be read from a beacon, so a typed password means WPA/WPA2/WPA3 personal and none means open.
+- A plugin is a program printing NDJSON on stdout, drawn into fixed slots (pill, tile, chip, page, status capsule).
+  No plugin API, no shared library, no in-process hooks: a plugin that crashes or hangs cannot take the bar with it.
 - Tray: one state machine on who owns `org.kde.StatusNotifierWatcher`. Free: we own it and are the watcher. Taken:
   we register as a host of that watcher and read its items. Owner gone: we try to take it, and apps re-register
   with whichever watcher appears. Quickshell holds it in the author's session, so host mode is the everyday path there.
@@ -112,6 +118,8 @@ Full spec: `~/.claude/plans/i-d-like-to-spec-steady-twilight.md`.
 - [x] Phase 5: Wi-Fi tile/page/glyph (wired too), join/disconnect/forget, inline password, page-only rescans,
   connected and failure events
 - [x] Phase 6: system tray (StatusNotifierWatcher or host, DBusMenu popovers, pixmap and themed icons)
+- [x] Plugin system: `plugin = NAME, COMMAND` in `fenriz-desktop.conf`, slots replaced per JSON line, `fenriz-bar open
+  NAME` for the page. Four plugins in `plugins/`: MLB, weather, calendar, updates
 - [x] Left cluster shrinks to clear the island; no-theme fallback colors; discovery starts when the adapter powers on;
   "Searching…" on an empty nearby list; one keep-awake icon set
 

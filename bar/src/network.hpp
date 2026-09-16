@@ -18,6 +18,9 @@ namespace fenriz::bar {
     // From an access point's Flags, WpaFlags and RsnFlags.
     WifiSecurity wifi_security(guint32 flags, guint32 wpa, guint32 rsn);
 
+    // Whether a device failure means the password was wrong, so the user is worth asking again.
+    bool wifi_secrets_failure(guint32 reason);
+
     struct WifiNetwork {
         std::string ssid;
         std::string ap_path; // the strongest access point for this SSID
@@ -68,6 +71,8 @@ namespace fenriz::bar {
         // A saved network needs no password; a new secured one does. A password for a saved network replaces its old
         // one.
         void connect(const std::string& ssid, const std::string& password);
+        // A network that beacons no SSID, so it is not in `networks()`. An empty password means open.
+        void connect_hidden(const std::string& ssid, const std::string& password);
         void disconnect();
         void forget(const std::string& ssid);
 
@@ -80,6 +85,7 @@ namespace fenriz::bar {
 
         static void on_client(GObject* source, GAsyncResult* res, gpointer data);
         static void on_device_state(NMDevice* device, guint new_state, guint old_state, guint reason, gpointer data);
+        static void on_added_and_activated(GObject* source, GAsyncResult* res, gpointer data);
 
         GCancellable* cancel_ = nullptr;
         NMClient* client_ = nullptr;
@@ -89,8 +95,9 @@ namespace fenriz::bar {
         bool enabled_ = false;
         bool wired_ = false;
         std::vector<WifiNetwork> networks_;
-        std::string pending_ssid_;  // a connect we started and have not seen finish
-        std::string pending_added_; // path of a connection we created for it, deleted if the attempt fails
+        std::string pending_ssid_;    // a connect we started and have not seen finish
+        std::string pending_added_;   // path of a connection we created for it, deleted if the attempt fails
+        std::string last_connecting_; // whatever the device last tried to join, ours or NetworkManager's own
         std::string last_active_;
         bool seen_ = false;
         std::vector<std::function<void()>> listeners_;

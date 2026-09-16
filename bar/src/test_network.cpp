@@ -54,6 +54,14 @@ namespace {
         assert(list.size() == 1 && list[0].active && list[0].strength == 50);
     }
 
+    void test_secrets_failure() {
+        assert(wifi_secrets_failure(NM_DEVICE_STATE_REASON_NO_SECRETS));
+        assert(wifi_secrets_failure(NM_DEVICE_STATE_REASON_SUPPLICANT_DISCONNECT));
+        assert(wifi_secrets_failure(NM_DEVICE_STATE_REASON_SUPPLICANT_TIMEOUT));
+        assert(!wifi_secrets_failure(NM_DEVICE_STATE_REASON_SSID_NOT_FOUND));
+        assert(!wifi_secrets_failure(NM_DEVICE_STATE_REASON_NONE));
+    }
+
     void test_bars() {
         assert(signal_bars(0) == 0);
         assert(signal_bars(29) == 1);
@@ -68,5 +76,6 @@ int main() {
     test_security();
     test_merge();
     test_bars();
+    test_secrets_failure();
     return 0;
 }
