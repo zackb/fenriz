@@ -1,6 +1,7 @@
 #!/bin/bash
 # fenriz-bar plugin: a bar capsule with the number of pending updates (repo, AUR, Flatpak).
 # Clicking it runs the installer in $TERMINAL and recounts once that window closes.
+# The default installer is unattended (--noconfirm) and covers repo, AUR and Flatpak.
 #
 #   fenriz-plugin-updates [-interval SECONDS] [-run COMMAND]
 #
@@ -18,7 +19,19 @@ done
 
 helper=$(command -v yay || command -v paru)
 if [ -z "$run" ]; then
-    run="${helper:-sudo pacman} -Syu; echo; read -rp 'Press Enter to close'"
+    run='
+        clear
+        command -v figlet >/dev/null && figlet -f smslant "Updates" || echo "== Updates =="
+        echo
+        '"${helper:-sudo pacman}"' -Syu --noconfirm
+        if command -v flatpak >/dev/null; then
+            echo
+            echo " Updating Flatpak packages..."
+            flatpak update --noninteractive
+        fi
+        echo
+        read -rp "Press Enter to close"
+    '
 fi
 
 # Waits for the bar to close stdin, so a misconfigured plugin is not restarted in a loop.
