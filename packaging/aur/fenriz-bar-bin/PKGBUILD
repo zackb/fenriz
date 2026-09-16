@@ -10,7 +10,8 @@ optdepends=('fenriz: the compositor this bar is built for'
             'fenriz-desktop: shared config and theme'
             'networkmanager: wifi'
             'bluez: bluetooth'
-            'upower: battery')
+            'upower: battery'
+            'wf-recorder: screen recording')
 provides=('fenriz-bar')
 conflicts=('fenriz-bar' 'fenriz-bar-git')
 source=("${url}/releases/download/v${pkgver}/fenriz-bar-${pkgver}.tar.gz")

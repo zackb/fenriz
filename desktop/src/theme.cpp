@@ -240,6 +240,7 @@ window.fenriz-bar, window.fenriz-island { background: transparent; }
   outline: none;
 }
 .fenriz-bar button.bar-capsule:hover { background-color: @fenriz_fill_window; }
+.fenriz-bar button.bar-recording { color: @fenriz_error; font-feature-settings: "tnum"; }
 /* GtkButton gives an image child .image-button (min-width 24px); match it for box children like the battery */
 .fenriz-bar button.bar-glyph { padding: 0 4px; min-width: 24px; }
 
@@ -276,6 +277,7 @@ window.fenriz-bar, window.fenriz-island { background: transparent; }
 }
 .fenriz-island scale.island-slider slider { min-width: 14px; min-height: 14px; margin: -5px; }
 
+.fenriz-island .island-flat.recording { color: @fenriz_error; }
 .fenriz-island .island-device { padding: 4px 6px; border-radius: 8px; }
 .fenriz-island .island-device:hover { background-color: alpha(currentColor, 0.06); }
 
