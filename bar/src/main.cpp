@@ -23,6 +23,8 @@
 #include "network.hpp"
 #include "plugin_ui.hpp"
 #include "power_ui.hpp"
+#include "recorder.hpp"
+#include "recorder_ui.hpp"
 #include "sysstat.hpp"
 #include "system_ui.hpp"
 #include "theme.hpp"
@@ -47,6 +49,8 @@ namespace {
     using fenriz::bar::PluginUi;
     using fenriz::bar::Power;
     using fenriz::bar::PowerUi;
+    using fenriz::bar::Recorder;
+    using fenriz::bar::RecorderUi;
     using fenriz::bar::SysStat;
     using fenriz::bar::SystemUi;
     using fenriz::bar::Tray;
@@ -75,6 +79,8 @@ namespace {
         std::unique_ptr<PowerUi> power_ui;
         std::unique_ptr<AudioUi> audio_ui;
         std::unique_ptr<MediaUi> media_ui;
+        std::unique_ptr<Recorder> recorder;
+        std::unique_ptr<RecorderUi> recorder_ui;
         std::vector<std::unique_ptr<PluginUi>> plugins;
         std::unique_ptr<Bar> bar;
         std::string bt_sink_prefix;
@@ -164,7 +170,12 @@ namespace {
         session->inhibitor = std::make_unique<IdleInhibitor>(session->island->window());
         session->wifi_ui = std::make_unique<WifiUi>(*session->island, *session->network);
         session->bluetooth_ui = std::make_unique<BluetoothUi>(*session->island, *session->bluetooth);
-        // the footer reads left to right in construction order: system readout, then battery and power
+        // the footer reads left to right in construction order: record dot, system readout, then battery and power
+        if (Recorder::available()) {
+            session->recorder = std::make_unique<Recorder>();
+            session->recorder_ui = std::make_unique<RecorderUi>(
+                *session->island, *session->recorder, *session->audio, *session->compositor);
+        }
         session->system_ui = std::make_unique<SystemUi>(*session->island, *session->stats);
         session->power_ui =
             std::make_unique<PowerUi>(*session->island, *session->power, *session->compositor, *session->inhibitor);
@@ -179,6 +190,8 @@ namespace {
                                              *session->bluetooth,
                                              *session->network,
                                              *session->tray_ui);
+        if (session->recorder_ui)
+            session->bar->add_status([r = session->recorder_ui.get()] { return r->create_status(); });
         for (auto& plugin : session->plugins)
             session->bar->add_status([p = plugin.get()] { return p->create_status(); });
         session->bar->start(app);
@@ -241,6 +254,13 @@ namespace {
                 session->island->toggle(page, session->bar->monitor_for(output));
             } else if (arg == "close") {
                 session->island->close();
+            } else if (arg == "record") {
+                if (!session->recorder_ui) {
+                    g_application_command_line_printerr(cmdline, "wf-recorder is not installed\n");
+                    status = 1;
+                    continue;
+                }
+                session->recorder_ui->toggle();
             } else if (arg == "awake") {
                 if (!session->power_ui->toggle_awake()) {
                     g_application_command_line_printerr(cmdline, "the compositor does not support idle inhibit\n");
@@ -284,6 +304,8 @@ int main(int argc, char** argv) {
     session.tray_ui.reset();
     session.tray.reset();
     session.plugins.clear();
+    session.recorder_ui.reset();
+    session.recorder.reset();
     session.media_ui.reset();
     session.audio_ui.reset();
     session.power_ui.reset();

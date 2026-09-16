@@ -60,6 +60,8 @@ add_executable(fenriz-bar
     src/wifi_ui.cpp
     src/plugin.cpp
     src/plugin_ui.cpp
+    src/recorder.cpp
+    src/recorder_ui.cpp
     src/tray.cpp
     src/tray_ui.cpp
     src/dbusmenu.cpp
@@ -121,6 +123,11 @@ add_executable(bar_spring_test src/test_spring.cpp)
 target_include_directories(bar_spring_test PRIVATE src)
 target_compile_options(bar_spring_test PRIVATE -UNDEBUG)
 
+add_executable(bar_recorder_test src/recorder.cpp src/test_recorder.cpp)
+target_include_directories(bar_recorder_test PRIVATE src)
+target_link_libraries(bar_recorder_test PRIVATE PkgConfig::GIO_UNIX)
+target_compile_options(bar_recorder_test PRIVATE -UNDEBUG)
+
 add_executable(bar_share_test src/test_share.cpp)
 target_include_directories(bar_share_test PRIVATE src)
 target_compile_options(bar_share_test PRIVATE -UNDEBUG)
@@ -136,6 +143,7 @@ add_test(NAME network    COMMAND bar_network_test)
 add_test(NAME tray       COMMAND bar_tray_test)
 add_test(NAME share      COMMAND bar_share_test)
 add_test(NAME plugin     COMMAND bar_plugin_test)
+add_test(NAME recorder   COMMAND bar_recorder_test)
 
 set(CPACK_SET_DESTDIR ON)
 set(CPACK_PACKAGE_RELOCATABLE FALSE)

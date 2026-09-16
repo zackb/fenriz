@@ -359,6 +359,7 @@ The defaults give you:
 | `SUPER` + `Space` / `SUPER SHIFT` + `L` / `SUPER` + `W` | fenriz-desktop launcher / lock / wallpaper |
 | `SUPER SHIFT CTRL` + `C` | keyboard cleaning mode: input off for 60 seconds |
 | `Print` / `SUPER` + `Print` | screenshot a region: annotate and save / copy |
+| `SUPER SHIFT` + `R` | start or stop recording the focused screen (fenriz-bar, wf-recorder) |
 | **`SUPER SHIFT CTRL` + `Q`** | **quit, always** — see below |
 
 
