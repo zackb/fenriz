@@ -564,6 +564,7 @@ namespace fenriz {
         // menu from a fullscreen X game still shows, below layer-shell overlays and the lock.
         scene_unmanaged = wlr_scene_tree_create(&scene->tree);
         scene_overlay = wlr_scene_tree_create(&scene->tree);
+        scene_layer_popups = wlr_scene_tree_create(&scene->tree);
         scene_lock = wlr_scene_tree_create(&scene->tree);
 
         // linux-dmabuf lets GPU clients (QtQuick/quickshell, browsers) share their GPU

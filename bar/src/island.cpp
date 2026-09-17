@@ -137,7 +137,7 @@ namespace fenriz::bar {
         window_ = GTK_WINDOW(gtk_application_window_new(app));
         gtk_layer_init_for_window(window_);
         gtk_layer_set_namespace(window_, "fenriz-island");
-        gtk_layer_set_layer(window_, GTK_LAYER_SHELL_LAYER_TOP);
+        gtk_layer_set_layer(window_, GTK_LAYER_SHELL_LAYER_BOTTOM); // with the bar; raised to TOP while open
         gtk_layer_set_anchor(window_, GTK_LAYER_SHELL_EDGE_TOP, TRUE);
         gtk_layer_set_margin(window_, GTK_LAYER_SHELL_EDGE_TOP, 4); // MUST match the bar's
         gtk_layer_set_exclusive_zone(window_, -1);                  // sit on the bar, not below its reserved space
@@ -452,6 +452,9 @@ namespace fenriz::bar {
         const int want_h = (self->expanded_ ? self->page_height_ : PILL_HEIGHT) + HOVER_GROW_Y;
         if (want_w != self->surface_width_ || want_h != self->surface_height_)
             self->resize_surface(want_w, want_h);
+        // Back under floats only once the page has fully shrunk onto the bar.
+        if (!self->expanded_)
+            gtk_layer_set_layer(self->window_, GTK_LAYER_SHELL_LAYER_BOTTOM);
         if (!self->expanded_ && self->page_ != "home") {
             gtk_stack_set_visible_child_full(GTK_STACK(self->stack_), "home", GTK_STACK_TRANSITION_TYPE_NONE);
             self->page_ = "home";
@@ -579,6 +582,7 @@ namespace fenriz::bar {
         gtk_widget_set_can_target(stack_, TRUE);
         // An already-mapped surface is handed the keyboard by fenriz when its interactivity changes.
         gtk_layer_set_keyboard_mode(window_, GTK_LAYER_SHELL_KEYBOARD_MODE_EXCLUSIVE);
+        gtk_layer_set_layer(window_, GTK_LAYER_SHELL_LAYER_TOP); // a page hangs over the windows
         show_page(page, was_open);
         gtk_window_set_focus(window_, nullptr); // no focus ring until the user actually tabs
     }

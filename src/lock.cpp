@@ -51,6 +51,7 @@ namespace fenriz::lock {
             wlr_scene_node_set_enabled(&server.scene_fullscreen->node, !on);
             wlr_scene_node_set_enabled(&server.scene_unmanaged->node, !on);
             wlr_scene_node_set_enabled(&server.scene_overlay->node, !on);
+            wlr_scene_node_set_enabled(&server.scene_layer_popups->node, !on);
             wlr_scene_node_set_enabled(&server.scene_lock->node, on);
         }
 

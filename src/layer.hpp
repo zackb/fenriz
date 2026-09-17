@@ -9,6 +9,7 @@ struct wlr_surface;
 struct wlr_scene_layer_surface_v1;
 struct wlr_scene_blur;
 struct wlr_scene_node;
+struct wlr_scene_tree;
 
 namespace fenriz {
 
@@ -20,6 +21,7 @@ namespace fenriz {
         Server* server;
         wlr_layer_surface_v1* handle;
         wlr_scene_layer_surface_v1* scene; // renders + positions the surface; owns its subtree
+        wlr_scene_tree* popups;
         // ext-background-effect-v1: blur nodes under this surface, one per region rect.
         wlr_scene_blur* blur[background_blur::RECTS_MAX];
         bool mapped;

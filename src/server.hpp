@@ -213,6 +213,7 @@ namespace fenriz {
         wlr_scene_tree* scene_fullscreen = nullptr; // above top, below overlay
         wlr_scene_tree* scene_unmanaged = nullptr;  // X11 override-redirect (menus/tooltips)
         wlr_scene_tree* scene_overlay = nullptr;
+        wlr_scene_tree* scene_layer_popups = nullptr;
         wlr_scene_tree* scene_lock = nullptr; // ext-session-lock, above everything
         wlr_scene_tree* drag_icon = nullptr;  // active DnD icon node; NULL when no drag
 

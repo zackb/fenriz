@@ -88,7 +88,7 @@ namespace fenriz::layer {
         void on_new_popup(wl_listener* listener, void* data) {
             LayerSurface* ls = wl_container_of(listener, ls, new_popup);
             auto* popup = static_cast<wlr_xdg_popup*>(data);
-            popup_create(*ls->server, popup, ls->scene->tree);
+            popup_create(*ls->server, popup, ls->popups);
         }
 
         void on_destroy(wl_listener* listener, void* data) {
@@ -102,6 +102,7 @@ namespace fenriz::layer {
             wl_list_remove(&ls->new_popup.link);
             wl_list_remove(&ls->destroy.link);
             server.layer_surfaces.remove(ls);
+            wlr_scene_node_destroy(&ls->popups->node);
             delete ls;
             arrange(server);
         }
@@ -127,6 +128,7 @@ namespace fenriz::layer {
             ls->server = &server;
             ls->handle = layer;
             ls->scene = wlr_scene_layer_surface_v1_create(tree_for_layer(server, layer->current.layer), layer);
+            ls->popups = wlr_scene_tree_create(server.scene_layer_popups);
             add_listener(ls->map, layer->surface->events.map, on_map);
             add_listener(ls->unmap, layer->surface->events.unmap, on_unmap);
             add_listener(ls->commit, layer->surface->events.commit, on_commit);
@@ -186,6 +188,8 @@ namespace fenriz::layer {
                         if ((ls->handle->current.exclusive_zone > 0) != exclusive)
                             continue;
                         wlr_scene_layer_surface_v1_configure(ls->scene, &full, &usable);
+                        wlr_scene_node_set_position(
+                            &ls->popups->node, ls->scene->tree->node.x, ls->scene->tree->node.y);
                         place_blur(ls);
                     }
 
@@ -208,9 +212,9 @@ namespace fenriz::layer {
             if (!ls->mapped ||
                 ls->handle->current.keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE)
                 continue;
-            // Popups are parented into ls->scene->tree (on_new_popup), so the ancestor walk catches them too.
+            // Popups are parented into ls->popups (on_new_popup), so the ancestor walk checks both trees.
             for (wlr_scene_node* n = node; n; n = n->parent ? &n->parent->node : nullptr)
-                if (n == &ls->scene->tree->node)
+                if (n == &ls->scene->tree->node || n == &ls->popups->node)
                     return ls;
         }
         return nullptr;

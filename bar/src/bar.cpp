@@ -120,7 +120,7 @@ namespace fenriz::bar {
         GtkWindow* window = GTK_WINDOW(gtk_application_window_new(app_));
         gtk_layer_init_for_window(window);
         gtk_layer_set_namespace(window, "fenriz-bar");
-        gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_TOP);
+        gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_BOTTOM);
         gtk_layer_set_monitor(window, monitor);
         gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_TOP, TRUE);
         gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_LEFT, TRUE);
