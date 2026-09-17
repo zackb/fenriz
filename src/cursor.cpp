@@ -126,16 +126,20 @@ namespace fenriz::cursor {
         // Topmost visible view whose tile box contains the point. Unlike the surface hit test
         // in cursor_button this
         // hits borders/gaps too, so a drag started on a window's frame still grabs it.
+        // Scene layer order wins (fullscreen > floating > tiled); list order breaks ties within
+        // a layer, since a newly mapped tile sits at the list tail yet draws below floats.
         View* view_box_at(Server& server, double lx, double ly) {
+            auto layer = [](const View* v) { return v->fullscreen ? 2 : v->floating ? 1 : 0; };
+            View* best = nullptr;
             for (auto it = server.views.rbegin(); it != server.views.rend(); ++it) {
                 View* v = *it;
-                if (!view_visible(server, v))
+                if (!view_visible(server, v) || (best && layer(v) <= layer(best)))
                     continue;
                 const auto& b = v->box;
                 if (lx >= b.x && lx < b.x + b.width && ly >= b.y && ly < b.y + b.height)
-                    return v;
+                    best = v;
             }
-            return nullptr;
+            return best;
         }
 
         // Apply an interactive drag by a cursor delta (px). Returns true if a grab consumed

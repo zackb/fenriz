@@ -22,6 +22,7 @@ reinstall: release
 	sudo $(MAKE) -C desktop install
 	$(MAKE) -C bar release
 	sudo $(MAKE) -C bar install
+	sudo $(MAKE) -C bar install-plugins
 
 package: release
 	cd build/release && cpack
