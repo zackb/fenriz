@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "dbusmenu.hpp"
+#include "icon.hpp"
 
 namespace fenriz::bar {
 
@@ -27,9 +28,9 @@ namespace fenriz::bar {
             const std::string& name = item.status == "NeedsAttention" && !item.attention_icon_name.empty()
                                           ? item.attention_icon_name
                                           : item.icon_name;
-            if (!name.empty() && gtk_icon_theme_has_icon(theme, name.c_str()))
-                gtk_image_set_from_icon_name(GTK_IMAGE(image), name.c_str());
-            else if (item.pixmap)
+            if (set_image_icon(GTK_IMAGE(image), name))
+                return;
+            if (item.pixmap)
                 gtk_image_set_from_paintable(GTK_IMAGE(image), GDK_PAINTABLE(item.pixmap));
             else
                 gtk_image_set_from_icon_name(GTK_IMAGE(image), "image-missing-symbolic");

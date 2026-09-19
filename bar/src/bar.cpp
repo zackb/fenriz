@@ -5,6 +5,7 @@
 #include <algorithm>
 
 #include "blur.hpp"
+#include "icon.hpp"
 #include "share.hpp"
 #include "volume.hpp"
 
@@ -366,12 +367,8 @@ namespace fenriz::bar {
 
         gtk_widget_set_visible(surface.window_box, state.has_window && !state.title.empty());
         gtk_label_set_text(GTK_LABEL(surface.window_title), state.title.c_str());
-        GtkIconTheme* theme = gtk_icon_theme_get_for_display(gdk_display_get_default());
         const std::string& icon = !state.icon.empty() ? state.icon : state.app_id;
-        const bool has_icon = !icon.empty() && gtk_icon_theme_has_icon(theme, icon.c_str());
-        gtk_widget_set_visible(surface.window_icon, has_icon);
-        if (has_icon)
-            gtk_image_set_from_icon_name(GTK_IMAGE(surface.window_icon), icon.c_str());
+        gtk_widget_set_visible(surface.window_icon, set_image_icon(GTK_IMAGE(surface.window_icon), icon));
     }
 
     GtkWidget* Bar::page_button(GdkMonitor* monitor, const char* page, GtkWidget* child, const char* css_class) {
