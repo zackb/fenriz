@@ -184,7 +184,7 @@ namespace fenriz::bar {
 
             const ShotLayout::Output* target = layout.focused_output();
             Rect crop_to;
-            if (args.mode == ShotMode::Window) {
+            if (args.mode == ShotMode::Window && args.focused) {
                 const ShotLayout::Window* w = layout.focused_window();
                 if (!w)
                     return end(1, "no focused window");
@@ -196,7 +196,7 @@ namespace fenriz::bar {
 
             // region freezes every screen
             for (const ShotLayout::Output& o : layout.outputs) {
-                if (args.mode != ShotMode::Region && o.name != target->name)
+                if (!args.interactive() && o.name != target->name)
                     continue;
                 GdkMonitor* m = monitor_named(o.name);
                 if (!m)
@@ -223,7 +223,7 @@ namespace fenriz::bar {
             std::erase_if(panes, [](const auto& p) { return p->image == nullptr; });
             if (panes.empty())
                 return end(1, "capture failed");
-            if (args.mode == ShotMode::Region)
+            if (args.interactive())
                 return select();
             Pane& p = *panes.front();
             cairo_surface_t* image = p.image;
@@ -305,14 +305,15 @@ namespace fenriz::bar {
 
             p.area = gtk_drawing_area_new();
             gtk_widget_add_css_class(p.area, "shot-selection");
-            gtk_widget_set_cursor_from_name(p.area, "crosshair");
+            const bool windows = args.mode == ShotMode::Window;
+            gtk_widget_set_cursor_from_name(p.area, windows ? "pointer" : "crosshair");
             gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(p.area), draw_pane, &p, nullptr);
 
             GtkGesture* drag = gtk_gesture_drag_new();
             g_signal_connect(drag,
                              "drag-begin",
                              G_CALLBACK(+[](GtkGestureDrag*, double x, double y, Pane* p) {
-                                 p->dragging = true;
+                                 p->dragging = p->shot->args.mode == ShotMode::Region;
                                  p->x0 = p->x1 = x;
                                  p->y0 = p->y1 = y;
                              }),
@@ -334,17 +335,19 @@ namespace fenriz::bar {
                              &p);
             gtk_widget_add_controller(p.area, GTK_EVENT_CONTROLLER(drag));
 
-            GtkEventController* motion = gtk_event_controller_motion_new();
-            g_signal_connect(motion,
-                             "motion",
-                             G_CALLBACK(+[](GtkEventControllerMotion*, double x, double y, Pane* p) {
-                                 const Rect before = p->hover;
-                                 p->hover = p->window_under(x, y);
-                                 if (!(before == p->hover))
-                                     gtk_widget_queue_draw(p->area);
-                             }),
-                             &p);
-            gtk_widget_add_controller(p.area, motion);
+            if (windows) {
+                GtkEventController* motion = gtk_event_controller_motion_new();
+                g_signal_connect(motion,
+                                 "motion",
+                                 G_CALLBACK(+[](GtkEventControllerMotion*, double x, double y, Pane* p) {
+                                     const Rect before = p->hover;
+                                     p->hover = p->window_under(x, y);
+                                     if (!(before == p->hover))
+                                         gtk_widget_queue_draw(p->area);
+                                 }),
+                                 &p);
+                gtk_widget_add_controller(p.area, motion);
+            }
 
             GtkEventController* keys = gtk_event_controller_key_new();
             g_signal_connect(
@@ -394,16 +397,21 @@ namespace fenriz::bar {
             cairo_stroke(cr);
         }
 
-        // Drag or click finished on `p`
+        // Button released on `p`. Window mode takes the window under the pointer and keeps waiting when there is none;
+        // region mode takes the dragged box, or the whole screen for a click.
         void picked(Pane& p) {
             const ShotLayout::Output& o = p.output;
-            Rect sel = Rect::spanning(static_cast<int>(std::lround(p.x0)),
-                                      static_cast<int>(std::lround(p.y0)),
-                                      static_cast<int>(std::lround(p.x1)),
-                                      static_cast<int>(std::lround(p.y1)));
-            if (sel.width < 4 && sel.height < 4) {
-                sel = p.window_under(p.x0, p.y0);
+            Rect sel;
+            if (args.mode == ShotMode::Window) {
+                sel = p.window_under(p.x1, p.y1);
                 if (sel.empty())
+                    return;
+            } else {
+                sel = Rect::spanning(static_cast<int>(std::lround(p.x0)),
+                                     static_cast<int>(std::lround(p.y0)),
+                                     static_cast<int>(std::lround(p.x1)),
+                                     static_cast<int>(std::lround(p.y1)));
+                if (sel.width < 4 && sel.height < 4)
                     sel = {0, 0, o.box.width, o.box.height};
             }
             const Rect logical = {sel.x + o.box.x, sel.y + o.box.y, sel.width, sel.height};

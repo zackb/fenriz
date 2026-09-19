@@ -35,7 +35,7 @@ bind = SUPER SHIFT, S, exec, fenriz-bar shot region --copy --edit
 | `fenriz-bar` | run the bar |
 | `fenriz-bar open [page]` | open the island on the focused screen, or close it if that page is already open. Pages: `home`, `calendar`, `audio`, `media`, `power`, `system`, `bluetooth`, `wifi`, `record`, `shot` |
 | `fenriz-bar record` | start recording the focused screen, or stop the recording that is running |
-| `fenriz-bar shot screen\|window\|region [--copy] [--save[=PATH]] [--edit]` | take a screenshot, see [Screenshots](#screenshots) |
+| `fenriz-bar shot screen\|window\|region [--focused] [--copy] [--save[=PATH]] [--edit]` | take a screenshot, see [Screenshots](#screenshots) |
 | `fenriz-bar awake` | toggle keep-awake: the screen does not dim, lock or blank while it is on |
 | `fenriz-bar close` | close the island |
 
@@ -79,11 +79,11 @@ Whole screens only — no region, no single window.
 `fenriz-bar shot` captures one of:
 
 - `screen`: the focused screen.
-- `window`: the focused window as it looks on screen, border and rounded corners included.
-- `region`: freezes every screen so you can drag a box. A click takes the window under the pointer, or the
-  whole screen if there is no window there. Esc cancels.
+- `region`: freezes every screen so you can drag a box. A click without a drag takes the whole screen.
+- `window`: freezes every screen and highlights the window under the pointer; click one to take it as it looks on
+  screen, border and rounded corners included. `window --focused` takes the focused window straight away instead.
 
-`--copy` puts the result on the clipboard as `image/png`. `--save` writes it to
+Esc cancels the picker. `--copy` puts the result on the clipboard as `image/png`. `--save` writes it to
 `~/Pictures/Screenshots/fenriz-shot-<date>-<time>.png`, and `--save=PATH` writes it to PATH instead. Give one
 or both. The saved path is printed. The command waits until the shot is done and exits 1 on cancel or failure.
 

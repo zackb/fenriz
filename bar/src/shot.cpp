@@ -33,7 +33,7 @@ namespace fenriz::bar {
 
     std::optional<ShotArgs> parse_shot_args(const std::vector<std::string>& args, std::string& error) {
         if (args.empty()) {
-            error = "usage: shot screen|window|region [--copy] [--save[=PATH]] [--edit]";
+            error = "usage: shot screen|window|region [--focused] [--copy] [--save[=PATH]] [--edit]";
             return std::nullopt;
         }
         ShotArgs out;
@@ -53,6 +53,8 @@ namespace fenriz::bar {
                 out.copy = true;
             else if (a == "--edit")
                 out.edit = true;
+            else if (a == "--focused" && out.mode == ShotMode::Window)
+                out.focused = true;
             else if (a == "--save")
                 out.save = true;
             else if (a.starts_with("--save=") && a.size() > 7) {

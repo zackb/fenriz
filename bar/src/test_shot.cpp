@@ -23,6 +23,13 @@ int main() {
         a = parse_shot_args({"screen", "--save", "--copy"}, err);
         assert(a && a->save && a->copy && a->path.empty());
 
+        a = parse_shot_args({"window", "--focused", "--copy"}, err);
+        assert(a && a->focused && !a->interactive());
+        assert(parse_shot_args({"window", "--copy"}, err)->interactive());
+        assert(parse_shot_args({"region", "--copy"}, err)->interactive());
+        assert(!parse_shot_args({"screen", "--copy"}, err)->interactive());
+        assert(!parse_shot_args({"region", "--focused", "--copy"}, err)); // only window has a focused one
+
         assert(!parse_shot_args({}, err));
         assert(!parse_shot_args({"screen"}, err)); // no destination
         assert(!parse_shot_args({"monitor", "--copy"}, err));

@@ -26,9 +26,13 @@ namespace fenriz::bar {
         bool save = false;
         std::string path; // empty = shot_filename() in XDG_PICTURES_DIR/Screenshots
         bool edit = false;
+        bool focused = false; // window: the focused one, without the picker
+
+        // Region and window open the picker over frozen screens, screen and window --focused shoot at once.
+        bool interactive() const { return mode == ShotMode::Region || (mode == ShotMode::Window && !focused); }
     };
 
-    // `fenriz-bar shot` arguments: screen|window|region [--copy] [--save[=PATH]] [--edit].
+    // `fenriz-bar shot` arguments: screen|window|region [--focused] [--copy] [--save[=PATH]] [--edit].
     std::optional<ShotArgs> parse_shot_args(const std::vector<std::string>& args, std::string& error);
 
     // Output and window geometry from one IPC state line, in layout coordinates.
