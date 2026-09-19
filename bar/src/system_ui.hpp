@@ -21,6 +21,8 @@ namespace fenriz::bar {
         Island& island_;
         SysStat& stats_;
         GtkWidget* readout_ = nullptr;
+        GtkWidget* cpu_readout_ = nullptr;
+        GtkWidget* memory_readout_ = nullptr;
         GtkWidget* cpu_ = nullptr;
         GtkWidget* cpu_graph_ = nullptr;
         GtkWidget* memory_ = nullptr;

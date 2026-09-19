@@ -42,6 +42,14 @@ namespace fenriz::bar {
             return area;
         }
 
+        // percentage label for the footer chip.
+        GtkWidget* footer_value(GtkWidget** label, int margin_end) {
+            *label = gtk_label_new(nullptr);
+            gtk_widget_add_css_class(*label, "island-footer-text");
+            gtk_widget_set_margin_end(*label, margin_end);
+            return *label;
+        }
+
         GtkWidget* stat_row(GtkWidget* grid, int row, const char* name, GtkWidget** value) {
             GtkWidget* label = gtk_label_new(name);
             gtk_widget_add_css_class(label, "island-section");
@@ -57,9 +65,15 @@ namespace fenriz::bar {
     } // namespace
 
     SystemUi::SystemUi(Island& island, SysStat& stats) : island_(island), stats_(stats) {
-        readout_ = gtk_button_new_with_label("");
+        readout_ = gtk_button_new();
         gtk_widget_add_css_class(readout_, "island-flat");
-        gtk_widget_add_css_class(readout_, "island-footer-text");
+        gtk_widget_set_tooltip_text(readout_, "CPU and memory use");
+        GtkWidget* readout_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+        gtk_box_append(GTK_BOX(readout_box), gtk_image_new_from_icon_name("fenriz-chip-symbolic"));
+        gtk_box_append(GTK_BOX(readout_box), footer_value(&cpu_readout_, 0));
+        gtk_box_append(GTK_BOX(readout_box), gtk_image_new_from_icon_name("fenriz-memory-symbolic"));
+        gtk_box_append(GTK_BOX(readout_box), footer_value(&memory_readout_, 6));
+        gtk_button_set_child(GTK_BUTTON(readout_), readout_box);
         g_signal_connect_swapped(readout_, "clicked", G_CALLBACK(+[](Island* i) { i->navigate("system"); }), &island_);
         island_.add_to_footer(readout_);
 
@@ -95,12 +109,8 @@ namespace fenriz::bar {
         auto percent = [](int v) { return v < 0 ? std::string("–") : std::to_string(v) + "%"; };
         const std::string temp = s.celsius < 0 ? "–" : std::to_string(static_cast<int>(std::lround(s.celsius))) + "°";
 
-        std::string readout = "CPU " + percent(s.cpu) + "  ·  RAM " + percent(s.memory);
-        /*
-        if (s.celsius >= 0)
-            readout += "  ·  " + temp;
-        */
-        gtk_button_set_label(GTK_BUTTON(readout_), readout.c_str());
+        gtk_label_set_text(GTK_LABEL(cpu_readout_), percent(s.cpu).c_str());
+        gtk_label_set_text(GTK_LABEL(memory_readout_), percent(s.memory).c_str());
 
         gtk_label_set_text(GTK_LABEL(cpu_), percent(s.cpu).c_str());
         gtk_label_set_text(GTK_LABEL(memory_), percent(s.memory).c_str());
