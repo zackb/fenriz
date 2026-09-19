@@ -181,6 +181,26 @@ window.fenriz-shell { background: transparent; }
 
 window.fenriz-bar, window.fenriz-island { background: transparent; }
 
+window.fenriz-shot { background: transparent; }
+.fenriz-shot .shot-selection { color: @fenriz_accent; }
+.fenriz-shot .shot-toolbar {
+  padding: 6px;
+  border-radius: 14px;
+  background-color: @fenriz_fill_window;
+}
+.fenriz-shot .shot-toolbar button {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 10px;
+  box-shadow: none;
+  background: transparent;
+}
+.fenriz-shot .shot-toolbar button:hover { background-color: alpha(currentColor, 0.08); }
+.fenriz-shot .shot-toolbar button:checked { background-color: alpha(currentColor, 0.16); color: @fenriz_accent; }
+.fenriz-shot .shot-toolbar separator { margin: 6px 4px; }
+
 .fenriz-bar .bar-capsule {
   min-height: 24px;
   padding: 2px;

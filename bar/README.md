@@ -27,13 +27,15 @@ Or from the fenriz root: `make bar`, `make run-bar`, `make install-bar`.
 exec-once = fenriz-bar
 bind = SUPER, C, exec, fenriz-bar open calendar
 bind = , XF86PowerOff, exec, fenriz-bar open power
+bind = SUPER SHIFT, S, exec, fenriz-bar shot region --copy --edit
 ```
 
 | command | effect |
 |---------|--------|
 | `fenriz-bar` | run the bar |
-| `fenriz-bar open [page]` | open the island on the focused screen, or close it if that page is already open. Pages: `home`, `calendar`, `audio`, `media`, `power`, `system`, `bluetooth`, `wifi`, `record` |
+| `fenriz-bar open [page]` | open the island on the focused screen, or close it if that page is already open. Pages: `home`, `calendar`, `audio`, `media`, `power`, `system`, `bluetooth`, `wifi`, `record`, `shot` |
 | `fenriz-bar record` | start recording the focused screen, or stop the recording that is running |
+| `fenriz-bar shot screen\|window\|region [--copy] [--save[=PATH]] [--edit]` | take a screenshot, see [Screenshots](#screenshots) |
 | `fenriz-bar awake` | toggle keep-awake: the screen does not dim, lock or blank while it is on |
 | `fenriz-bar close` | close the island |
 
@@ -71,6 +73,30 @@ lasts until the bar exits.
 
 Encoding is `wf-recorder` over wlr-screencopy; without it installed there is no dot and no page.
 Whole screens only — no region, no single window.
+
+## Screenshots
+
+`fenriz-bar shot` captures one of:
+
+- `screen`: the focused screen.
+- `window`: the focused window as it looks on screen, border and rounded corners included.
+- `region`: freezes every screen so you can drag a box. A click takes the window under the pointer, or the
+  whole screen if there is no window there. Esc cancels.
+
+`--copy` puts the result on the clipboard as `image/png`. `--save` writes it to
+`~/Pictures/Screenshots/fenriz-shot-<date>-<time>.png`, and `--save=PATH` writes it to PATH instead. Give one
+or both. The saved path is printed. The command waits until the shot is done and exits 1 on cancel or failure.
+
+The camera next to the record dot on Home takes the same shot with one click. It closes the island first.
+Right-click it for the page, which chooses what to capture (region, window or screen) and what happens next
+(annotate, copy, save). The default is region, annotate, copy.
+
+`--edit` opens the result for annotation first. The tools are brush (B), line (L), arrow (A), box (R),
+ellipse (E) and text (T). There are seven colours and three widths, and Ctrl+Z undoes. Enter finishes and Esc
+cancels. While you type text, Enter or Esc ends the text.
+
+It needs ext-image-copy-capture-v1 and ext-data-control-v1 from the compositor. Rotated screens are captured
+unrotated.
 
 ## Tray
 

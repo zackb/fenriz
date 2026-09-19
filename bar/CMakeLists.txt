@@ -36,6 +36,15 @@ wayland_client_protocol(PROTO_SRC
     ${WL_PROTO_DIR}/staging/ext-background-effect/ext-background-effect-v1.xml ext-background-effect-v1)
 wayland_client_protocol(PROTO_SRC
     ${WL_PROTO_DIR}/unstable/idle-inhibit/idle-inhibit-unstable-v1.xml idle-inhibit-unstable-v1)
+wayland_client_protocol(PROTO_SRC
+    ${WL_PROTO_DIR}/staging/ext-image-capture-source/ext-image-capture-source-v1.xml ext-image-capture-source-v1)
+wayland_client_protocol(PROTO_SRC
+    ${WL_PROTO_DIR}/staging/ext-image-copy-capture/ext-image-copy-capture-v1.xml ext-image-copy-capture-v1)
+wayland_client_protocol(PROTO_SRC
+    ${WL_PROTO_DIR}/staging/ext-data-control/ext-data-control-v1.xml ext-data-control-v1)
+# unused, but ext-image-capture-source-v1 references its interface
+wayland_client_protocol(PROTO_SRC
+    ${WL_PROTO_DIR}/staging/ext-foreign-toplevel-list/ext-foreign-toplevel-list-v1.xml ext-foreign-toplevel-list-v1)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../desktop/icons/icons.cmake)
 
@@ -65,6 +74,11 @@ add_executable(fenriz-bar
     src/tray.cpp
     src/tray_ui.cpp
     src/dbusmenu.cpp
+    src/shot.cpp
+    src/shot_ui.cpp
+    src/capture.cpp
+    src/clipboard.cpp
+    src/editor.cpp
     ${DESKTOP_SRC}/brightness.cpp
     ${DESKTOP_SRC}/config.cpp
     ${DESKTOP_SRC}/theme.cpp
@@ -132,6 +146,11 @@ add_executable(bar_share_test src/test_share.cpp)
 target_include_directories(bar_share_test PRIVATE src)
 target_compile_options(bar_share_test PRIVATE -UNDEBUG)
 
+add_executable(bar_shot_test src/shot.cpp src/test_shot.cpp)
+target_include_directories(bar_shot_test PRIVATE src)
+target_link_libraries(bar_shot_test PRIVATE PkgConfig::JSON_GLIB)
+target_compile_options(bar_shot_test PRIVATE -UNDEBUG)
+
 enable_testing()
 add_test(NAME compositor COMMAND bar_compositor_test)
 add_test(NAME spring     COMMAND bar_spring_test)
@@ -144,6 +163,7 @@ add_test(NAME tray       COMMAND bar_tray_test)
 add_test(NAME share      COMMAND bar_share_test)
 add_test(NAME plugin     COMMAND bar_plugin_test)
 add_test(NAME recorder   COMMAND bar_recorder_test)
+add_test(NAME shot       COMMAND bar_shot_test)
 
 set(CPACK_SET_DESTDIR ON)
 set(CPACK_PACKAGE_RELOCATABLE FALSE)

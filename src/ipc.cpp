@@ -149,6 +149,10 @@ namespace fenriz::ipc {
                 s += ",\"fullscreen\":" + std::string(v->fullscreen ? "true" : "false");
                 s += ",\"focused\":" + std::string(v == server.focused_view ? "true" : "false");
                 s += ",\"urgent\":" + std::string(v->urgent ? "true" : "false");
+                s += ",\"x\":" + std::to_string(v->frame.x);
+                s += ",\"y\":" + std::to_string(v->frame.y);
+                s += ",\"width\":" + std::to_string(v->frame.width);
+                s += ",\"height\":" + std::to_string(v->frame.height);
                 s += '}';
             }
 

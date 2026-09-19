@@ -33,6 +33,7 @@ namespace fenriz::bar {
         gtk_widget_add_css_class(chip_, "island-flat");
         gtk_widget_set_tooltip_text(chip_, "Record this screen · right-click for audio");
         GtkWidget* box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+        gtk_widget_set_halign(box, GTK_ALIGN_CENTER);
         gtk_box_append(GTK_BOX(box), gtk_image_new_from_icon_name(ICON));
         chip_label_ = gtk_label_new(nullptr);
         gtk_widget_add_css_class(chip_label_, "island-footer-text");
