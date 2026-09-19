@@ -98,6 +98,7 @@ namespace fenriz::bar {
         static gboolean on_clock(gpointer data);
         static gboolean on_activity_done(gpointer data);
         static gboolean on_remeasure(gpointer data);
+        void update_layer();
         static void on_pressed(GtkGestureClick* gesture, int n_press, double x, double y, gpointer data);
         static void on_enter(GtkEventControllerMotion* motion, double x, double y, gpointer data);
         static void on_motion(GtkEventControllerMotion* motion, double x, double y, gpointer data);
