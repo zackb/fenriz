@@ -77,7 +77,7 @@ means something changed.
  "lid":"open",
  "cursor":{"x":100,"y":200},
  "workspaces":{"active":1,"occupied":[1,2,4],"urgent":[4]},
- "windows":[{"appId":"foot","title":"~","icon":"","tag":"","workspace":1,"floating":false,"fullscreen":false,"focused":true,"urgent":false}],
+ "windows":[{"appId":"foot","title":"~","icon":"","tag":"","workspace":1,"floating":false,"fullscreen":false,"focused":true,"urgent":false,"x":0,"y":0,"width":1280,"height":800}],
  "activeWindow":{"appId":"foot","title":"~","icon":"","tag":""}}
 ```
 
@@ -105,6 +105,7 @@ means something changed.
 | `windows[].floating` | bool | Escaped the tiling tree (free move/resize). |
 | `windows[].fullscreen` | bool | Currently fullscreen. |
 | `windows[].focused` | bool | The focused window. At most one is true. |
+| `windows[].x/y/width/height` | int | On-screen frame, border included, in layout coordinates. **Only current at connect time**, like `cursor`: moves and resizes do not push a line. Meaningless for a window on a hidden workspace. |
 | `activeWindow` | object \| null | Focused window, or `null` when nothing is focused. Redundant with `windows[].focused`, kept for existing bars. |
 | `activeWindow.appId` | string | Focused window's app id. |
 | `activeWindow.title` | string | Focused window's title. |

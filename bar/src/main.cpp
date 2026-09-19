@@ -25,6 +25,7 @@
 #include "power_ui.hpp"
 #include "recorder.hpp"
 #include "recorder_ui.hpp"
+#include "shot_ui.hpp"
 #include "sysstat.hpp"
 #include "system_ui.hpp"
 #include "theme.hpp"
@@ -51,6 +52,7 @@ namespace {
     using fenriz::bar::PowerUi;
     using fenriz::bar::Recorder;
     using fenriz::bar::RecorderUi;
+    using fenriz::bar::ShotUi;
     using fenriz::bar::SysStat;
     using fenriz::bar::SystemUi;
     using fenriz::bar::Tray;
@@ -81,6 +83,7 @@ namespace {
         std::unique_ptr<MediaUi> media_ui;
         std::unique_ptr<Recorder> recorder;
         std::unique_ptr<RecorderUi> recorder_ui;
+        std::unique_ptr<ShotUi> shot_ui;
         std::vector<std::unique_ptr<PluginUi>> plugins;
         std::unique_ptr<Bar> bar;
         std::string bt_sink_prefix;
@@ -170,12 +173,13 @@ namespace {
         session->inhibitor = std::make_unique<IdleInhibitor>(session->island->window());
         session->wifi_ui = std::make_unique<WifiUi>(*session->island, *session->network);
         session->bluetooth_ui = std::make_unique<BluetoothUi>(*session->island, *session->bluetooth);
-        // the footer reads left to right in construction order: record dot, system readout, then battery and power
+        // the footer reads left to right in construction order: record dot, camera, system readout, then battery and power
         if (Recorder::available()) {
             session->recorder = std::make_unique<Recorder>();
             session->recorder_ui = std::make_unique<RecorderUi>(
                 *session->island, *session->recorder, *session->audio, *session->compositor);
         }
+        session->shot_ui = std::make_unique<ShotUi>(app, *session->island);
         session->system_ui = std::make_unique<SystemUi>(*session->island, *session->stats);
         session->power_ui =
             std::make_unique<PowerUi>(*session->island, *session->power, *session->compositor, *session->inhibitor);
@@ -261,6 +265,17 @@ namespace {
                     continue;
                 }
                 session->recorder_ui->toggle();
+            } else if (arg == "shot") {
+                // takes the rest of the line
+                std::string error;
+                const auto args = fenriz::bar::parse_shot_args({argv + i + 1, argv + argc}, error);
+                i = argc;
+                if (!args) {
+                    g_application_command_line_printerr(cmdline, "%s\n", error.c_str());
+                    status = 1;
+                    continue;
+                }
+                status = session->shot_ui->take(*args, cmdline);
             } else if (arg == "awake") {
                 if (!session->power_ui->toggle_awake()) {
                     g_application_command_line_printerr(cmdline, "the compositor does not support idle inhibit\n");
@@ -304,6 +319,7 @@ int main(int argc, char** argv) {
     session.tray_ui.reset();
     session.tray.reset();
     session.plugins.clear();
+    session.shot_ui.reset();
     session.recorder_ui.reset();
     session.recorder.reset();
     session.media_ui.reset();
