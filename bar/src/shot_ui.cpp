@@ -130,8 +130,11 @@ namespace fenriz::bar {
             }
 
             ~Pane() {
-                if (window)
+                if (window) {
+                    detach_handlers(GTK_WIDGET(window), this);
+                    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), nullptr, nullptr, nullptr);
                     gtk_window_destroy(window);
+                }
                 if (image)
                     cairo_surface_destroy(image);
             }

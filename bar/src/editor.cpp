@@ -458,6 +458,18 @@ namespace fenriz::bar {
 
     } // namespace
 
+    void detach_handlers(GtkWidget* widget, gpointer data) {
+        GListModel* controllers = gtk_widget_observe_controllers(widget);
+        for (guint i = 0; i < g_list_model_get_n_items(controllers); i++) {
+            GObject* c = G_OBJECT(g_list_model_get_item(controllers, i));
+            g_signal_handlers_disconnect_by_data(c, data);
+            g_object_unref(c);
+        }
+        g_object_unref(controllers);
+        for (GtkWidget* child = gtk_widget_get_first_child(widget); child; child = gtk_widget_get_next_sibling(child))
+            detach_handlers(child, data);
+    }
+
     void open_editor(GtkApplication* app, GdkMonitor* monitor, cairo_surface_t* image, EditorDone done) {
         auto* ed = new Editor;
         ed->image = image;
@@ -497,7 +509,13 @@ namespace fenriz::bar {
         g_signal_connect(keys, "key-pressed", G_CALLBACK(on_key), ed);
         gtk_widget_add_controller(window, keys);
 
-        g_signal_connect_swapped(window, "destroy", G_CALLBACK(+[](Editor* ed) { delete ed; }), ed);
+        g_signal_connect_swapped(window,
+                                 "destroy",
+                                 G_CALLBACK(+[](Editor* ed) {
+                                     detach_handlers(GTK_WIDGET(ed->window), ed);
+                                     delete ed;
+                                 }),
+                                 ed);
         gtk_window_present(ed->window);
     }
 

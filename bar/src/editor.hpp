@@ -14,4 +14,9 @@ namespace fenriz::bar {
     // Enter finishes, Esc cancels, Ctrl+Z undoes.
     void open_editor(GtkApplication* app, GdkMonitor* monitor, cairo_surface_t* image, EditorDone done);
 
+    // Disconnects every handler with `data` from the event controllers of `widget` and its descendants. Call before
+    // freeing `data` when its window may still see events: one queued behind the event that closes the window (a
+    // second Esc) would otherwise reach freed state.
+    void detach_handlers(GtkWidget* widget, gpointer data);
+
 } // namespace fenriz::bar
