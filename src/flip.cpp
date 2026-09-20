@@ -120,8 +120,7 @@ namespace fenriz::flip {
             place_view_nodes(front); // re-run the content clip
             view_flip_capture(front);
         }
-        // Re-pressing mid-turn mirrors the progress: the squash is symmetric about the pinch,
-        // so the frame width is unchanged and the turn runs back the way it came.
+        // Re-pressing mid-turn swaps progress
         front->flip_t = front->flip_t >= 1.0 ? 0.0 : 1.0 - front->flip_t;
         schedule(server, front);
     }
@@ -136,12 +135,11 @@ namespace fenriz::flip {
         view_flip_release(back);
         split(front);
         if (floating) {
-            // Two floats sharing one box would land exactly on top of each other.
             back->box.x += 32;
             back->box.y += 32;
             view_configure(back);
         } else {
-            tiling::insert(server, back, front); // bisects the tile they were sharing
+            tiling::insert(server, back, front);
         }
         tiling::arrange(server);
         ipc::publish(server);
@@ -157,8 +155,7 @@ namespace fenriz::flip {
         view_flip_release(view);
         view_flip_release(peer);
         split(view);
-        // The survivor keeps the tile: a dying front hands its leaf over rather than letting
-        // tree_remove collapse it and strand the back with no slot at all.
+        // survivor keeps the tile
         if (was_front && !peer->floating)
             if (tiling::Node* leaf = tiling::find_leaf(server.workspaces[view->workspace].root, view))
                 leaf->view = peer;
@@ -180,7 +177,7 @@ namespace fenriz::flip {
             if (v->flip_t < 1.0)
                 animating = true;
             if (past_pinch(prev, v->flip_t)) {
-                pinched.push_back(v); // swapping mutates the view list; do it outside the walk
+                pinched.push_back(v);
                 continue;
             }
             if (v->flip_t >= 1.0)

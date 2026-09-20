@@ -67,9 +67,7 @@ namespace fenriz {
         double anim_t = 1.0;
         bool dragging = false;
 
-        // Flip pair (src/flip.cpp): two windows sharing one tile. `flip_back` marks the hidden
-        // half, which is in no tiling tree and mirrors the front's box. `flip_t` is the turn's
-        // progress, 1.0 when settled; only the front half ever runs one.
+        // Flip pair: two windows sharing one tile.
         View* flip_peer = nullptr;
         bool flip_back = false;
         double flip_t = 1.0;

@@ -259,20 +259,19 @@ fullscreens and changes workspace as a single window; `flip` turns the tile over
 the other half.
 
 ```
-bind = SUPER CTRL ALT, M, flipmark      # the defaults
-bind = SUPER CTRL ALT, P, flippair
-bind = SUPER CTRL ALT, F, flip
-bind = SUPER CTRL ALT, U, flipunpair
+bind = SUPER SHIFT, M, flipmark      # the defaults
+bind = SUPER SHIFT, P, flippair
+bind = SUPER SHIFT, F, flip
+bind = SUPER SHIFT, U, flipunpair
 ```
 
 Focus the window that should start in front and press `flipmark`, then focus the other and
-press `flippair` — it disappears behind the first, which keeps the tile. `flip` turns them
-over; pressing it again mid-turn reverses it. `flipunpair` gives both windows their own tile
+press `flippair`, it disappears behind the first. `flip` turns them
+over, pressing it again reverses it. `flipunpair` gives both windows their own tile
 back.
 
 Both halves must be on the same workspace, both tiled or both floating, and neither
-fullscreen. The hidden half takes no focus and is skipped by focus cycling; closing the
-visible half hands the tile to the other rather than collapsing it.
+fullscreen.
 
 ### Keyboard cleaning
 
