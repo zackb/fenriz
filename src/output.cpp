@@ -8,6 +8,7 @@
 #include <ctime>
 
 #include "cursor.hpp"
+#include "flip.hpp"
 #include "ipc.hpp"
 #include "layer.hpp"
 #include "lock.hpp"
@@ -65,6 +66,9 @@ namespace fenriz::output {
                     if (view_visible(server, view) && view_output(server, view) == output)
                         place_view_nodes(view);
             }
+
+            if (flip::tick(server, output, dt))
+                animating = true;
             return animating;
         }
 

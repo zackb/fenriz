@@ -10,6 +10,7 @@
 #include "background_blur.hpp"
 #include "color.hpp"
 #include "cursor.hpp"
+#include "flip.hpp"
 #include "ipc.hpp"
 #include "server.hpp"
 #include "tiling.hpp"
@@ -141,14 +142,28 @@ namespace fenriz {
             const int bw = v->fullscreen ? 0 : s.config.border_width;
             const int r = v->fullscreen ? 0 : std::max(0, s.config.rounding - bw);
             wlr_scene_buffer_set_corner_radius(buf, r);
+            wlr_scene_surface* ss = wlr_scene_surface_try_from_buffer(buf);
             // alpha-modifier-v1: a client's own opacity multiplies the compositor's
             float alpha = v->fullscreen ? 1.0f : s.config.opacity;
-            if (wlr_scene_surface* ss = wlr_scene_surface_try_from_buffer(buf))
+            if (ss)
                 if (const wlr_alpha_modifier_surface_v1_state* am =
                         wlr_alpha_modifier_v1_get_surface_state(ss->surface))
                     alpha *= (float)am->multiplier;
             alpha *= ws_fade(s, v);
             wlr_scene_buffer_set_opacity(buf, alpha);
+            // Mid-turn the frame narrows about its centre (place_view_nodes); scale the content
+            // by the same factor so the border stays welded to the content edge. Recomputed from
+            // the surface every frame, so settling back to 1.0 restores the natural size on its
+            // own rather than depending on the client committing again.
+            //
+            // ponytail: only the buffers scale, not the subsurface node offsets, so a window
+            // composed of subsurfaces shows them unsquashed mid-turn. Scale their x offsets too
+            // if that ever shows up in practice.
+            if (ss)
+                wlr_scene_buffer_set_dest_size(
+                    buf,
+                    std::max(1, (int)std::lround(ss->surface->current.width * flip::squash(v->flip_t))),
+                    ss->surface->current.height);
         }
 
         // Tell a toplevel it's tiled on all edges (or none). Advertising the tiled state is
@@ -315,7 +330,8 @@ namespace fenriz {
                     view->toplevel->base->data = nullptr;
             }
             view->announced_output = nullptr;
-            cursor::forget_view(view); // drop any in-flight mouse grab before the view is gone
+            cursor::forget_view(view);  // drop any in-flight mouse grab before the view is gone
+            flip::forget(server, view); // a paired half hands the tile over rather than collapsing it
             server.views.remove(view);
             tiling::remove(server, view); // sibling reclaims the freed tile
             if (view->foreign_handle) {
@@ -679,7 +695,7 @@ namespace fenriz {
     }
 
     void focus_view(Server& server, View* view, bool raise) {
-        if (!view || server.locked)
+        if (!view || server.locked || view->flip_back)
             return;
 
         view = modal_front(server, view);
@@ -776,6 +792,11 @@ namespace fenriz {
         }
         view->fullscreen = on; // before view_configure: it insets by the border only when not fullscreen
         view_set_fullscreen(view, on);
+        if (View* peer = view->flip_peer) { // a pair goes fullscreen as one window
+            peer->fullscreen = on;
+            view_set_fullscreen(peer, on);
+            restack_view(server, peer);
+        }
         if (!on && view->floating)
             view_configure(view); // tell the restored float its geometry (fullscreen flag now cleared)
         restack_view(server, view);
@@ -834,6 +855,11 @@ namespace fenriz {
             v->float_box = v->box;              // re-floating returns here
             v->pinned = false;                  // a tiled window can't be pinned
             tiling::insert(server, v, nullptr); // re-tile at the spiral tail
+        }
+        if (View* peer = v->flip_peer) { // a pair floats or tiles as one window
+            peer->floating = v->floating;
+            set_tiled(peer, !peer->floating);
+            restack_view(server, peer);
         }
         restack_view(server, v);
         raise_view(server, v); // reparenting drops it on top of its own dialogs; re-stack them
@@ -958,7 +984,7 @@ namespace fenriz {
     }
 
     bool view_visible(const Server& server, const View* view) {
-        if (!view->mapped)
+        if (!view->mapped || view->flip_back) // the back of a flip pair hides behind its front
             return false;
         const Workspace& ws = server.workspaces[view->workspace];
         // Shown only if its workspace lives on an output AND is the one that output displays.
@@ -1107,6 +1133,14 @@ namespace fenriz {
                 tiling::fit_content({tile.x, tile.y, tile.width, tile.height}, geo.width, geo.height, bw);
             box = {f.x, f.y, f.w, f.h};
         }
+        // The frame the client was sized to. A flip narrows what's drawn without resizing the
+        // client, so the content clip below (in client coords) must keep using this.
+        const View::Box full = box;
+        if (view->flip_t < 1.0) {
+            const int w = std::max(1, (int)std::lround(box.width * flip::squash(view->flip_t)));
+            box.x += (box.width - w) / 2;
+            box.width = w;
+        }
         view->frame = box; // popup unconstraining reads this back (see server.cpp)
         wlr_scene_node_set_position(&view->scene_tree->node, box.x, box.y);
 
@@ -1140,7 +1174,8 @@ namespace fenriz {
         if (view->fullscreen) {
             wlr_scene_subsurface_tree_set_clip(&view->surface_tree->node, nullptr);
         } else {
-            wlr_box clip = {geo.x, geo.y, std::max(1, inner.w), std::max(1, inner.h)};
+            const tiling::Rect content = tiling::inner_box({full.x, full.y, full.width, full.height}, bw);
+            wlr_box clip = {geo.x, geo.y, std::max(1, content.w), std::max(1, content.h)};
             wlr_scene_subsurface_tree_set_clip(&view->surface_tree->node, &clip);
         }
 
@@ -1325,6 +1360,10 @@ namespace fenriz {
         // sent there isn't stranded invisibly.
         if (!server.workspaces[n].output)
             server.workspaces[n].output = output::focused(server);
+        if (View* peer = v->flip_peer) { // the hidden half travels with its front
+            peer->workspace = n;
+            view_update_output(server, peer);
+        }
         view_update_output(server, v); // it may have just crossed to another screen
         tiling::arrange(server);
         focus_topmost_visible(server);

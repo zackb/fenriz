@@ -7,6 +7,7 @@
 #include "cleaning.hpp"
 #include "config.hpp"
 #include "cursor.hpp"
+#include "flip.hpp"
 #include "lock.hpp"
 #include "output.hpp"
 #include "server.hpp"
@@ -387,6 +388,18 @@ namespace fenriz {
             break;
         case Action::Pin:
             toggle_pin(server);
+            break;
+        case Action::FlipMark:
+            flip::mark(server);
+            break;
+        case Action::FlipPair:
+            flip::pair(server);
+            break;
+        case Action::Flip:
+            flip::turn(server);
+            break;
+        case Action::FlipUnpair:
+            flip::unpair(server);
             break;
         case Action::Cleaning: {
             if (server.cleaning || b.arg == "off") {

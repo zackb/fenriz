@@ -130,6 +130,7 @@ add_executable(fenriz
     src/keyboard.cpp
     src/cursor.cpp
     src/tiling.cpp
+    src/flip.cpp
     src/config.cpp
     src/layer.cpp
     src/lock.cpp
@@ -209,6 +210,9 @@ target_include_directories(fenrizctl_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sr
 add_executable(fenriz_ipc_test src/test_ipc.cpp)
 target_include_directories(fenriz_ipc_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+add_executable(fenriz_flip_test src/test_flip.cpp)
+target_include_directories(fenriz_flip_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
 # Wayland client tests for integration testing
 add_executable(fenriz-test
     tests/client/main.c
@@ -231,6 +235,7 @@ add_test(NAME keybind COMMAND fenriz_keybind_test)
 add_test(NAME output  COMMAND fenriz_output_test)
 add_test(NAME ctl     COMMAND fenrizctl_test)
 add_test(NAME ipc     COMMAND fenriz_ipc_test)
+add_test(NAME flip    COMMAND fenriz_flip_test)
 
 # fails when wlroots or wayland-protocols offers a protocol that is in neither src/ nor docs/PROTOCOLS.md.
 add_test(NAME protocols COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/protocol-audit.sh)

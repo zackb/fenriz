@@ -8,7 +8,11 @@
 
 namespace fenriz::tiling {
 
-    void insert(Server& server, View* v, View* focus) { tree_insert(server.workspaces[v->workspace].root, v, focus); }
+    void insert(Server& server, View* v, View* focus) {
+        if (v->flip_back)
+            return; // the back of a flip pair has no tile of its own; it shadows its front
+        tree_insert(server.workspaces[v->workspace].root, v, focus);
+    }
 
     void remove(Server& server, View* v) { tree_remove(server.workspaces[v->workspace].root, v); }
 
@@ -98,6 +102,12 @@ namespace fenriz::tiling {
         // (not just the shown leaves above) so views on hidden workspaces get disabled and
         // a window just moved elsewhere stops rendering.
         for (View* view : server.views) {
+            // The hidden half of a flip pair tracks its front's slot, so it is already the right
+            // size and place the moment the two trade roles.
+            if (view->flip_back && view->flip_peer) {
+                view->box = view->flip_peer->box;
+                view_configure(view);
+            }
             // A float resize deferred its configure to here
             if (view->configure_pending) {
                 view->configure_pending = false;

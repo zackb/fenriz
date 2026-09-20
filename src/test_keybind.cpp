@@ -29,8 +29,18 @@ int main() {
                              "bind = SUPER SHIFT, E, exit\n"
                              "bind = SUPER, P, pin\n"
                              "bind = SUPER SHIFT CTRL, C, cleaning\n"
-                             "bind = SUPER, X, cleaning, 90\n");
-    assert(c.binds.size() == 5);
+                             "bind = SUPER, X, cleaning, 90\n"
+                             "bind = SUPER CTRL ALT, M, flipmark\n"
+                             "bind = SUPER CTRL ALT, P, flippair\n"
+                             "bind = SUPER CTRL ALT, F, flip\n"
+                             "bind = SUPER CTRL ALT, U, flipunpair\n");
+    assert(c.binds.size() == 9);
+
+    // The four flip-pair actions. "flip" must not be swallowed by the longer names.
+    assert(c.binds[5].action == Action::FlipMark);
+    assert(c.binds[6].action == Action::FlipPair);
+    assert(c.binds[7].action == Action::Flip);
+    assert(c.binds[8].action == Action::FlipUnpair);
 
     // "cleaning" parses with and without a duration; the arg is the seconds.
     assert(c.binds[3].action == Action::Cleaning);

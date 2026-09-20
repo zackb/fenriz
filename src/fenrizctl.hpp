@@ -68,22 +68,10 @@ namespace fenrizctl {
     }
 
     inline bool is_action(const std::string& s) {
-        static const char* actions[] = {"exec",
-                                        "killactive",
-                                        "exit",
-                                        "focusnext",
-                                        "focusprev",
-                                        "focusleft",
-                                        "focusright",
-                                        "focusup",
-                                        "focusdown",
-                                        "togglesplit",
-                                        "fullscreen",
-                                        "togglefloating",
-                                        "workspace",
-                                        "movetoworkspace",
-                                        "pin",
-                                        "cleaning"};
+        static const char* actions[] = {
+            "exec",    "killactive", "exit",        "focusnext",  "focusprev",      "focusleft", "focusright",
+            "focusup", "focusdown",  "togglesplit", "fullscreen", "togglefloating", "workspace", "movetoworkspace",
+            "pin",     "cleaning",   "flipmark",    "flippair",   "flip",           "flipunpair"};
         for (const char* a : actions)
             if (s == a)
                 return true;
