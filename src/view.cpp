@@ -151,19 +151,10 @@ namespace fenriz {
                     alpha *= (float)am->multiplier;
             alpha *= ws_fade(s, v);
             wlr_scene_buffer_set_opacity(buf, alpha);
-            // Mid-turn the frame narrows about its centre (place_view_nodes); scale the content
-            // by the same factor so the border stays welded to the content edge. Recomputed from
-            // the surface every frame, so settling back to 1.0 restores the natural size on its
-            // own rather than depending on the client committing again.
-            //
-            // ponytail: only the buffers scale, not the subsurface node offsets, so a window
-            // composed of subsurfaces shows them unsquashed mid-turn. Scale their x offsets too
-            // if that ever shows up in practice.
-            if (ss)
+
+            if (v->flip_w > 0 && ss && ss->surface == view_surface(v))
                 wlr_scene_buffer_set_dest_size(
-                    buf,
-                    std::max(1, (int)std::lround(ss->surface->current.width * flip::squash(v->flip_t))),
-                    ss->surface->current.height);
+                    buf, std::max(1, (int)std::lround(v->flip_w * flip::squash(v->flip_t))), std::max(1, v->flip_h));
         }
 
         // Tell a toplevel it's tiled on all edges (or none). Advertising the tiled state is
@@ -1036,14 +1027,47 @@ namespace fenriz {
             wlr_scene_node_for_each_buffer(&view->surface_tree->node, apply_fx, view);
     }
 
+    namespace {
+        struct own_buffer_search {
+            View* view;
+            wlr_scene_buffer* found;
+        };
+
+        void match_own_buffer(wlr_scene_buffer* buf, int /*sx*/, int /*sy*/, void* data) {
+            auto* s = static_cast<own_buffer_search*>(data);
+            if (s->found)
+                return;
+            if (wlr_scene_surface* ss = wlr_scene_surface_try_from_buffer(buf))
+                if (ss->surface == view_surface(s->view))
+                    s->found = buf;
+        }
+
+        wlr_scene_buffer* own_buffer(View* view) {
+            if (!view->surface_tree)
+                return nullptr;
+            own_buffer_search s{view, nullptr};
+            wlr_scene_node_for_each_buffer(&view->surface_tree->node, match_own_buffer, &s);
+            return s.found;
+        }
+    } // namespace
+
+    void view_flip_capture(View* view) {
+        if (wlr_scene_buffer* buf = own_buffer(view)) {
+            view->flip_w = buf->dst_width;
+            view->flip_h = buf->dst_height;
+        }
+    }
+
+    void view_flip_release(View* view) {
+        if (view->flip_w <= 0)
+            return;
+        if (wlr_scene_buffer* buf = own_buffer(view))
+            wlr_scene_buffer_set_dest_size(buf, view->flip_w, view->flip_h);
+        view->flip_w = view->flip_h = 0;
+    }
+
     void view_adopt_float_size(View* view) {
-        // A floating window sizes itself (we un-tile it, so GTK/Gecko restore their own
-        // natural size + CSD margins and never honor a configure). Track the committed
-        // size so the border/shadow/clip tighten onto the real content instead of leaving
-        // a band of the desktop behind the float showing through. Tiled/fullscreen boxes
-        // stay compositor-authoritative; skip while this view is under an interactive grab
-        // so a lagging commit can't fight the cursor mid-resize. xdg reports a window
-        // geometry (CSD margin excluded); X11 has none, so use the raw surface size.
+
         const bool xdg = view->kind == View::Kind::Xdg;
         const wlr_box geo = xdg ? view->toplevel->base->geometry
                                 : wlr_box{0, 0, view->xwl->surface->current.width, view->xwl->surface->current.height};

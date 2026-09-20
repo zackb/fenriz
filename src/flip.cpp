@@ -42,8 +42,7 @@ namespace fenriz::flip {
             }
         }
 
-        // Trade the halves' roles. The tile (tree leaf or float box) stays exactly where it is;
-        // the back steps into it and the front steps behind.
+        // Trade the halves' roles.
         void swap_roles(Server& server, View* front) {
             View* back = front->flip_peer;
             if (!back)
@@ -54,8 +53,9 @@ namespace fenriz::flip {
             back->box = front->box;
             back->flip_back = false;
             front->flip_back = true;
-            back->flip_t = front->flip_t; // the turn carries on from the same point
+            back->flip_t = front->flip_t;
             front->flip_t = 1.0;
+            view_flip_release(front); // it is hidden now give buffer back
             Workspace& ws = server.workspaces[front->workspace];
             if (ws.last_focused == front)
                 ws.last_focused = back;
@@ -63,6 +63,8 @@ namespace fenriz::flip {
             const bool had_focus = server.focused_view == front;
             place_view_nodes(front);
             place_view_nodes(back);
+            if (back->flip_t < 1.0)
+                view_flip_capture(back);
             if (had_focus)
                 focus_view(server, back);
             ipc::publish(server);
@@ -114,6 +116,10 @@ namespace fenriz::flip {
             tiling::arrange(server);
             return;
         }
+        if (front->flip_t >= 1.0) {  // starting a turn
+            place_view_nodes(front); // re-run the content clip
+            view_flip_capture(front);
+        }
         // Re-pressing mid-turn mirrors the progress: the squash is symmetric about the pinch,
         // so the frame width is unchanged and the turn runs back the way it came.
         front->flip_t = front->flip_t >= 1.0 ? 0.0 : 1.0 - front->flip_t;
@@ -126,6 +132,8 @@ namespace fenriz::flip {
             return;
         View* back = front->flip_peer;
         const bool floating = front->floating;
+        view_flip_release(front);
+        view_flip_release(back);
         split(front);
         if (floating) {
             // Two floats sharing one box would land exactly on top of each other.
@@ -146,6 +154,8 @@ namespace fenriz::flip {
         if (!peer)
             return;
         const bool was_front = !view->flip_back;
+        view_flip_release(view);
+        view_flip_release(peer);
         split(view);
         // The survivor keeps the tile: a dying front hands its leaf over rather than letting
         // tree_remove collapse it and strand the back with no slot at all.
@@ -169,10 +179,13 @@ namespace fenriz::flip {
             v->flip_t = std::min(1.0, v->flip_t + step);
             if (v->flip_t < 1.0)
                 animating = true;
-            if (past_pinch(prev, v->flip_t))
+            if (past_pinch(prev, v->flip_t)) {
                 pinched.push_back(v); // swapping mutates the view list; do it outside the walk
-            else
-                place_view_nodes(v);
+                continue;
+            }
+            if (v->flip_t >= 1.0)
+                view_flip_release(v);
+            place_view_nodes(v);
         }
         for (View* v : pinched)
             swap_roles(server, v);

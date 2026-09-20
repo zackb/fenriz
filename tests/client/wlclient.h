@@ -119,6 +119,9 @@ void wlc_paint(struct win* w, uint32_t argb);
 void wlc_paint_noack(struct win* w, uint32_t argb);
 // Attach a buffer of a size we chose, which may contradict the configure we acked.
 void wlc_paint_size(struct win* w, uint32_t argb, int bw, int bh);
+// Same, but split into two colours at buffer column `at`. A solid fill cannot show that the
+// compositor scaled a buffer; the width of each colour band on screen can.
+void wlc_paint_split(struct win* w, uint32_t left, uint32_t right, int at, int bw, int bh);
 void wlc_ack(struct win* w, uint32_t serial);
 void wlc_wait_configure(struct win* w);
 // Map = paint, then wait for the compositor to acknowledge us with a second configure.
