@@ -23,25 +23,35 @@ namespace {
 } // namespace
 
 int main() {
-    assert(recording_filename(local_time(2026, 9, 15, 7, 4, 9)) == "fenriz-recording-20260915-070409.mkv");
-    assert(recording_filename(local_time(2026, 12, 31, 23, 59, 59)) == "fenriz-recording-20261231-235959.mkv");
+    assert(recording_filename(local_time(2026, 9, 15, 7, 4, 9)) == "fenriz-recording-20260915-070409.mp4");
+    assert(recording_filename(local_time(2026, 12, 31, 23, 59, 59)) == "fenriz-recording-20261231-235959.mp4");
+
+    // full-range bt709 flags ride on every recording
+    const std::vector<std::string> color = {
+        "-F",
+        "scale=in_range=full:out_range=full:in_color_matrix=bt709:out_color_matrix=bt709",
+        "-p",
+        "colorspace=bt709"};
 
     // no audio
-    const std::vector<std::string> silent = {"wf-recorder", "-y", "-f", "/v/a.mkv", "-o", "DP-1"};
-    assert(recorder_argv("DP-1", "", "/v/a.mkv") == silent);
+    std::vector<std::string> silent = {"wf-recorder", "-y", "-f", "/v/a.mp4"};
+    silent.insert(silent.end(), color.begin(), color.end());
+    silent.insert(silent.end(), {"-o", "DP-1"});
+    assert(recorder_argv("DP-1", "", "/v/a.mp4") == silent);
 
     // a microphone, glued to the flag as wf-recorder wants it
-    const std::vector<std::string> mic = {
-        "wf-recorder", "-y", "-f", "/v/a.mkv", "-o", "DP-1", "-aalsa_input.pci-0000_00_1f.3.analog-stereo"};
-    assert(recorder_argv("DP-1", "alsa_input.pci-0000_00_1f.3.analog-stereo", "/v/a.mkv") == mic);
+    std::vector<std::string> mic = silent;
+    mic.push_back("-aalsa_input.pci-0000_00_1f.3.analog-stereo");
+    assert(recorder_argv("DP-1", "alsa_input.pci-0000_00_1f.3.analog-stereo", "/v/a.mp4") == mic);
 
     // system audio is a sink monitor
-    assert(recorder_argv("DP-1", "alsa_output.x.monitor", "/v/a.mkv").back() == "-aalsa_output.x.monitor");
+    assert(recorder_argv("DP-1", "alsa_output.x.monitor", "/v/a.mp4").back() == "-aalsa_output.x.monitor");
 
     // no focused output: wf-recorder picks one itself rather than being passed an empty name
-    const std::vector<std::string> any = {"wf-recorder", "-y", "-f", "/v/a.mkv"};
-    assert(recorder_argv("", "", "/v/a.mkv") == any);
+    std::vector<std::string> any = {"wf-recorder", "-y", "-f", "/v/a.mp4"};
+    any.insert(any.end(), color.begin(), color.end());
+    assert(recorder_argv("", "", "/v/a.mp4") == any);
 
     // a path with a space survives, since nothing goes through a shell
-    assert(recorder_argv("DP-1", "", "/v/my videos/a.mkv")[3] == "/v/my videos/a.mkv");
+    assert(recorder_argv("DP-1", "", "/v/my videos/a.mp4")[3] == "/v/my videos/a.mp4");
 }

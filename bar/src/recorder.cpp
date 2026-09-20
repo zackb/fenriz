@@ -10,7 +10,7 @@ namespace fenriz::bar {
 
         constexpr const char* PROGRAM = "wf-recorder";
 
-        constexpr const char* EXTENSION = ".mkv";
+        constexpr const char* EXTENSION = ".mp4";
 
         // Created on demand. XDG_VIDEOS_DIR.
         std::string videos_dir() {
@@ -33,7 +33,15 @@ namespace fenriz::bar {
 
     std::vector<std::string>
         recorder_argv(const std::string& output, const std::string& audio, const std::string& path) {
-        std::vector<std::string> argv = {PROGRAM, "-y", "-f", path};
+        std::vector<std::string> argv = {
+            PROGRAM,
+            "-y",
+            "-f",
+            path,
+            "-F",
+            "scale=in_range=full:out_range=full:in_color_matrix=bt709:out_color_matrix=bt709",
+            "-p",
+            "colorspace=bt709"};
         if (!output.empty()) {
             argv.push_back("-o");
             argv.push_back(output);

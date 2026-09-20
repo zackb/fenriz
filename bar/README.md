@@ -64,8 +64,7 @@ up with `nm-connection-editor`; once they are saved, the bar joins them like any
 
 The dot at the bottom left of Home records the screen the focused window is on; click it again, or
 the red timer on the bar, to stop. It turns red and counts up while recording. The file lands in
-`~/Videos` as `fenriz-recording-<date>-<time>.mkv`, and a notification names it when it is done.
-Matroska, so a recording cut short by a crash still plays.
+`~/Videos` as `fenriz-recording-<date>-<time>.mp4`, and a notification names it when it is done.
 
 Right-click the dot (a two-finger tap on a touchpad) for the page, which picks what to record
 sound from: nothing, a microphone, or a `(system)` entry, which records what you hear. The choice
