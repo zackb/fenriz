@@ -32,6 +32,14 @@ namespace fenriz {
             return 1.0 - k * k * k;
         }
 
+        // The step to advance animations by this frame. `raw` is the gap since the last frame
+        // that animated, `period` one refresh interval.
+        inline double anim_dt(double raw, double period, bool was_animating) {
+            if (!was_animating || raw <= 0 || raw > 1.0)
+                return period;
+            return raw;
+        }
+
         // Per-output state
         struct Output {
             Server* server = nullptr;
@@ -51,7 +59,8 @@ namespace fenriz {
             wl_listener frame;
             wl_listener request_state;
             wl_listener destroy;
-            timespec last_frame{}; // for frame-rate-independent animation decay
+            timespec last_frame{};      // for frame-rate-independent animation decay
+            bool was_animating = false; // did the previous frame advance an animation
 
             // Workspace-switch fade. ws_fade is the alpha multiplier this output's windows render with
             double ws_fade = 1.0;

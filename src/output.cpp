@@ -26,14 +26,24 @@ namespace fenriz::output {
         // layer-shell wallpaper. wlr_scene otherwise clears uncovered regions to black.
         constexpr float BG[4] = {0.1f, 0.1f, 0.12f, 1.0f};
 
+        double elapsed(const timespec& from, const timespec& to) {
+            return (to.tv_sec - from.tv_sec) + (to.tv_nsec - from.tv_nsec) / 1e9;
+        }
+
+        // One refresh interval for this output, which is the step to assume when an animation
+        // starts and there is no previous animated frame to measure against.
+        double frame_period(const Output* output) {
+            const int32_t mhz = output->handle ? output->handle->refresh : 0; // wlr_output::refresh is mHz
+            return mhz > 0 ? 1000.0 / mhz : 1.0 / 60;
+        }
+
         // Advance every animation running on this output by the elapsed frame time , pushing result into the scene
         // nodes.
         bool animate(Output* output, const timespec& now) {
             Server& server = *output->server;
-            double dt = (now.tv_sec - output->last_frame.tv_sec) + (now.tv_nsec - output->last_frame.tv_nsec) / 1e9;
+            const double raw = elapsed(output->last_frame, now);
             output->last_frame = now;
-            if (dt <= 0 || dt > 1.0)
-                dt = 1.0 / 60; // first frame or a long stall: assume one 60Hz tick
+            const double dt = anim_dt(raw, frame_period(output), output->was_animating);
             const double step = dt / (std::max(1, server.config.animation_ms) / 1000.0);
             bool animating = false;
             for (View* view : server.views) {
@@ -69,6 +79,7 @@ namespace fenriz::output {
 
             if (flip::tick(server, output, dt))
                 animating = true;
+            output->was_animating = animating;
             return animating;
         }
 
@@ -197,9 +208,8 @@ namespace fenriz::output {
                 wlr_output_layout_output_at(server.output_layout, server.cursor->x, server.cursor->y) == output->handle;
             bool zoom_animating = false;
             if (has_cursor && server.zoom != server.zoom_target) {
-                double dt = (now.tv_sec - output->last_frame.tv_sec) + (now.tv_nsec - output->last_frame.tv_nsec) / 1e9;
-                if (dt <= 0 || dt > 1.0)
-                    dt = 1.0 / 60;
+                const double dt =
+                    anim_dt(elapsed(output->last_frame, now), frame_period(output), output->was_animating);
                 const double tau = std::max(1, server.config.animation_ms) / 1000.0 * 0.35;
                 server.zoom = server.zoom_target + (server.zoom - server.zoom_target) * std::exp(-dt / tau);
                 if (std::abs(server.zoom - server.zoom_target) < 0.01f)

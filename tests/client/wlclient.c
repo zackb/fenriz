@@ -1011,6 +1011,26 @@ void wlc_paint_split(struct win* w, uint32_t left, uint32_t right, int at, int b
     wl_surface_commit(w->surface);
 }
 
+void wlc_paint_stripes(struct win* w, uint32_t a, uint32_t b, int stripe, int bw, int bh) {
+    if (!w->acked && w->configured)
+        wlc_ack(w, w->last_configure_serial);
+    if (bw < 1)
+        bw = 1;
+    if (bh < 1)
+        bh = 1;
+    if (stripe < 1)
+        stripe = 1;
+    uint32_t* px = NULL;
+    struct wl_buffer* buf = buffer_alloc(w->c, bw, bh, a, &px);
+    for (int y = 0; y < bh; y++)
+        for (int x = 0; x < bw; x++)
+            if ((x / stripe) % 2)
+                px[(size_t)y * bw + x] = b;
+    wl_surface_attach(w->surface, buf, 0, 0);
+    wl_surface_damage_buffer(w->surface, 0, 0, bw, bh);
+    wl_surface_commit(w->surface);
+}
+
 void wlc_paint_noack(struct win* w, uint32_t argb) {
     struct wl_buffer* b = wlc_buffer(w->c, w->width, w->height, argb);
     wl_surface_attach(w->surface, b, 0, 0);

@@ -1157,11 +1157,12 @@ namespace fenriz {
                 tiling::fit_content({tile.x, tile.y, tile.width, tile.height}, geo.width, geo.height, bw);
             box = {f.x, f.y, f.w, f.h};
         }
-        // The frame the client was sized to. A flip narrows what's drawn without resizing the
-        // client, so the content clip below (in client coords) must keep using this.
+
+        // The frame the client was sized to
         const View::Box full = box;
+        const double squash = flip::squash(view->flip_t);
         if (view->flip_t < 1.0) {
-            const int w = std::max(1, (int)std::lround(box.width * flip::squash(view->flip_t)));
+            const int w = std::max(1, (int)std::lround(box.width * squash));
             box.x += (box.width - w) / 2;
             box.width = w;
         }
@@ -1185,7 +1186,8 @@ namespace fenriz {
                                bw - geo.y,
                                geo,
                                view->fullscreen ? 0 : std::max(0, server.config.rounding - bw),
-                               view->blur);
+                               view->blur,
+                               squash);
 
         // Crop the client to its window geometry so CSD shadow margins (Firefox/GTK/
         // Chromium ship a buffer bigger than the geometry) don't draw over the border

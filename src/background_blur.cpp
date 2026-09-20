@@ -1,5 +1,7 @@
 #include "background_blur.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <vector>
 
 #include "layer.hpp"
@@ -326,7 +328,8 @@ namespace fenriz::background_blur {
                int oy,
                const wlr_box& content,
                int radius,
-               wlr_scene_blur* nodes[RECTS_MAX]) {
+               wlr_scene_blur* nodes[RECTS_MAX],
+               double squash) {
         const Effect* e = state.server && state.server->config.blur ? drawn_effect(surface) : nullptr;
         wlr_scene_buffer* mask = e ? mask_source(below, surface) : nullptr;
 
@@ -361,7 +364,14 @@ namespace fenriz::background_blur {
                 }
                 continue;
             }
-            const int w = rects[i].x2 - rects[i].x1, h = rects[i].y2 - rects[i].y1;
+            int w = rects[i].x2 - rects[i].x1;
+            const int h = rects[i].y2 - rects[i].y1;
+            const int origin = ox + content.x;
+            int x = ox + rects[i].x1;
+            if (squash < 1.0) {
+                x = origin + (int)std::lround((x - origin) * squash);
+                w = std::max(1, (int)std::lround(w * squash));
+            }
             if (!nodes[i]) {
                 nodes[i] = wlr_scene_blur_create(parent, w, h);
                 if (!nodes[i])
@@ -381,7 +391,7 @@ namespace fenriz::background_blur {
                                            left && bottom ? radius : 0);
             }
             wlr_scene_blur_set_corner_radii(nodes[i], corners);
-            wlr_scene_node_set_position(&nodes[i]->node, ox + rects[i].x1, oy + rects[i].y1);
+            wlr_scene_node_set_position(&nodes[i]->node, x, oy + rects[i].y1);
             if (nodes[i]->node.parent != parent)
                 wlr_scene_node_reparent(&nodes[i]->node, parent);
             wlr_scene_node_place_below(&nodes[i]->node, below);

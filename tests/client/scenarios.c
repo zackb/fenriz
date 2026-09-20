@@ -3710,6 +3710,173 @@ static void s_flip(struct wlc* c) {
     wlc_roundtrip(c);
 }
 
+// --- flip-blur --------------------------------------------------------------------------
+//
+// A window's blur is part of the window, so a flip turn has to narrow it too. It did not:
+// the blur nodes are sized from the client's region in surface coordinates, so while the
+// window squashed toward nothing the blur rectangle kept its full width and stood out past
+// the frame on both sides — visible on any client that asks for blur, and on no other.
+//
+// The pair floats over an opaque striped backdrop. Blur flattens the stripes to their
+// average, and the translucent windows tint them, so "is this pixel still a pristine stripe?"
+// answers whether anything was drawn there. Nothing may be drawn outside the frame the
+// compositor reports for the front half, at any point in the turn.
+
+#define FB_W 800
+#define FB_H 600
+#define FB_STRIPE 16
+#define FB_BG_A 0xffcc3333u
+#define FB_BG_B 0xff33cc55u
+#define FB_GLASS 0x80202040u // premultiplied: translucent, so the blur under it shows
+#define FB_SLACK 8           // the frame moves while the shot is taken
+
+// The front half's frame, as the compositor publishes it. False when no pair is flipped yet.
+static bool fb_front(int* x, int* w) {
+    char snap[16384];
+    if (!ipc_snapshot(snap, sizeof snap))
+        wlc_die("no control socket; the flip actions are only reachable through it");
+    const char* f = strstr(snap, "\"flip\":\"front\"");
+    if (!f)
+        return false;
+    const char* px = strstr(f, "\"x\":");
+    const char* pw = strstr(f, "\"width\":");
+    if (!px || !pw)
+        wlc_die("the state snapshot has no geometry for the front half");
+    *x = atoi(px + 4);
+    *w = atoi(pw + 8);
+    return true;
+}
+
+static bool fb_pristine(uint32_t p) { return wlc_color_near(p, FB_BG_A, 8) || wlc_color_near(p, FB_BG_B, 8); }
+
+// Widest run of touched pixels on the middle row, and how far it escapes [x, x+w).
+static void fb_check(struct wlc_shot* s, int fx, int fw, const char* where) {
+    const int y = s->height / 2;
+    int lo = -1, hi = -1;
+    for (int x = 0; x < s->width; x++)
+        if (!fb_pristine(wlc_pixel(s, x, y))) {
+            if (lo < 0)
+                lo = x;
+            hi = x;
+        }
+    if (lo < 0)
+        wlc_die("%s: the backdrop is untouched — the window is not being drawn at all, so "
+                "nothing here could fail",
+                where);
+    const int over_l = fx - lo, over_r = hi - (fx + fw - 1);
+    if (over_l > FB_SLACK || over_r > FB_SLACK)
+        wlc_die("%s: frame is %d..%d (%dpx) but %d..%d is drawn — %dpx past it on the left, "
+                "%dpx on the right. Something belonging to the window is not being squashed "
+                "with it.",
+                where,
+                fx,
+                fx + fw - 1,
+                fw,
+                lo,
+                hi,
+                over_l > 0 ? over_l : 0,
+                over_r > 0 ? over_r : 0);
+}
+
+static struct win* fb_glass(struct wlc* c, const char* title) {
+    struct win* w = wlc_toplevel(c, FB_W, FB_H, title);
+    struct ext_background_effect_surface_v1* fx =
+        ext_background_effect_manager_v1_get_background_effect(be_manager, w->surface);
+    struct wl_region* r = wl_compositor_create_region(c->compositor);
+    wl_region_add(r, 0, 0, FB_W, FB_H);
+    ext_background_effect_surface_v1_set_blur_region(fx, r);
+    wl_region_destroy(r);
+    wlc_wait_configure(w);
+    wlc_paint_size(w, FB_GLASS, FB_W, FB_H);
+    wlc_roundtrip(c);
+    wlc_pump(c, 200);
+    return w;
+}
+
+static void s_flip_blur(struct wlc* c) {
+    if (c->out_w <= 0 || c->out_h <= 0)
+        wlc_die("no output mode; nothing to compute expected coordinates from");
+    const int W = c->out_w, H = c->out_h;
+
+    be_manager = NULL;
+    struct wl_registry* reg = wl_display_get_registry(c->display);
+    wl_registry_add_listener(reg, &be_registry_listener, NULL);
+    wlc_roundtrip(c);
+    wlc_roundtrip(c);
+    if (!be_manager)
+        wlc_die("compositor does not advertise ext_background_effect_manager_v1");
+
+    wlc_phase("filling the screen with a striped backdrop");
+    // Not named flip-blur-*: the pair is matched by title, both here and by the window rule
+    // that floats it, and a name that contains "flip-blur-b" would be caught by both.
+    struct win* bg = wlc_toplevel(c, W, H, "fenriz-test flipblur-canvas");
+    wlc_wait_configure(bg);
+    wlc_paint_stripes(bg, FB_BG_A, FB_BG_B, FB_STRIPE, W, H);
+    wlc_roundtrip(c);
+    wlc_pump(c, 250);
+
+    wlc_phase("floating two blurred windows over it");
+    struct win* a = fb_glass(c, "fenriz-test flip-blur-a");
+    struct win* b = fb_glass(c, "fenriz-test flip-blur-b");
+
+    wlc_phase("pairing them");
+    fl_focus(c, "flip-blur-a");
+    ipc_send("{\"cmd\":\"dispatch\",\"action\":\"flipmark\"}");
+    wlc_pump(c, 150);
+    fl_focus(c, "flip-blur-b");
+    ipc_send("{\"cmd\":\"dispatch\",\"action\":\"flippair\"}");
+    wlc_pump(c, 400);
+    fl_expect_role("flip-blur-a", "front");
+    fl_expect_role("flip-blur-b", "back");
+
+    int fx = 0, fw = 0;
+    if (!fb_front(&fx, &fw))
+        wlc_die("nothing reports itself as the front half after pairing");
+    const int settled = fw;
+    struct wlc_shot* s = wlc_capture(c, 0);
+    fb_check(s, fx, fw, "settled");
+    wlc_shot_free(s);
+    wlc_log("settled: the pair draws inside its frame, %dpx wide", settled);
+
+    // Sample across the turn. The frame moves while a shot is taken, so it is read either
+    // side and the wider reading is the one tested against.
+    wlc_phase("turning the pair over, watching for anything left behind");
+    ipc_send("{\"cmd\":\"dispatch\",\"action\":\"flip\"}");
+    int narrowest = settled;
+    for (int i = 0; i < 10; i++) {
+        wlc_pump(c, 400);
+        int bx = 0, bw2 = 0, ax = 0, aw = 0;
+        if (!fb_front(&bx, &bw2))
+            continue;
+        s = wlc_capture(c, 0);
+        if (!fb_front(&ax, &aw)) {
+            wlc_shot_free(s);
+            continue;
+        }
+        const int lo = bx < ax ? bx : ax;
+        const int hi = (bx + bw2) > (ax + aw) ? (bx + bw2) : (ax + aw);
+        char where[64];
+        snprintf(where, sizeof where, "turn sample %d", i + 1);
+        fb_check(s, lo, hi - lo, where);
+        wlc_shot_free(s);
+        if (hi - lo < narrowest)
+            narrowest = hi - lo;
+    }
+    // Without this the loop could pass by only ever sampling a settled window.
+    if (narrowest > settled * 3 / 5)
+        wlc_die("the narrowest frame seen was %dpx of %dpx — the turn was never caught part "
+                "way, so nothing above was actually tested",
+                narrowest,
+                settled);
+    wlc_log("turn sampled down to %dpx of %dpx, nothing drawn outside the frame", narrowest, settled);
+
+    wlc_hold_point(c);
+    wlc_destroy(b);
+    wlc_destroy(a);
+    wlc_destroy(bg);
+    wlc_roundtrip(c);
+}
+
 const struct scenario scenarios[] = {
     {"popup", s_popup, "toplevel -> popup -> nested popup, grab, reposition, off-screen anchor"},
     {"layer-popup", s_layer_popup, "corner-anchored popup and submenu on a full-output layer surface"},
@@ -3743,5 +3910,6 @@ const struct scenario scenarios[] = {
     {"keybind", s_keybind, "a bound key reaches neither half to the client; a held binde stops with its keyboard"},
     {"evil", s_evil, "stale acks, commits between configures, self-resize, destroy/recreate"},
     {"flip", s_flip, "flip pairs: a paired half is drawn at its own scale, before, during and after a turn"},
+    {"flip-blur", s_flip_blur, "flip pairs: a blurred window's blur narrows with it through the turn"},
     {NULL, NULL, NULL},
 };
