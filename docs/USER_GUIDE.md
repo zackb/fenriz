@@ -14,6 +14,7 @@ A fast, stable tiling Wayland compositor.
   - [Workspaces and clamshell](#workspaces-and-clamshell)
   - [Environment and autostart](#environment-and-autostart)
   - [Keybindings](#keybindings)
+  - [Flip pairs](#flip-pairs)
   - [Mouse](#mouse)
   - [Window rules](#window-rules)
 - [Screen sharing](#screen-sharing)
@@ -270,8 +271,7 @@ press `flippair`, it disappears behind the first. `flip` turns them
 over, pressing it again reverses it. `flipunpair` gives both windows their own tile
 back.
 
-Both halves must be on the same workspace, both tiled or both floating, and neither
-fullscreen.
+Both halves must be on the same workspace, both tiled or both floating, and neither fullscreen.
 
 ### Keyboard cleaning
 

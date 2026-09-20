@@ -1,13 +1,14 @@
 # fenriz
 
-A fast, stable tiling Wayland compositor built on [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots)
-and [SceneFX](https://github.com/wlrfx/scenefx).
+A fast, stable tiling Wayland compositor with a backside.
 
 ![fenriz demo](docs/img/demo.gif)
 
 A compositor that is small, fast, and stays out of the way. Performance and stability are the primary goals over
-tons of features and eye-candy. It tiles your windows, reads a config file, speaks a small [IPC](/docs/IPC.md), and otherwise
-does nothing you didn't ask for.
+tons of features and eye-candy. It tiles your windows, reads a config file, speaks a small [IPC](/docs/IPC.md), 
+and pairs windows that can flip!
+
+Built on [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots) and [SceneFX](https://github.com/wlrfx/scenefx).
 
 
 [![Arch Linux](https://github.com/zackb/fenriz/actions/workflows/arch.yml/badge.svg?branch=main)](https://github.com/zackb/fenriz/actions/workflows/arch.yml)
