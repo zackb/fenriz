@@ -4,7 +4,7 @@ A fast, stable tiling Wayland compositor built on [wlroots](https://gitlab.freed
 and [SceneFX](https://github.com/wlrfx/scenefx).
 
 <p align="center">
-  <img src="docs/img/demo.gif" alt="fenriz" width="800">
+    <video src="docs/img/demo.mp4" controls></video>
 </p>
 
 A compositor that is small, fast, and stays out of the way. Performance and stability are the primary goals over
