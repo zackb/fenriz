@@ -3,9 +3,7 @@
 A fast, stable tiling Wayland compositor built on [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots)
 and [SceneFX](https://github.com/wlrfx/scenefx).
 
-<p align="center">
-    <video src="docs/img/demo.mp4" controls></video>
-</p>
+https://github.com/user-attachments/assets/4ed78c7c-87e1-4254-9dee-db89db133f99
 
 A compositor that is small, fast, and stays out of the way. Performance and stability are the primary goals over
 tons of features and eye-candy. It tiles your windows, reads a config file, speaks a small [IPC](/docs/IPC.md), and otherwise
