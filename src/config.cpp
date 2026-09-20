@@ -163,6 +163,14 @@ namespace fenriz {
             return Action::Fullscreen;
         if (s == "togglefloating")
             return Action::ToggleFloat;
+        if (s == "flipmark")
+            return Action::FlipMark;
+        if (s == "flippair")
+            return Action::FlipPair;
+        if (s == "flip")
+            return Action::Flip;
+        if (s == "flipunpair")
+            return Action::FlipUnpair;
         if (s == "workspace")
             return Action::Workspace;
         if (s == "movetoworkspace")
@@ -345,6 +353,8 @@ namespace fenriz {
                 cfg.animation_ms = parse_int(val, cfg.animation_ms, 0, 5000);
             else if (key == "workspace_animation")
                 cfg.workspace_animation_ms = parse_int(val, cfg.workspace_animation_ms, 0, 5000);
+            else if (key == "flip")
+                cfg.flip_ms = parse_int(val, cfg.flip_ms, 0, 5000);
             else if (key == "opacity")
                 cfg.opacity = parse_float(val, cfg.opacity, 0.0f, 1.0f);
             else if (key == "scale")

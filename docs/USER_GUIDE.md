@@ -126,6 +126,7 @@ Colors are `0xRRGGBBAA` hex.
 | `rounding` | `10` | corner radius, px |
 | `animation` | `150` | window slide-into-place duration, ms; `0` = off |
 | `workspace_animation` | `0` | workspace-switch fade duration, ms; `0` = instant cut (off) |
+| `flip` | `420` | flip-pair turn duration, ms; `0` = instant swap (off) |
 | `opacity` | `1.0` | window opacity, `0.0`–`1.0` |
 
 ### Input
@@ -246,6 +247,31 @@ things you hold, like volume.
 | `workspace` | switch to workspace `arg` (1–`workspaces`) |
 | `movetoworkspace` | send the focused window to workspace `arg` (1–`workspaces`) |
 | `cleaning` | keyboard cleaning mode for `arg` seconds (default 60) |
+| `flipmark` | mark the focused window as the front of a flip pair |
+| `flippair` | attach the focused window as the back of the marked front |
+| `flip` | turn the focused window's pair over |
+| `flipunpair` | split the focused window's pair |
+
+### Flip pairs
+
+Two windows can share one tile, with only one of them on screen. The pair moves, resizes,
+fullscreens and changes workspace as a single window; `flip` turns the tile over to reveal
+the other half.
+
+```
+bind = SUPER SHIFT, M, flipmark      # the defaults
+bind = SUPER SHIFT, P, flippair
+bind = SUPER SHIFT, F, flip
+bind = SUPER SHIFT, U, flipunpair
+```
+
+Focus the window that should start in front and press `flipmark`, then focus the other and
+press `flippair`, it disappears behind the first. `flip` turns them
+over, pressing it again reverses it. `flipunpair` gives both windows their own tile
+back.
+
+Both halves must be on the same workspace, both tiled or both floating, and neither
+fullscreen.
 
 ### Keyboard cleaning
 

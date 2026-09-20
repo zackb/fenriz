@@ -127,6 +127,7 @@ namespace fenriz {
         std::list<output::Output*> outputs;      // live outputs, in the order they appeared
         View* focused_view = nullptr;
         View* nav_return = nullptr; // last view a directional focus jumped away from
+        View* flip_mark = nullptr;  // window marked as the front of a flip pair; see src/flip.cpp
         int nav_dx = 0, nav_dy = 0; // its jump direction; the opposite move returns to it
 
         // Lid state, from the libinput switch device (keyboard.cpp). Drives

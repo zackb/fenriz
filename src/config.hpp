@@ -28,6 +28,10 @@ namespace fenriz {
         MoveToWorkspace, // arg = workspace number, 1..Config::workspaces
         Pin,             // toggle pin (float shown on all workspaces) on focused view
         Cleaning,        // arg = seconds (default 60); toggles keyboard cleaning mode
+        FlipMark,        // mark the focused window as the front of a flip pair
+        FlipPair,        // attach the focused window as the back of the marked front
+        Flip,            // turn the focused window's pair over
+        FlipUnpair,      // split the focused window's pair
     };
 
     struct Bind {
@@ -83,6 +87,7 @@ namespace fenriz {
         int rounding = 10;
         int animation_ms = 150;         // window slide-into-place duration; 0 = instant (no animation)
         int workspace_animation_ms = 0; // workspace-switch fade duration; 0 = instant (no fade)
+        int flip_ms = 420;              // flip-pair turn duration; 0 = instant (no turn)
         float opacity = 1.0f;
         float scale = 0;                   // output scale for screens with no `output =` scale; 0 = guess from DPI
         bool natural_scroll = true;        // libinput scroll direction; false = traditional wheel

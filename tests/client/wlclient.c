@@ -141,7 +141,9 @@ static void buffer_release(void* data, struct wl_buffer* wl_buffer) {
 }
 static const struct wl_buffer_listener buffer_listener = {.release = buffer_release};
 
-struct wl_buffer* wlc_buffer(struct wlc* c, int w, int h, uint32_t argb) {
+// Shared by wlc_buffer and the patterned painters; `out` hands back the mapping so a caller
+// can overwrite part of it before attaching.
+static struct wl_buffer* buffer_alloc(struct wlc* c, int w, int h, uint32_t argb, uint32_t** out) {
     if (w < 1)
         w = 1;
     if (h < 1)
@@ -165,8 +167,12 @@ struct wl_buffer* wlc_buffer(struct wlc* c, int w, int h, uint32_t argb) {
     meta->data = data;
     meta->size = size;
     wl_buffer_add_listener(b, &buffer_listener, meta);
+    if (out)
+        *out = data;
     return b;
 }
+
+struct wl_buffer* wlc_buffer(struct wlc* c, int w, int h, uint32_t argb) { return buffer_alloc(c, w, h, argb, NULL); }
 
 // --- listeners ------------------------------------------------------------------------
 
@@ -982,6 +988,47 @@ void wlc_paint(struct win* w, uint32_t argb) {
         w->height = w->cfg_height;
     }
     wlc_paint_size(w, argb, w->width, w->height);
+}
+
+void wlc_paint_split(struct win* w, uint32_t left, uint32_t right, int at, int bw, int bh) {
+    if (!w->acked && w->configured)
+        wlc_ack(w, w->last_configure_serial);
+    if (bw < 1)
+        bw = 1;
+    if (bh < 1)
+        bh = 1;
+    if (at < 0)
+        at = 0;
+    if (at > bw)
+        at = bw;
+    uint32_t* px = NULL;
+    struct wl_buffer* b = buffer_alloc(w->c, bw, bh, left, &px);
+    for (int y = 0; y < bh; y++)
+        for (int x = at; x < bw; x++)
+            px[(size_t)y * bw + x] = right;
+    wl_surface_attach(w->surface, b, 0, 0);
+    wl_surface_damage_buffer(w->surface, 0, 0, bw, bh);
+    wl_surface_commit(w->surface);
+}
+
+void wlc_paint_stripes(struct win* w, uint32_t a, uint32_t b, int stripe, int bw, int bh) {
+    if (!w->acked && w->configured)
+        wlc_ack(w, w->last_configure_serial);
+    if (bw < 1)
+        bw = 1;
+    if (bh < 1)
+        bh = 1;
+    if (stripe < 1)
+        stripe = 1;
+    uint32_t* px = NULL;
+    struct wl_buffer* buf = buffer_alloc(w->c, bw, bh, a, &px);
+    for (int y = 0; y < bh; y++)
+        for (int x = 0; x < bw; x++)
+            if ((x / stripe) % 2)
+                px[(size_t)y * bw + x] = b;
+    wl_surface_attach(w->surface, buf, 0, 0);
+    wl_surface_damage_buffer(w->surface, 0, 0, bw, bh);
+    wl_surface_commit(w->surface);
 }
 
 void wlc_paint_noack(struct win* w, uint32_t argb) {

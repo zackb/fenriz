@@ -108,6 +108,11 @@ int main() {
     assert(sent({"cleaning", "60"}) == R"({"cmd":"dispatch","action":"cleaning","arg":"60"})");
     assert(sent({"cleaning", "off"}) == R"({"cmd":"dispatch","action":"cleaning","arg":"off"})");
 
+    // Flip-pair actions route through the same dispatch path, no arguments.
+    assert(sent({"flipmark"}) == R"({"cmd":"dispatch","action":"flipmark"})");
+    assert(sent({"flip"}) == R"({"cmd":"dispatch","action":"flip"})");
+    assert(sent({"flipunpair"}) == R"({"cmd":"dispatch","action":"flipunpair"})");
+
     assert(sent({"exec", "foot", "-e", "sh"}) == R"({"cmd":"dispatch","action":"exec","arg":"foot -e sh"})");
     assert(sent({"exec", "sh -c \"echo hi\""}) == R"({"cmd":"dispatch","action":"exec","arg":"sh -c \"echo hi\""})");
 

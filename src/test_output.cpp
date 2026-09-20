@@ -376,6 +376,44 @@ int main() {
         assert(ease_out(0.5) > 0.5); // front-loaded: most of the distance covered early
     }
 
+    {
+        // The animation time step. fenriz stops committing when nothing moves, so the gap
+        // since the last frame is only a frame time if something was already animating —
+        // otherwise it is however long the screen sat still. Taking it at face value made an
+        // animation start mid-way, or skip entirely when the idle gap exceeded its duration.
+        const double period = 1.0 / 60;
+
+        // Mid-animation the measured gap is the real thing and is used as-is.
+        assert(anim_dt(0.016, period, true) == 0.016);
+        assert(anim_dt(0.007, period, true) == 0.007);
+
+        // Starting from idle, the gap is meaningless whatever its size.
+        assert(anim_dt(0.690, period, false) == period); // the one that swapped in a single frame
+        assert(anim_dt(0.200, period, false) == period);
+        assert(anim_dt(0.016, period, false) == period);
+        assert(anim_dt(9.000, period, false) == period);
+
+        // A stall mid-animation is still capped, or one long frame jumps to the end.
+        assert(anim_dt(5.0, period, true) == period);
+        assert(anim_dt(0.0, period, true) == period);
+        assert(anim_dt(-1.0, period, true) == period);
+
+        // An animation at least one frame long is never consumed by its own first step, for
+        // any idle gap. Shorter than a frame it legitimately lands in one, so it is excluded.
+        for (int ms = 1; ms <= 2000; ms++) {
+            if (ms / 1000.0 < period)
+                continue;
+            for (double gap : {0.0, 0.016, 0.2, 0.5, 0.69, 0.99, 5.0}) {
+                const double step = anim_dt(gap, period, false) / (ms / 1000.0);
+                assert(step <= 1.0);
+            }
+        }
+
+        // A faster panel takes proportionally smaller steps, so the wall-clock duration of an
+        // animation is the same on any refresh rate.
+        assert(anim_dt(0.5, 1.0 / 144, false) < anim_dt(0.5, 1.0 / 60, false));
+    }
+
     printf("test_output: ok\n");
     return 0;
 }

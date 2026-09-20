@@ -3505,6 +3505,378 @@ static void s_keybind(struct wlc* c) {
     wlc_roundtrip(c);
 }
 
+// --- flip -------------------------------------------------------------------------------
+//
+// Flip pairs: two windows share one tile and turn over to reveal each other. Accepted
+// protocol traffic proves nothing here — the failure mode is the compositor drawing a
+// client's buffer at the wrong scale, which only a screenshot can see, and which shipped
+// twice: once by overwriting the dest size the content clip owns (every window with a frame
+// narrower than its buffer came out magnified), and once by scaling the hidden half from the
+// dest size of the tile it last occupied (it came back at the wrong size and stayed there).
+//
+// Each window paints a buffer wider than its tile, split into two colours. The oracle is the
+// width of each colour band on the middle scanline: it is position-independent, and it
+// changes if and only if the content was scaled. A solid fill would show none of this.
+
+#define FL_BUF_W 900
+#define FL_SPLIT 450
+#define FL_A_LEFT 0xffcc3333u // A: red  | green
+#define FL_A_RIGHT 0xff33cc55u
+#define FL_B_LEFT 0xff3355ccu // B: blue | yellow
+#define FL_B_RIGHT 0xffcccc33u
+
+// Pixels on row `y` within tolerance of `colour`. Bilinear filtering smears the boundary
+// over a pixel or two, so the count is exact to within that.
+static int fl_band(struct wlc_shot* s, int y, uint32_t colour) {
+    int n = 0;
+    for (int x = 0; x < s->width; x++)
+        if (wlc_color_near(wlc_pixel(s, x, y), colour, 8))
+            n++;
+    return n;
+}
+
+static void fl_expect(struct wlc_shot* s, const char* where, uint32_t colour, const char* name, int want) {
+    const int got = fl_band(s, s->height / 2, colour);
+    if (got < want - 3 || got > want + 3)
+        wlc_die("%s: %s band is %dpx wide, expected %dpx — the content was drawn at %.3gx scale",
+                where,
+                name,
+                got,
+                want,
+                want ? (double)got / want : 0.0);
+}
+
+// The title of the focused window, or "" when nothing is focused.
+static void fl_focused(char* out, size_t n) {
+    char snap[16384];
+    out[0] = 0;
+    if (!ipc_snapshot(snap, sizeof snap))
+        wlc_die("no control socket; the flip actions are only reachable through it");
+    const char* a = strstr(snap, "\"activeWindow\":");
+    if (!a || !strncmp(a + 15, "null", 4))
+        return;
+    const char* t = strstr(a, "\"title\":\"");
+    if (!t)
+        return;
+    t += 9;
+    const char* end = strchr(t, '"');
+    if (end && (size_t)(end - t) < n)
+        snprintf(out, n, "%.*s", (int)(end - t), t);
+}
+
+// Cycle focus until `title` holds it. Two windows, so one press is normally enough.
+static void fl_focus(struct wlc* c, const char* title) {
+    char cur[256];
+    for (int i = 0; i < 4; i++) {
+        fl_focused(cur, sizeof cur);
+        if (strstr(cur, title))
+            return;
+        ipc_send("{\"cmd\":\"dispatch\",\"action\":\"focusnext\"}");
+        wlc_pump(c, 120);
+    }
+    wlc_die("could not focus \"%s\"; focus is on \"%s\"", title, cur);
+}
+
+// The `flip` field the compositor publishes for the window with this title: "front", "back"
+// or "null".
+static void fl_role(const char* title, char* out, size_t n) {
+    char snap[16384];
+    if (!ipc_snapshot(snap, sizeof snap))
+        wlc_die("no control socket");
+    const char* p = strstr(snap, title);
+    if (!p)
+        wlc_die("window \"%s\" is not in the state snapshot", title);
+    const char* f = strstr(p, "\"flip\":");
+    if (!f)
+        wlc_die("no flip field in the snapshot; the feed never grew one");
+    f += 7;
+    if (*f == '"')
+        f++;
+    size_t i = 0;
+    while (i + 1 < n && f[i] && f[i] != '"' && f[i] != ',')
+        i++;
+    snprintf(out, n, "%.*s", (int)i, f);
+}
+
+static void fl_expect_role(const char* title, const char* want) {
+    char got[32];
+    fl_role(title, got, sizeof got);
+    if (strcmp(got, want))
+        wlc_die("window \"%s\" reports flip=%s, expected %s", title, got, want);
+}
+
+static void s_flip(struct wlc* c) {
+    if (c->out_w <= 0 || c->out_h <= 0)
+        wlc_die("no output mode; nothing to compute expected coordinates from");
+    const int W = c->out_w, H = c->out_h;
+    const int tile = W / 2;
+    if (tile >= FL_BUF_W)
+        wlc_die("output %dpx wide gives a %dpx tile, which does not crop a %dpx buffer; the "
+                "scenario needs a tile narrower than what the client draws",
+                W,
+                tile,
+                FL_BUF_W);
+
+    // Both windows paint wider than any tile they will get and never shrink, so the content
+    // clip is doing real work throughout.
+    wlc_phase("mapping two windows that draw wider than their tile");
+    struct win* a = wlc_toplevel(c, FL_BUF_W, H, "fenriz-test flip-a");
+    wlc_wait_configure(a);
+    wlc_paint_split(a, FL_A_LEFT, FL_A_RIGHT, FL_SPLIT, FL_BUF_W, H);
+    wlc_roundtrip(c);
+    struct win* b = wlc_toplevel(c, FL_BUF_W, H, "fenriz-test flip-b");
+    wlc_wait_configure(b);
+    wlc_paint_split(b, FL_B_LEFT, FL_B_RIGHT, FL_SPLIT, FL_BUF_W, H);
+    wlc_roundtrip(c);
+    wlc_pump(c, 300);
+
+    // Side by side, each cropped to its tile: the left band survives whole, the right band is
+    // cut to what is left of the tile. This is the case the first bug magnified.
+    struct wlc_shot* s = wlc_capture(c, 0);
+    if (s->width != W)
+        wlc_die("screenshot is %dpx wide, the output is %dpx", s->width, W);
+    fl_expect(s, "tiled", FL_A_LEFT, "A-left", FL_SPLIT);
+    fl_expect(s, "tiled", FL_A_RIGHT, "A-right", tile - FL_SPLIT);
+    fl_expect(s, "tiled", FL_B_LEFT, "B-left", FL_SPLIT);
+    fl_expect(s, "tiled", FL_B_RIGHT, "B-right", tile - FL_SPLIT);
+    wlc_shot_free(s);
+    wlc_log("two tiled windows, both cropped to their tile and drawn 1:1");
+
+    wlc_phase("pairing them");
+    fl_focus(c, "flip-a");
+    ipc_send("{\"cmd\":\"dispatch\",\"action\":\"flipmark\"}");
+    wlc_pump(c, 120);
+    fl_focus(c, "flip-b");
+    ipc_send("{\"cmd\":\"dispatch\",\"action\":\"flippair\"}");
+    wlc_pump(c, 300);
+    fl_expect_role("flip-a", "front");
+    fl_expect_role("flip-b", "back");
+
+    // The pair owns the whole output now, so neither half is cropped any more. Re-ack so the
+    // frame settles onto the size we actually draw.
+    wlc_paint_split(a, FL_A_LEFT, FL_A_RIGHT, FL_SPLIT, FL_BUF_W, H);
+    wlc_paint_split(b, FL_B_LEFT, FL_B_RIGHT, FL_SPLIT, FL_BUF_W, H);
+    wlc_roundtrip(c);
+    wlc_pump(c, 300);
+
+    s = wlc_capture(c, 0);
+    fl_expect(s, "paired", FL_A_LEFT, "A-left", FL_SPLIT);
+    fl_expect(s, "paired", FL_A_RIGHT, "A-right", FL_BUF_W - FL_SPLIT);
+    fl_expect(s, "paired", FL_B_LEFT, "B-left", 0); // the hidden half draws nothing
+    fl_expect(s, "paired", FL_B_RIGHT, "B-right", 0);
+    wlc_shot_free(s);
+    wlc_log("paired: the front fills the tile, the back is off screen");
+
+    // Turning over. The incoming half was hidden while the tile changed size under it, so its
+    // buffer still carries the dest size of the tile it last occupied — scaling from that is
+    // the second bug, and it leaves the content too small inside a full-size frame.
+    wlc_phase("turning the pair over");
+    ipc_send("{\"cmd\":\"dispatch\",\"action\":\"flip\"}");
+    wlc_pump(c, 900); // well past the turn configured for this scenario
+    fl_expect_role("flip-a", "back");
+    fl_expect_role("flip-b", "front");
+
+    s = wlc_capture(c, 0);
+    fl_expect(s, "turned", FL_B_LEFT, "B-left", FL_SPLIT);
+    fl_expect(s, "turned", FL_B_RIGHT, "B-right", FL_BUF_W - FL_SPLIT);
+    fl_expect(s, "turned", FL_A_LEFT, "A-left", 0);
+    fl_expect(s, "turned", FL_A_RIGHT, "A-right", 0);
+    wlc_shot_free(s);
+    wlc_log("turned: the half that was hidden came back at its own size");
+
+    // Splitting them up has to hand the buffers back to the content clip. Leaving the turn's
+    // scale behind is what made the damage outlive the pair.
+    wlc_phase("splitting the pair");
+    ipc_send("{\"cmd\":\"dispatch\",\"action\":\"flipunpair\"}");
+    wlc_pump(c, 300);
+    wlc_paint_split(a, FL_A_LEFT, FL_A_RIGHT, FL_SPLIT, FL_BUF_W, H);
+    wlc_paint_split(b, FL_B_LEFT, FL_B_RIGHT, FL_SPLIT, FL_BUF_W, H);
+    wlc_roundtrip(c);
+    wlc_pump(c, 300);
+    fl_expect_role("flip-a", "null");
+    fl_expect_role("flip-b", "null");
+
+    s = wlc_capture(c, 0);
+    fl_expect(s, "unpaired", FL_A_LEFT, "A-left", FL_SPLIT);
+    fl_expect(s, "unpaired", FL_A_RIGHT, "A-right", tile - FL_SPLIT);
+    fl_expect(s, "unpaired", FL_B_LEFT, "B-left", FL_SPLIT);
+    fl_expect(s, "unpaired", FL_B_RIGHT, "B-right", tile - FL_SPLIT);
+    wlc_shot_free(s);
+    wlc_log("unpaired: both back in their own tile, still 1:1");
+
+    wlc_hold_point(c);
+    wlc_destroy(b);
+    wlc_destroy(a);
+    wlc_roundtrip(c);
+}
+
+// --- flip-blur --------------------------------------------------------------------------
+//
+// A window's blur is part of the window, so a flip turn has to narrow it too. It did not:
+// the blur nodes are sized from the client's region in surface coordinates, so while the
+// window squashed toward nothing the blur rectangle kept its full width and stood out past
+// the frame on both sides — visible on any client that asks for blur, and on no other.
+//
+// The pair floats over an opaque striped backdrop. Blur flattens the stripes to their
+// average, and the translucent windows tint them, so "is this pixel still a pristine stripe?"
+// answers whether anything was drawn there. Nothing may be drawn outside the frame the
+// compositor reports for the front half, at any point in the turn.
+
+#define FB_W 800
+#define FB_H 600
+#define FB_STRIPE 16
+#define FB_BG_A 0xffcc3333u
+#define FB_BG_B 0xff33cc55u
+#define FB_GLASS 0x80202040u // premultiplied: translucent, so the blur under it shows
+#define FB_SLACK 8           // the frame moves while the shot is taken
+
+// The front half's frame, as the compositor publishes it. False when no pair is flipped yet.
+static bool fb_front(int* x, int* w) {
+    char snap[16384];
+    if (!ipc_snapshot(snap, sizeof snap))
+        wlc_die("no control socket; the flip actions are only reachable through it");
+    const char* f = strstr(snap, "\"flip\":\"front\"");
+    if (!f)
+        return false;
+    const char* px = strstr(f, "\"x\":");
+    const char* pw = strstr(f, "\"width\":");
+    if (!px || !pw)
+        wlc_die("the state snapshot has no geometry for the front half");
+    *x = atoi(px + 4);
+    *w = atoi(pw + 8);
+    return true;
+}
+
+static bool fb_pristine(uint32_t p) { return wlc_color_near(p, FB_BG_A, 8) || wlc_color_near(p, FB_BG_B, 8); }
+
+// Widest run of touched pixels on the middle row, and how far it escapes [x, x+w).
+static void fb_check(struct wlc_shot* s, int fx, int fw, const char* where) {
+    const int y = s->height / 2;
+    int lo = -1, hi = -1;
+    for (int x = 0; x < s->width; x++)
+        if (!fb_pristine(wlc_pixel(s, x, y))) {
+            if (lo < 0)
+                lo = x;
+            hi = x;
+        }
+    if (lo < 0)
+        wlc_die("%s: the backdrop is untouched — the window is not being drawn at all, so "
+                "nothing here could fail",
+                where);
+    const int over_l = fx - lo, over_r = hi - (fx + fw - 1);
+    if (over_l > FB_SLACK || over_r > FB_SLACK)
+        wlc_die("%s: frame is %d..%d (%dpx) but %d..%d is drawn — %dpx past it on the left, "
+                "%dpx on the right. Something belonging to the window is not being squashed "
+                "with it.",
+                where,
+                fx,
+                fx + fw - 1,
+                fw,
+                lo,
+                hi,
+                over_l > 0 ? over_l : 0,
+                over_r > 0 ? over_r : 0);
+}
+
+static struct win* fb_glass(struct wlc* c, const char* title) {
+    struct win* w = wlc_toplevel(c, FB_W, FB_H, title);
+    struct ext_background_effect_surface_v1* fx =
+        ext_background_effect_manager_v1_get_background_effect(be_manager, w->surface);
+    struct wl_region* r = wl_compositor_create_region(c->compositor);
+    wl_region_add(r, 0, 0, FB_W, FB_H);
+    ext_background_effect_surface_v1_set_blur_region(fx, r);
+    wl_region_destroy(r);
+    wlc_wait_configure(w);
+    wlc_paint_size(w, FB_GLASS, FB_W, FB_H);
+    wlc_roundtrip(c);
+    wlc_pump(c, 200);
+    return w;
+}
+
+static void s_flip_blur(struct wlc* c) {
+    if (c->out_w <= 0 || c->out_h <= 0)
+        wlc_die("no output mode; nothing to compute expected coordinates from");
+    const int W = c->out_w, H = c->out_h;
+
+    be_manager = NULL;
+    struct wl_registry* reg = wl_display_get_registry(c->display);
+    wl_registry_add_listener(reg, &be_registry_listener, NULL);
+    wlc_roundtrip(c);
+    wlc_roundtrip(c);
+    if (!be_manager)
+        wlc_die("compositor does not advertise ext_background_effect_manager_v1");
+
+    wlc_phase("filling the screen with a striped backdrop");
+    // Not named flip-blur-*: the pair is matched by title, both here and by the window rule
+    // that floats it, and a name that contains "flip-blur-b" would be caught by both.
+    struct win* bg = wlc_toplevel(c, W, H, "fenriz-test flipblur-canvas");
+    wlc_wait_configure(bg);
+    wlc_paint_stripes(bg, FB_BG_A, FB_BG_B, FB_STRIPE, W, H);
+    wlc_roundtrip(c);
+    wlc_pump(c, 250);
+
+    wlc_phase("floating two blurred windows over it");
+    struct win* a = fb_glass(c, "fenriz-test flip-blur-a");
+    struct win* b = fb_glass(c, "fenriz-test flip-blur-b");
+
+    wlc_phase("pairing them");
+    fl_focus(c, "flip-blur-a");
+    ipc_send("{\"cmd\":\"dispatch\",\"action\":\"flipmark\"}");
+    wlc_pump(c, 150);
+    fl_focus(c, "flip-blur-b");
+    ipc_send("{\"cmd\":\"dispatch\",\"action\":\"flippair\"}");
+    wlc_pump(c, 400);
+    fl_expect_role("flip-blur-a", "front");
+    fl_expect_role("flip-blur-b", "back");
+
+    int fx = 0, fw = 0;
+    if (!fb_front(&fx, &fw))
+        wlc_die("nothing reports itself as the front half after pairing");
+    const int settled = fw;
+    struct wlc_shot* s = wlc_capture(c, 0);
+    fb_check(s, fx, fw, "settled");
+    wlc_shot_free(s);
+    wlc_log("settled: the pair draws inside its frame, %dpx wide", settled);
+
+    // Sample across the turn. The frame moves while a shot is taken, so it is read either
+    // side and the wider reading is the one tested against.
+    wlc_phase("turning the pair over, watching for anything left behind");
+    ipc_send("{\"cmd\":\"dispatch\",\"action\":\"flip\"}");
+    int narrowest = settled;
+    for (int i = 0; i < 10; i++) {
+        wlc_pump(c, 400);
+        int bx = 0, bw2 = 0, ax = 0, aw = 0;
+        if (!fb_front(&bx, &bw2))
+            continue;
+        s = wlc_capture(c, 0);
+        if (!fb_front(&ax, &aw)) {
+            wlc_shot_free(s);
+            continue;
+        }
+        const int lo = bx < ax ? bx : ax;
+        const int hi = (bx + bw2) > (ax + aw) ? (bx + bw2) : (ax + aw);
+        char where[64];
+        snprintf(where, sizeof where, "turn sample %d", i + 1);
+        fb_check(s, lo, hi - lo, where);
+        wlc_shot_free(s);
+        if (hi - lo < narrowest)
+            narrowest = hi - lo;
+    }
+    // Without this the loop could pass by only ever sampling a settled window.
+    if (narrowest > settled * 3 / 5)
+        wlc_die("the narrowest frame seen was %dpx of %dpx — the turn was never caught part "
+                "way, so nothing above was actually tested",
+                narrowest,
+                settled);
+    wlc_log("turn sampled down to %dpx of %dpx, nothing drawn outside the frame", narrowest, settled);
+
+    wlc_hold_point(c);
+    wlc_destroy(b);
+    wlc_destroy(a);
+    wlc_destroy(bg);
+    wlc_roundtrip(c);
+}
+
 const struct scenario scenarios[] = {
     {"popup", s_popup, "toplevel -> popup -> nested popup, grab, reposition, off-screen anchor"},
     {"layer-popup", s_layer_popup, "corner-anchored popup and submenu on a full-output layer surface"},
@@ -3537,5 +3909,7 @@ const struct scenario scenarios[] = {
     {"ipc", s_ipc, "control socket as a stream: split commands, oversized commands, many clients"},
     {"keybind", s_keybind, "a bound key reaches neither half to the client; a held binde stops with its keyboard"},
     {"evil", s_evil, "stale acks, commits between configures, self-resize, destroy/recreate"},
+    {"flip", s_flip, "flip pairs: a paired half is drawn at its own scale, before, during and after a turn"},
+    {"flip-blur", s_flip_blur, "flip pairs: a blurred window's blur narrows with it through the turn"},
     {NULL, NULL, NULL},
 };

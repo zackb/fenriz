@@ -77,7 +77,7 @@ means something changed.
  "lid":"open",
  "cursor":{"x":100,"y":200},
  "workspaces":{"active":1,"occupied":[1,2,4],"urgent":[4]},
- "windows":[{"appId":"foot","title":"~","icon":"","tag":"","workspace":1,"floating":false,"fullscreen":false,"focused":true,"urgent":false,"x":0,"y":0,"width":1280,"height":800}],
+ "windows":[{"appId":"foot","title":"~","icon":"","tag":"","workspace":1,"floating":false,"fullscreen":false,"focused":true,"urgent":false,"flip":null,"x":0,"y":0,"width":1280,"height":800}],
  "activeWindow":{"appId":"foot","title":"~","icon":"","tag":""}}
 ```
 
@@ -105,6 +105,7 @@ means something changed.
 | `windows[].floating` | bool | Escaped the tiling tree (free move/resize). |
 | `windows[].fullscreen` | bool | Currently fullscreen. |
 | `windows[].focused` | bool | The focused window. At most one is true. |
+| `windows[].flip` | string \| null | Flip pair membership: `"front"` for the visible half, `"back"` for the hidden one, `null` when unpaired. The two halves share one tile; a `"back"` window is never focused and is not on screen. |
 | `windows[].x/y/width/height` | int | On-screen frame, border included, in layout coordinates. **Only current at connect time**, like `cursor`: moves and resizes do not push a line. Meaningless for a window on a hidden workspace. |
 | `activeWindow` | object \| null | Focused window, or `null` when nothing is focused. Redundant with `windows[].focused`, kept for existing bars. |
 | `activeWindow.appId` | string | Focused window's app id. |
@@ -210,6 +211,10 @@ Runs a keybind action by name using the same names the config's `bind =` lines t
 | `movetoworkspace` | `arg` = 1–10. Send the focused window there. |
 | `exec` | `arg` = a shell command, run detached. |
 | `cleaning` | Keyboard cleaning mode: drop all keyboard, pointer and touchpad input for `arg` seconds (default 60), so the hardware can be wiped. `arg` = `off` ends it; with no `arg` it toggles. The only live keybind during the mode is the one bound to `cleaning`; a VT switch and `SUPER+SHIFT+CTRL+Q` still work. Refused while the session is locked. |
+| `flipmark` | Mark the focused window as the front of a flip pair. |
+| `flippair` | Attach the focused window as the back of the marked front. Both must be on the same workspace, both tiled or both floating, neither fullscreen. |
+| `flip` | Turn the focused window's pair over. Again mid-turn reverses it. |
+| `flipunpair` | Split the focused window's pair back into two windows. |
 | `exit` | Quit the compositor. Same as `{"cmd":"exit"}`. |
 
 
