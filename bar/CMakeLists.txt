@@ -1,6 +1,6 @@
 # fenriz-bar standalone. Shares fenriz-desktop's config, theme, blur and log by compiling its sources directly (HACK, TODO).
 cmake_minimum_required(VERSION 3.19)
-project(fenriz-bar VERSION 0.1.17 LANGUAGES CXX C)
+project(fenriz-bar VERSION 0.1.18 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
