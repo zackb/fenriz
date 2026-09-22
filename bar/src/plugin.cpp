@@ -136,6 +136,7 @@ namespace fenriz::bar {
             JsonObject* o = json_node_get_object(root);
             changed |= update(state.pill, o, "pill", parse_pill) ? SLOT_PILL : 0;
             changed |= update(state.chip, o, "chip", parse_chip) ? SLOT_CHIP : 0;
+            changed |= update(state.banner, o, "banner", parse_chip) ? SLOT_BANNER : 0;
             changed |= update(state.tile, o, "tile", parse_tile) ? SLOT_TILE : 0;
             changed |= update(state.page, o, "page", parse_page) ? SLOT_PAGE : 0;
             changed |= update(state.status, o, "status", parse_status) ? SLOT_STATUS : 0;
@@ -284,7 +285,7 @@ namespace fenriz::bar {
 
         unsigned cleared = (state_.pill ? SLOT_PILL : 0) | (state_.chip ? SLOT_CHIP : 0) |
                            (state_.tile ? SLOT_TILE : 0) | (state_.page ? SLOT_PAGE : 0) |
-                           (state_.status ? SLOT_STATUS : 0);
+                           (state_.status ? SLOT_STATUS : 0) | (state_.banner ? SLOT_BANNER : 0);
         state_ = {};
         if (cleared && listener_)
             listener_(cleared);

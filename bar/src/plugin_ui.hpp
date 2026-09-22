@@ -9,8 +9,8 @@
 
 namespace fenriz::bar {
 
-    // Draws one plugin's state into the island: a pill notice, a Home tile and footer chip, and a page named after
-    // the plugin, plus a status capsule on each bar. A plugin named after a built-in page (calendar) adds to the bottom
+    // Draws one plugin's state into the island: a pill notice, a Home tile, footer chip and banner under the date, and a
+    // page named after the plugin, plus a status capsule on each bar. A plugin named after a built-in page (calendar) adds to the bottom
     // of that page instead.
     class PluginUi {
     public:
@@ -30,6 +30,7 @@ namespace fenriz::bar {
         GtkWidget* row(const PluginBlock& b);
         GtkWidget* actionable(GtkWidget* button, const std::string& action);
         void open_page();
+        GtkWidget* chip_button(GtkWidget** icon, GtkWidget** label);
         void update_status(GtkWidget* capsule);
 
         Island& island_;
@@ -37,6 +38,9 @@ namespace fenriz::bar {
         GtkWidget* chip_ = nullptr;
         GtkWidget* chip_icon_ = nullptr;
         GtkWidget* chip_label_ = nullptr;
+        GtkWidget* banner_ = nullptr;
+        GtkWidget* banner_icon_ = nullptr;
+        GtkWidget* banner_label_ = nullptr;
         GtkWidget* tile_ = nullptr;
         GtkWidget* tile_icon_ = nullptr;
         GtkWidget* tile_label_ = nullptr;

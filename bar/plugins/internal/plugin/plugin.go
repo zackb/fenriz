@@ -10,7 +10,7 @@ import (
 )
 
 // Update is one line to the bar. Each key present replaces that slot
-// ("pill", "chip", "tile", "page"); a nil value clears it.
+// ("pill", "chip", "banner", "tile", "page"); a nil value clears it.
 type Update map[string]any
 
 type Pill struct {
@@ -23,6 +23,9 @@ type Chip struct {
 	Text string `json:"text"`
 	Icon string `json:"icon,omitempty"`
 }
+
+// Banner is informational text under the date on Home.
+type Banner = Chip
 
 type Tile struct {
 	Title string `json:"title"`

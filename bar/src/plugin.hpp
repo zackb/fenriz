@@ -67,6 +67,7 @@ namespace fenriz::bar {
     struct PluginState {
         std::optional<PluginPill> pill;
         std::optional<PluginChip> chip;
+        std::optional<PluginChip> banner;
         std::optional<PluginTile> tile;
         std::optional<PluginPage> page;
         std::optional<PluginStatus> status;
@@ -78,6 +79,7 @@ namespace fenriz::bar {
         SLOT_TILE = 4,
         SLOT_PAGE = 8,
         SLOT_STATUS = 16,
+        SLOT_BANNER = 32,
     };
 
     // Applies one line of plugin output: each slot present replaces that slot, null clears it. Returns the slots

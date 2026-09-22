@@ -23,6 +23,9 @@ namespace {
         changed = apply_plugin_line(s, R"({"tile": null})");
         assert(changed == fenriz::bar::SLOT_TILE);
         assert(!s.tile && s.chip);
+
+        changed = apply_plugin_line(s, R"({"banner": {"text": "Standup · 9:30am"}})");
+        assert(changed == fenriz::bar::SLOT_BANNER && s.banner && s.banner->text == "Standup · 9:30am");
     }
 
     // Plugins may re-send their whole state every poll; only real changes redraw or flash the pill.

@@ -66,18 +66,17 @@ namespace fenriz::bar {
         g_signal_connect_swapped(tile_, "clicked", G_CALLBACK(+[](PluginUi* self) { self->open_page(); }), this);
         island_.add_tile(tile_);
 
-        chip_ = gtk_button_new();
+        chip_ = chip_button(&chip_icon_, &chip_label_);
         gtk_widget_add_css_class(chip_, "island-flat");
         gtk_widget_add_css_class(chip_, "island-footer-text");
-        GtkWidget* chip_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
-        chip_icon_ = gtk_image_new();
-        chip_label_ = label("", nullptr);
-        gtk_box_append(GTK_BOX(chip_box), chip_icon_);
-        gtk_box_append(GTK_BOX(chip_box), chip_label_);
-        gtk_button_set_child(GTK_BUTTON(chip_), chip_box);
-        gtk_widget_set_visible(chip_, FALSE);
-        g_signal_connect_swapped(chip_, "clicked", G_CALLBACK(+[](PluginUi* self) { self->open_page(); }), this);
         island_.add_to_footer(chip_);
+
+        banner_ = chip_button(&banner_icon_, &banner_label_);
+        gtk_widget_add_css_class(banner_, "island-banner");
+        // Middle ellipsis keeps a trailing time visible.
+        gtk_label_set_ellipsize(GTK_LABEL(banner_label_), PANGO_ELLIPSIZE_MIDDLE);
+        gtk_label_set_max_width_chars(GTK_LABEL(banner_label_), 24);
+        island_.add_to_glance(banner_);
 
         page_ = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
         if (GtkWidget* builtin = island_.page(name); builtin && GTK_IS_BOX(builtin)) {
@@ -93,6 +92,20 @@ namespace fenriz::bar {
         island_.on_close([this] { plugin_.send(plugin_event("close")); });
         plugin_.on_change([this](unsigned slots) { changed(slots); });
         plugin_.start();
+    }
+
+    // An icon and label that opens the page.
+    GtkWidget* PluginUi::chip_button(GtkWidget** icon, GtkWidget** text) {
+        GtkWidget* button = gtk_button_new();
+        GtkWidget* box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+        *icon = gtk_image_new();
+        *text = label("", nullptr);
+        gtk_box_append(GTK_BOX(box), *icon);
+        gtk_box_append(GTK_BOX(box), *text);
+        gtk_button_set_child(GTK_BUTTON(button), box);
+        gtk_widget_set_visible(button, FALSE);
+        g_signal_connect_swapped(button, "clicked", G_CALLBACK(+[](PluginUi* self) { self->open_page(); }), this);
+        return button;
     }
 
     void PluginUi::open_page() {
@@ -118,13 +131,18 @@ namespace fenriz::bar {
                 gtk_label_set_text(GTK_LABEL(tile_label_), s.tile->title.c_str());
             }
         }
-        if (slots & SLOT_CHIP) {
-            gtk_widget_set_visible(chip_, s.chip.has_value());
-            if (s.chip) {
-                set_image(chip_icon_, s.chip->icon, {});
-                gtk_label_set_text(GTK_LABEL(chip_label_), s.chip->text.c_str());
+        auto show_chip = [](GtkWidget* button, GtkWidget* icon, GtkWidget* text, const std::optional<PluginChip>& c) {
+            gtk_widget_set_visible(button, c.has_value());
+            if (c) {
+                set_image(icon, c->icon, {});
+                gtk_label_set_text(GTK_LABEL(text), c->text.c_str());
+                gtk_widget_set_tooltip_text(button, c->text.c_str());
             }
-        }
+        };
+        if (slots & SLOT_CHIP)
+            show_chip(chip_, chip_icon_, chip_label_, s.chip);
+        if (slots & SLOT_BANNER)
+            show_chip(banner_, banner_icon_, banner_label_, s.banner);
         if (slots & SLOT_PAGE)
             build_page();
         if (slots & SLOT_STATUS)

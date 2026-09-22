@@ -16,8 +16,7 @@ namespace fenriz::desktop::theme {
                    "@define-color fenriz_fill_base alpha(@theme_base_color," + a + ");" +
                    "@define-color fenriz_fill_window alpha(@window_bg_color," + a + ");" +
                    "@define-color fenriz_fill_bar alpha(@window_bg_color," + std::to_string(cfg.shell_opacity * 0.6) +
-                   ");" +
-                   ".lock-wallpaper { filter: blur(" + std::to_string(cfg.lock_blur) + "px); }";
+                   ");" + ".lock-wallpaper { filter: blur(" + std::to_string(cfg.lock_blur) + "px); }";
         }
 
         constexpr const char* SHEET = R"css(
@@ -264,6 +263,8 @@ window.fenriz-shot { background: transparent; }
 /* GtkButton gives an image child .image-button (min-width 24px); match it for box children like the battery */
 .fenriz-bar button.bar-glyph { padding: 0 4px; min-width: 24px; }
 
+.fenriz-island :focus { outline: none; }
+.fenriz-island button:focus-visible { background-color: alpha(currentColor, 0.12); }
 .fenriz-island .island-title { font-weight: 600; }
 .fenriz-island .island-section {
   margin-top: 6px;
@@ -329,6 +330,16 @@ window.fenriz-shot { background: transparent; }
 
 .fenriz-bar .bar-battery { font-feature-settings: "tnum"; }
 
+.fenriz-island .island-glance { margin-top: 4px; }
+.fenriz-island .island-banner {
+  padding: 4px 12px;
+  border: none;
+  border-radius: 10px;
+  box-shadow: none;
+  font-size: 0.85em;
+  background-color: alpha(currentColor, 0.07);
+}
+.fenriz-island .island-banner:hover { background-color: alpha(currentColor, 0.12); }
 .fenriz-island .island-tiles { margin-top: 12px; }
 .fenriz-island .island-tile {
   padding: 10px 6px;
@@ -479,7 +490,8 @@ window.fenriz-shot { background: transparent; }
     } // namespace
 
     void install(const Config& cfg) {
-        gtk_icon_theme_add_resource_path(gtk_icon_theme_get_for_display(gdk_display_get_default()), "/dev/fenriz/icons");
+        gtk_icon_theme_add_resource_path(gtk_icon_theme_get_for_display(gdk_display_get_default()),
+                                         "/dev/fenriz/icons");
 
         GtkCssProvider* fallback = gtk_css_provider_new();
         gtk_css_provider_load_from_string(fallback,

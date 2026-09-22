@@ -16,6 +16,7 @@ namespace {
     constexpr double OPEN_RADIUS = 22;
     constexpr double MAX_BLUR = 8; // px of blur on content still fading in
     constexpr double MIN_SCALE = 0.96;
+    constexpr int HOME_WIDTH = 420;
 
 } // namespace
 
@@ -102,6 +103,11 @@ namespace fenriz::bar {
     }
 
     void Island::add_to_home(GtkWidget* widget) { gtk_box_append(GTK_BOX(home_box_), widget); }
+
+    void Island::add_to_glance(GtkWidget* widget) {
+        gtk_box_append(GTK_BOX(glance_), widget);
+        gtk_widget_set_visible(glance_, TRUE);
+    }
 
     void Island::add_tile(GtkWidget* tile) {
         gtk_box_append(GTK_BOX(tiles_), tile);
@@ -237,8 +243,8 @@ namespace fenriz::bar {
         gtk_stack_set_transition_type(GTK_STACK(stack_), GTK_STACK_TRANSITION_TYPE_CROSSFADE);
         gtk_stack_set_transition_duration(GTK_STACK(stack_), 180);
 
-        GtkWidget* home = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
-        gtk_widget_add_css_class(home, "island-page");
+        home_ = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+        gtk_widget_add_css_class(home_, "island-page");
         GtkWidget* header = gtk_button_new();
         gtk_widget_add_css_class(header, "island-header");
         GtkWidget* header_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
@@ -249,22 +255,27 @@ namespace fenriz::bar {
         gtk_button_set_child(GTK_BUTTON(header), header_box);
         g_signal_connect_swapped(
             header, "clicked", G_CALLBACK(+[](Island* self) { self->show_page("calendar", true); }), this);
-        gtk_box_append(GTK_BOX(home), header);
+        gtk_box_append(GTK_BOX(home_), header);
+        glance_ = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+        gtk_widget_set_halign(glance_, GTK_ALIGN_CENTER);
+        gtk_widget_add_css_class(glance_, "island-glance");
+        gtk_widget_set_visible(glance_, FALSE);
+        gtk_box_append(GTK_BOX(home_), glance_);
         tiles_ = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
         gtk_box_set_homogeneous(GTK_BOX(tiles_), TRUE);
         gtk_widget_add_css_class(tiles_, "island-tiles");
         gtk_widget_set_visible(tiles_, FALSE);
-        gtk_box_append(GTK_BOX(home), tiles_);
+        gtk_box_append(GTK_BOX(home_), tiles_);
         home_box_ = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
         gtk_widget_add_css_class(home_box_, "island-controls");
-        gtk_box_append(GTK_BOX(home), home_box_);
+        gtk_box_append(GTK_BOX(home_), home_box_);
         footer_ = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
         gtk_widget_add_css_class(footer_, "island-footer");
         gtk_widget_set_visible(footer_, FALSE);
         footer_end_ = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
         gtk_box_append(GTK_BOX(footer_), footer_end_);
-        gtk_box_append(GTK_BOX(home), footer_);
-        gtk_stack_add_named(GTK_STACK(stack_), home, "home");
+        gtk_box_append(GTK_BOX(home_), footer_);
+        gtk_stack_add_named(GTK_STACK(stack_), home_, "home");
 
         GtkWidget* calendar_page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
         gtk_box_append(GTK_BOX(calendar_page), page_header("Calendar"));
@@ -292,8 +303,8 @@ namespace fenriz::bar {
         bool changed = pill_w + 2 * PILL_PADDING != pill_width_;
         if (expanded_) {
             GtkWidget* child = gtk_stack_get_visible_child(GTK_STACK(stack_));
-            int w = 0, h = 0;
-            gtk_widget_measure(child, GTK_ORIENTATION_HORIZONTAL, -1, nullptr, &w, nullptr, nullptr);
+            const int w = page_width(child);
+            int h = 0;
             gtk_widget_measure(child, GTK_ORIENTATION_VERTICAL, w, nullptr, &h, nullptr, nullptr);
             changed |= w != page_width_ || h != page_height_;
         }
@@ -478,9 +489,15 @@ namespace fenriz::bar {
 
     void Island::measure_page() {
         GtkWidget* child = gtk_stack_get_child_by_name(GTK_STACK(stack_), page_.c_str());
-        gtk_widget_measure(child, GTK_ORIENTATION_HORIZONTAL, -1, nullptr, &page_width_, nullptr, nullptr);
+        page_width_ = page_width(child);
         gtk_widget_measure(child, GTK_ORIENTATION_VERTICAL, page_width_, nullptr, &page_height_, nullptr, nullptr);
         gtk_widget_queue_allocate(root_);
+    }
+
+    int Island::page_width(GtkWidget* page) const {
+        int min = 0, nat = 0;
+        gtk_widget_measure(page, GTK_ORIENTATION_HORIZONTAL, -1, &min, &nat, nullptr, nullptr);
+        return page == home_ ? std::max(min, HOME_WIDTH) : nat;
     }
 
     gboolean Island::on_remeasure(gpointer data) {

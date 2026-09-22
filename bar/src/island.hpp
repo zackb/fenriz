@@ -67,7 +67,8 @@ namespace fenriz::bar {
         void show_alert(const char* icon, const std::string& text);
         void dismiss_alert();
 
-        // Home page sections, in order: header, tiles, controls, footer.
+        // Home page sections, in order: header, glance, tiles, controls, footer.
+        void add_to_glance(GtkWidget* widget);
         void add_tile(GtkWidget* tile);
         void add_to_footer(GtkWidget* widget);
         // Pinned to the footer's right end, after everything added with add_to_footer.
@@ -98,6 +99,7 @@ namespace fenriz::bar {
         static gboolean on_clock(gpointer data);
         static gboolean on_activity_done(gpointer data);
         static gboolean on_remeasure(gpointer data);
+        int page_width(GtkWidget* page) const;
         void update_layer();
         static void on_pressed(GtkGestureClick* gesture, int n_press, double x, double y, gpointer data);
         static void on_enter(GtkEventControllerMotion* motion, double x, double y, gpointer data);
@@ -122,6 +124,8 @@ namespace fenriz::bar {
         GtkWidget* event_label_ = nullptr;
         GtkWidget* alert_icon_ = nullptr;
         GtkWidget* alert_label_ = nullptr;
+        GtkWidget* home_ = nullptr;
+        GtkWidget* glance_ = nullptr;
         GtkWidget* home_box_ = nullptr;
         GtkWidget* tiles_ = nullptr;
         GtkWidget* footer_ = nullptr;

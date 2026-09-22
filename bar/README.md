@@ -128,7 +128,7 @@ running, the desktop hands the level to the island instead of showing its own OS
 ## Plugins
 
 A plugin is any program that prints what to show as JSON lines. The bar draws it in its own style: a notice in the
-pill, a tile and a footer chip on Home, a page named after the plugin (`fenriz-bar open NAME`), and a status
+pill, a tile, a footer chip and a banner under the date on Home, a page named after the plugin (`fenriz-bar open NAME`), and a status
 capsule on the bar, left of the tray.
 
 ```ini
@@ -150,6 +150,7 @@ everything each poll.
 {"pill": {"text": "SEA 3 – 2 LAD", "image": "/path/logo.svg"}}
 {"status": {"text": "37", "icon": "software-update-available-symbolic", "tooltip": "Repo 30 · AUR 7", "action": "install"}}
 {"chip": {"text": "61°", "icon": "weather-overcast-symbolic"}, "tile": {"title": "Mariners", "image": "…"}}
+{"banner": {"text": "Standup · 9:30am", "icon": "x-office-calendar-symbolic"}}
 {"page": {"title": "AL West", "blocks": [
   {"type": "row", "icon": "…", "text": "Seattle", "subtitle": "…", "trailing": "7", "action": "open"},
   {"type": "text", "text": "Final", "style": "dim | section | title"},
@@ -160,7 +161,7 @@ everything each poll.
 ]}}
 ```
 
-`image` is a file path and wins over `icon`. A plugin's environment has `TERMINAL` set from `terminal =`. The chip and tile open the page once there is one.
+`image` is a file path and wins over `icon`. A plugin's environment has `TERMINAL` set from `terminal =`. The chip, banner and tile open the page once there is one.
 
 The bar writes events to the plugin's stdin: `{"event": "open"}` and `"close"` as the island opens and closes,
 `"resume"` after suspend, and `{"event": "action", "id": "refresh"}` for a clicked row or button. A plugin must exit

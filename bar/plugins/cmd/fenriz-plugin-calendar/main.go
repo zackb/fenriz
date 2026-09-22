@@ -42,7 +42,7 @@ func main() {
 		now := time.Now()
 		u := plugin.Update{}
 		// only what changed, so an idle calendar costs the bar nothing
-		for key, v := range map[string]any{"chip": nextToday(upcoming, now), "page": page(upcoming, now)} {
+		for key, v := range map[string]any{"banner": nextToday(upcoming, now), "page": page(upcoming, now)} {
 			if old, ok := sent[key]; !ok || !reflect.DeepEqual(old, v) {
 				u[key], sent[key] = v, v
 			}
@@ -71,7 +71,7 @@ func reminder(evs []calendar.Event, now time.Time, reminded map[string]bool) *pl
 	return nil
 }
 
-// nextToday is the chip for the next timed event still ahead today, or nil.
+// nextToday is the banner for the next timed event still ahead today, or nil.
 func nextToday(evs []calendar.Event, now time.Time) any {
 	for _, e := range evs {
 		start, err := time.Parse(time.RFC3339, e.Start)
@@ -81,7 +81,7 @@ func nextToday(evs []calendar.Event, now time.Time) any {
 		if !sameDay(start.Local(), now) {
 			return nil
 		}
-		return plugin.Chip{Text: strings.TrimSpace(e.Summary) + " · " + clock(start), Icon: "x-office-calendar-symbolic"}
+		return plugin.Banner{Text: strings.TrimSpace(e.Summary) + " · " + clock(start), Icon: "x-office-calendar-symbolic"}
 	}
 	return nil
 }
