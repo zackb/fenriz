@@ -95,8 +95,7 @@ wlroots 0.20, scenefx 0.5, wayland-server, xkbcommon, pixman, libinput, EGL, GLE
 On Arch:
 
 ```
-sudo pacman -S wlroots0.20 wayland wayland-protocols libxkbcommon pixman libinput mesa libxcb xcb-util-wm
-yay -S scenefx0.5
+sudo pacman -S wlroots0.20 wayland wayland-protocols libxkbcommon pixman libinput mesa libxcb xcb-util-wm scenefx
 ```
 
 Also needs `cmake` (>= 3.19) and `ninja`.

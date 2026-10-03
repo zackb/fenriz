@@ -259,7 +259,7 @@ set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
 # drop the -Linux suffix so the name matches the release tag
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}")
 
-# wlroots0.20 and scenefx0.5 are not packaged on Debian/Fedora, so they are absent
+# wlroots0.20 and scenefx are not packaged on Debian/Fedora, so they are absent
 # here. Arch is the supported path; deb/rpm are convenience.
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "zack@bartel.com")
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "libwayland-server0, libxkbcommon0, libpixman-1-0, libinput10, libxcb1")

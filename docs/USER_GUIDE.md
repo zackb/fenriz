@@ -31,7 +31,7 @@ Libraries:
 | Dependency | Notes |
 |---|---|
 | `wlroots-0.20` | pinned to 0.20; must be built with XWayland |
-| `scenefx0.5`  | pinned to 0.5 |
+| `scenefx-0.5`  | pinned to 0.5 |
 | `wayland-server` | |
 | `xkbcommon` | |
 | `pixman-1` | |
@@ -42,13 +42,7 @@ Libraries:
 On Arch:
 
 ```
-sudo pacman -S wlroots wayland xkbcommon pixman libinput mesa libxcb xcb-util-wm cmake ninja
-```
-
-Then install `scenefx` from the AUR or build it from source.
-
-```
-yay -S scenefx0.5
+sudo pacman -S wlroots0.20 wayland xkbcommon pixman libinput mesa libxcb xcb-util-wm scenefx cmake ninja
 ```
 
 ## Building
