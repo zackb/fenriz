@@ -79,6 +79,13 @@ namespace fenriz::desktop::blur {
     } // namespace
 
     bool init() {
+        // GTK 4.24+ creates its own effect object on every surface
+        if (!gtk_check_version(4, 24, 0)) {
+            g_message("blur: GTK %u.%u owns the background effect; using CSS backdrop-filter",
+                      gtk_get_major_version(),
+                      gtk_get_minor_version());
+            return false;
+        }
         GdkDisplay* display = gdk_display_get_default();
         if (!GDK_IS_WAYLAND_DISPLAY(display))
             return false;
