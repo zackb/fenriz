@@ -155,6 +155,13 @@ window.fenriz-shell { background: transparent; }
   background-color: @fenriz_fill_window;
 }
 
+/* GTK 4.24+ turns this into the compositor's blur region; the compositor picks the strength. */
+.fenriz-launcher, .fenriz-wallpaper, .fenriz-polkit, .fenriz-notify-history, .fenriz-cleaning,
+.fenriz-osd .osd-pill, .fenriz-notify .fenriz-toast, .fenriz-background popover.menu > contents,
+.fenriz-bar .bar-capsule {
+  backdrop-filter: blur(20px);
+}
+
 .fenriz-polkit, .fenriz-cleaning { padding: 20px 24px; }
 .fenriz-wallpaper.no-search { padding-top: 10px; }
 
