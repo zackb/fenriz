@@ -156,53 +156,42 @@ namespace fenriz {
 
                 // panic quit
                 constexpr uint32_t kMods = WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT | WLR_MODIFIER_CTRL;
-                if (!server.locked && (mods & (kMods | WLR_MODIFIER_ALT)) == kMods) {
-                    const xkb_layout_index_t layout = xkb_state_key_get_layout(kb->xkb_state, keycode);
-                    const xkb_keysym_t* base;
-                    const int nbase = xkb_keymap_key_get_syms_by_level(kb->keymap, keycode, layout, 0, &base);
-                    for (int i = 0; i < nbase; i++) {
-                        if (base[i] == XKB_KEY_q) {
-                            wlr_log(WLR_INFO, "fenriz: SUPER+SHIFT+CTRL+Q, exiting");
-                            stop_repeat(server);
-                            server.stop();
-                            return;
-                        }
-                    }
+                if (!server.locked && (mods & (kMods | WLR_MODIFIER_ALT)) == kMods &&
+                    for_each_bind_sym(kb->xkb_state, keycode, [](xkb_keysym_t sym) { return sym == XKB_KEY_q; })) {
+                    wlr_log(WLR_INFO, "fenriz: SUPER+SHIFT+CTRL+Q, exiting");
+                    stop_repeat(server);
+                    server.stop();
+                    return;
                 }
             }
 
             // Cleaning mode: the cleaning bind is the only one that still runs
             if (server.cleaning) {
-                if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-                    const xkb_layout_index_t layout = xkb_state_key_get_layout(kb->xkb_state, keycode);
-                    const xkb_keysym_t* syms;
-                    const int nsyms = xkb_keymap_key_get_syms_by_level(kb->keymap, keycode, layout, 0, &syms);
-                    for (int i = 0; i < nsyms; i++)
-                        if (const Bind* b = find_bind(server, mods, syms[i]); b && b->action == Action::Cleaning) {
-                            execute_bind(server, *b);
-                            break;
-                        }
-                }
+                if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED)
+                    for_each_bind_sym(kb->xkb_state, keycode, [&](xkb_keysym_t sym) {
+                        const Bind* b = find_bind(server, mods, sym);
+                        if (!b || b->action != Action::Cleaning)
+                            return false;
+                        execute_bind(server, *b);
+                        return true;
+                    });
                 return;
             }
 
             bool handled = false;
             if (!server.locked && !shortcuts_inhibited(server) && event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-                xkb_layout_index_t layout = xkb_state_key_get_layout(kb->xkb_state, keycode);
-                const xkb_keysym_t* syms;
-                int nsyms = xkb_keymap_key_get_syms_by_level(kb->keymap, keycode, layout, 0, &syms);
-                for (int i = 0; i < nsyms; i++) {
-                    if (const Bind* b = handle_keybind(server, mods, syms[i])) {
-                        handled = true;
-                        server.bound_keys.insert({kb, event->keycode});
-                        // A repeating bind arms the timer; any other bind cancels a stale repeat.
-                        if (b->repeat)
-                            start_repeat(server, *b, keycode);
-                        else
-                            stop_repeat(server);
-                        break;
-                    }
-                }
+                handled = for_each_bind_sym(kb->xkb_state, keycode, [&](xkb_keysym_t sym) {
+                    const Bind* b = handle_keybind(server, mods, sym);
+                    if (!b)
+                        return false;
+                    server.bound_keys.insert({kb, event->keycode});
+                    // A repeating bind arms the timer; any other bind cancels a stale repeat.
+                    if (b->repeat)
+                        start_repeat(server, *b, keycode);
+                    else
+                        stop_repeat(server);
+                    return true;
+                });
             }
 
             // The press went to a bind, drop the matching release so the client sees neither half.

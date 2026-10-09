@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <cstdio>
+#include <vector>
 #include <xkbcommon/xkbcommon.h>
 
 using namespace fenriz;
@@ -74,6 +75,30 @@ int main() {
     assert(vt_for_keysym(XKB_KEY_a) == 0);
     assert(vt_for_keysym(XKB_KEY_F1) == 0);
 
+    // us,ru: with ru active, the Q key (xkb 24) yields Cyrillic_shorti first, then falls
+    // back to layout 0's q, so binds still fire. With us active, layout 0 is not rescanned.
+    names.layout = "us,ru";
+    xkb_keymap* km2 = xkb_keymap_new_from_names(ctx, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
+    assert(km2);
+    xkb_state* st = xkb_state_new(km2);
+    std::vector<xkb_keysym_t> seen;
+    auto record = [&](xkb_keysym_t s) {
+        seen.push_back(s);
+        return false;
+    };
+
+    xkb_state_update_mask(st, 0, 0, 0, 0, 0, 1);
+    assert(!for_each_bind_sym(st, 24, record));
+    assert((seen == std::vector<xkb_keysym_t>{XKB_KEY_Cyrillic_shorti, XKB_KEY_q}));
+    assert(for_each_bind_sym(st, 24, [](xkb_keysym_t s) { return s == XKB_KEY_q; }));
+
+    seen.clear();
+    xkb_state_update_mask(st, 0, 0, 0, 0, 0, 0);
+    assert(!for_each_bind_sym(st, 24, record));
+    assert((seen == std::vector<xkb_keysym_t>{XKB_KEY_q}));
+
+    xkb_state_unref(st);
+    xkb_keymap_unref(km2);
     xkb_keymap_unref(km);
     xkb_context_unref(ctx);
     std::printf("keybind matching: all assertions passed\n");
