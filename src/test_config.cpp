@@ -175,6 +175,17 @@ int main() {
     assert(ws.ws_home[1].empty()); // never set
     assert(ws.ws_home[2].empty()); // `workspace = 3` with no output is ignored
 
+    // Layout: a global default, overridden per workspace (output may be left empty).
+    assert(Config().ws_layout[0] == Layout::Dwindle);
+    Config lay = Config::parse("workspace = 2, , layout=dwindle\nlayout = scrolling\n"
+                               "workspace = 3, DP-1, layout = bogus\ncolumn_width = 2\n");
+    assert(lay.layout == Layout::Scrolling);
+    assert(lay.ws_layout[0] == Layout::Scrolling); // default, even though it came later
+    assert(lay.ws_layout[1] == Layout::Dwindle && lay.ws_home[1].empty());
+    assert(lay.ws_layout[2] == Layout::Scrolling && lay.ws_home[2] == "DP-1"); // bad value ignored
+    assert(lay.column_width == 1.0f);
+    assert(action_from_string("consumeorexpelleft") == Action::ConsumeOrExpelLeft);
+
     assert(Config().workspaces == 10);
     assert(Config::parse("workspaces = 12\n").workspaces == 12);
     assert(Config::parse("workspaces = 99\n").workspaces == WS_MAX);

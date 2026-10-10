@@ -324,7 +324,7 @@ namespace fenriz {
             cursor::forget_view(view);  // drop any in-flight mouse grab before the view is gone
             flip::forget(server, view); // a paired half hands the tile over rather than collapsing it
             server.views.remove(view);
-            tiling::remove(server, view); // sibling reclaims the freed tile
+            View* successor = tiling::remove(server, view); // sibling reclaims the freed tile
             if (view->foreign_handle) {
                 wlr_foreign_toplevel_handle_v1_destroy(view->foreign_handle);
                 view->foreign_handle = nullptr;
@@ -343,8 +343,14 @@ namespace fenriz {
                 if (ws.last_focused == view) // don't leave a dangling pointer to freed memory
                     ws.last_focused = nullptr;
             tiling::arrange(server);
-            if (!server.focused_view)
-                focus_topmost_visible(server);
+
+            // scrolling goes to neighbour
+            if (!server.focused_view) {
+                if (successor && view_visible(server, successor))
+                    focus_view(server, successor);
+                else
+                    focus_topmost_visible(server);
+            }
             ipc::publish(server);
         }
 
@@ -572,7 +578,7 @@ namespace fenriz {
             wlr_xwayland_surface_close(view->xwl);
     }
 
-    void view_configure(View* view) {
+    void view_configure(View* view, bool if_resized) {
         const int bw = view->fullscreen ? 0 : view->server->config.border_width;
         int cw = std::max(1, view->box.width - 2 * bw);
         int ch = std::max(1, view->box.height - 2 * bw);
@@ -583,6 +589,9 @@ namespace fenriz {
             cw = tiling::clamp_size(cw, min_w, max_w);
             ch = tiling::clamp_size(ch, min_h, max_h);
         }
+        if (if_resized && view->kind == View::Kind::Xdg && view->toplevel->scheduled.width == cw &&
+            view->toplevel->scheduled.height == ch)
+            return;
         // a genuinely new request
         if (cw != view->req_w || ch != view->req_h) {
             view->req_w = cw;
@@ -721,10 +730,15 @@ namespace fenriz {
         if (view->foreign_handle)
             wlr_foreign_toplevel_handle_v1_set_activated(view->foreign_handle, true);
 
-        // Repaint both borders with their new active/inactive colors.
-        place_view_nodes(view);
-        if (prev)
-            place_view_nodes(prev);
+        // Repaint both borders with their new active/inactive colors. Scrolling the focused
+        // column into view re-places every window anyway.
+        if (tiling::reveal(server, view)) {
+            tiling::arrange(server);
+        } else {
+            place_view_nodes(view);
+            if (prev)
+                place_view_nodes(prev);
+        }
 
         focus_surface(server, view_surface(view));
         ipc::publish(server);
@@ -846,6 +860,7 @@ namespace fenriz {
             v->float_box = v->box;              // re-floating returns here
             v->pinned = false;                  // a tiled window can't be pinned
             tiling::insert(server, v, nullptr); // re-tile at the spiral tail
+            tiling::reveal(server, v);
         }
         if (View* peer = v->flip_peer) { // a pair floats or tiles as one window
             peer->floating = v->floating;
@@ -925,47 +940,58 @@ namespace fenriz {
         place_view_nodes(view);
     }
 
-    void focus_direction(Server& server, int dx, int dy) {
-        View* cur = server.focused_view;
-        if (!cur)
-            return;
-        auto cx = [](View* v) { return v->box.x + v->box.width / 2; };
+    View* direction_target(Server& server, View* cur, int dx, int dy) {
+
+        auto cx = [&](View* v) {
+            const View::Box b = view_shown(server, v);
+            return b.x + b.width / 2;
+        };
         auto cy = [](View* v) { return v->box.y + v->box.height / 2; };
-        View* best = nullptr;
+        const View::Box c = view_shown(server, cur);
         // Exact reverse of the last directional jump? Return to where we came from (if it's
         // still visible and still in the requested direction) rather than the geometric pick,
         // so an asymmetric split round-trips instead of landing on a different tile.
         if (server.nav_return && dx == -server.nav_dx && dy == -server.nav_dy &&
-            view_visible(server, server.nav_return)) {
+            view_on_screen(server, server.nav_return)) {
             const long ddx = cx(server.nav_return) - cx(cur), ddy = cy(server.nav_return) - cy(cur);
             if (ddx * dx + ddy * dy > 0)
-                best = server.nav_return;
+                return server.nav_return;
         }
-        if (!best) {
-            long best_score = 0;
-            for (View* v : server.views) {
-                if (v == cur || !view_visible(server, v))
-                    continue;
-                // Stay on your own axis: a vertical move only considers windows that overlap
-                // the current one horizontally (its own column), a horizontal move only those
-                // that overlap vertically.
-                const bool overlap =
-                    dx ? v->box.y < cur->box.y + cur->box.height && cur->box.y < v->box.y + v->box.height
-                       : v->box.x < cur->box.x + cur->box.width && cur->box.x < v->box.x + v->box.width;
-                if (!overlap)
-                    continue;
-                const long ddx = cx(v) - cx(cur), ddy = cy(v) - cy(cur);
-                const long proj = ddx * dx + ddy * dy; // must move in the requested direction
-                if (proj <= 0)
-                    continue;
-                const long perp = dx ? std::labs(ddy) : std::labs(ddx);
-                const long score = proj + 2 * perp; // prefer aligned, then closest
-                if (!best || score < best_score) {
-                    best = v;
-                    best_score = score;
-                }
+        View* best = nullptr;
+        long best_score = 0;
+        for (View* v : server.views) {
+            if (v == cur || !view_on_screen(server, v))
+                continue;
+            // Stay on your own axis: a vertical move only considers windows that overlap
+            // the current one horizontally (its own column), a horizontal move only those
+            // that overlap vertically.
+            const View::Box b = view_shown(server, v);
+            const bool overlap =
+                dx ? b.y < c.y + c.height && c.y < b.y + b.height : b.x < c.x + c.width && c.x < b.x + b.width;
+            if (!overlap)
+                continue;
+            const long ddx = cx(v) - cx(cur), ddy = cy(v) - cy(cur);
+            const long proj = ddx * dx + ddy * dy; // must move in the requested direction
+            if (proj <= 0)
+                continue;
+            const long perp = dx ? std::labs(ddy) : std::labs(ddx);
+            const long score = proj + 2 * perp; // prefer aligned, then closest
+            if (!best || score < best_score) {
+                best = v;
+                best_score = score;
             }
         }
+        return best;
+    }
+
+    void focus_direction(Server& server, int dx, int dy) {
+        View* cur = server.focused_view;
+        if (!cur)
+            return;
+
+        View* best = tiling::neighbor(server, cur, dx, dy);
+        if (!best)
+            best = direction_target(server, cur, dx, dy);
         if (best) {
             focus_view(server, best); // clears nav_return
             server.nav_return = cur;  // remember where we left from, for the reverse move
@@ -980,6 +1006,35 @@ namespace fenriz {
         const Workspace& ws = server.workspaces[view->workspace];
         // Shown only if its workspace lives on an output AND is the one that output displays.
         return ws.output && ws.output->active_ws == view->workspace;
+    }
+
+    // The layout x-range a tiled view on a scrolling workspace is cut to.
+    // False for anything else, which is never cut.
+    static bool cut_span(const Server& server, const View* view, int& x0, int& x1) {
+        if (view->floating || view->fullscreen || server.workspaces[view->workspace].layout != Layout::Scrolling)
+            return false;
+        output::Output* out = view_output(server, view);
+        if (!out)
+            return false;
+        wlr_box ob;
+        wlr_output_layout_get_box(server.output_layout, out->handle, &ob);
+        x0 = ob.x;
+        x1 = ob.x + ob.width;
+        return true;
+    }
+
+    View::Box view_shown(const Server& server, const View* view) {
+        View::Box b = view->box;
+        if (int x0, x1; cut_span(server, view, x0, x1)) {
+            const int l = std::max(b.x, x0), r = std::min(b.x + b.width, x1);
+            b.x = l;
+            b.width = std::max(0, r - l);
+        }
+        return b;
+    }
+
+    bool view_on_screen(const Server& server, const View* view) {
+        return view_visible(server, view) && view_shown(server, view).width > 0;
     }
 
     output::Output* view_output(const Server& server, const View* view) {
@@ -1166,6 +1221,23 @@ namespace fenriz {
             box.x += (box.width - w) / 2;
             box.width = w;
         }
+
+        // Scrolling: a column part-way off its output is cut at the output edge, or it would
+        // draw onto the neighbouring monitor. Columns only overflow sideways.
+        int cut_l = 0, cut_r = 0;
+        if (int x0, x1; cut_span(server, view, x0, x1)) {
+            cut_l = std::clamp(x0 - box.x, 0, box.width);
+            cut_r = std::clamp(box.x + box.width - x1, 0, box.width);
+            if (box.width - cut_l - cut_r <= 2 * bw) { // at most a border sliver: gone
+                wlr_scene_node_set_enabled(&view->scene_tree->node, false);
+                release_gradient(view);
+                return;
+            }
+        }
+        const bool cut = cut_l || cut_r;
+        // The same cut in surface-local content px.
+        const int hide_l = std::max(0, cut_l - bw), hide_r = std::max(0, cut_r - bw);
+
         view->frame = box; // popup unconstraining reads this back (see server.cpp)
         wlr_scene_node_set_position(&view->scene_tree->node, box.x, box.y);
 
@@ -1184,7 +1256,7 @@ namespace fenriz {
                                &view->surface_tree->node,
                                bw - geo.x,
                                bw - geo.y,
-                               geo,
+                               {geo.x + hide_l, geo.y, std::max(0, geo.width - hide_l - hide_r), geo.height},
                                view->fullscreen ? 0 : std::max(0, server.config.rounding - bw),
                                view->blur,
                                squash);
@@ -1201,7 +1273,7 @@ namespace fenriz {
             wlr_scene_subsurface_tree_set_clip(&view->surface_tree->node, nullptr);
         } else {
             const tiling::Rect content = tiling::inner_box({full.x, full.y, full.width, full.height}, bw);
-            wlr_box clip = {geo.x, geo.y, std::max(1, content.w), std::max(1, content.h)};
+            wlr_box clip = {geo.x + hide_l, geo.y, std::max(1, content.w - hide_l - hide_r), std::max(1, content.h)};
             wlr_scene_subsurface_tree_set_clip(&view->surface_tree->node, &clip);
         }
 
@@ -1214,16 +1286,24 @@ namespace fenriz {
         // border_gradient read as the two ends of one border instead of stacking alphas.
         const bool show_border = bw > 0;
         const int W = box.width, H = box.height;
+
+        // clip those per band if a peeking column ever needs them.
         const bool grad =
-            show_border && server.config.border_gradient != 0 && view == server.focused_view && W > 0 && H > 0;
+            show_border && server.config.border_gradient != 0 && view == server.focused_view && W > 0 && H > 0 && !cut;
 
         wlr_scene_node_set_enabled(&view->border->node, show_border && !grad);
         if (show_border && !grad) {
-            wlr_scene_rect_set_size(view->border, W, H);
+            // Only the uncut part of the frame, square at the cut edge.
+            wlr_scene_node_set_position(&view->border->node, cut_l, 0);
+            wlr_scene_rect_set_size(view->border, W - cut_l - cut_r, H);
             // Round the border frame to match the content so it nests instead of poking
             // square corners past the client's rounding.
-            wlr_scene_rect_set_corner_radius(view->border, server.config.rounding);
-            wlr_scene_rect_set_clipped_region(view->border, hole);
+            const int r = server.config.rounding;
+            wlr_scene_rect_set_corner_radii(
+                view->border, corner_radii_new(cut_l ? 0 : r, cut_r ? 0 : r, cut_r ? 0 : r, cut_l ? 0 : r));
+            struct clipped_region border_hole = hole;
+            border_hole.area.x -= cut_l;
+            wlr_scene_rect_set_clipped_region(view->border, border_hole);
             float col[4];
             u32_color(view == server.focused_view ? server.config.border_active : server.config.border_inactive, col);
             fade_color(col, fade);
@@ -1294,7 +1374,7 @@ namespace fenriz {
         }
 
         // glow
-        const bool glow = server.config.shadow && !view->fullscreen && view == server.focused_view;
+        const bool glow = server.config.shadow && !view->fullscreen && view == server.focused_view && !cut;
         wlr_scene_node_set_enabled(&view->shadow->node, glow);
         if (glow) {
             const uint32_t glow_rgba = server.config.border_gradient

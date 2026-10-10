@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <optional>
 #include <regex>
 #include <sstream>
 #include <unistd.h>
@@ -87,6 +88,14 @@ namespace fenriz {
             if (s == "false" || s == "0" || s == "off" || s == "no")
                 return false;
             return fallback;
+        }
+
+        std::optional<Layout> parse_layout(const std::string& s) {
+            if (s == "dwindle")
+                return Layout::Dwindle;
+            if (s == "scrolling")
+                return Layout::Scrolling;
+            return std::nullopt;
         }
 
         // Mirror WLR_MODIFIER_* bit values (wlr/types/wlr_keyboard.h). `ok` reports whether the
@@ -175,6 +184,24 @@ namespace fenriz {
             return Action::Workspace;
         if (s == "movetoworkspace")
             return Action::MoveToWorkspace;
+        if (s == "togglelayout")
+            return Action::ToggleLayout;
+        if (s == "moveleft")
+            return Action::MoveLeft;
+        if (s == "moveright")
+            return Action::MoveRight;
+        if (s == "moveup")
+            return Action::MoveUp;
+        if (s == "movedown")
+            return Action::MoveDown;
+        if (s == "cyclecolumnwidth")
+            return Action::CycleColumnWidth;
+        if (s == "maximizecolumn")
+            return Action::MaximizeColumn;
+        if (s == "consumeorexpelleft")
+            return Action::ConsumeOrExpelLeft;
+        if (s == "consumeorexpelright")
+            return Action::ConsumeOrExpelRight;
         if (s == "pin")
             return Action::Pin;
         if (s == "cleaning")
@@ -184,6 +211,7 @@ namespace fenriz {
 
     Config Config::parse(const std::string& text) {
         Config cfg;
+        std::optional<Layout> ws_layout[WS_MAX]; // per-workspace overrides of `layout`
         std::stringstream ss(text);
         std::string line;
         while (std::getline(ss, line)) {
@@ -285,13 +313,19 @@ namespace fenriz {
             }
 
             if (key == "workspace") {
-                // N, OUTPUT — the workspace's home output, so it returns there on hotplug.
+                // N, OUTPUT[, layout=dwindle|scrolling] — the workspace's home output, so it
+                // returns there on hotplug (empty = no preference), and its own layout.
                 std::vector<std::string> parts = split(val, ',');
                 if (parts.size() < 2)
                     continue;
                 const int n = parse_int(parts[0], 0);
-                if (n >= 1 && n <= WS_MAX)
-                    cfg.ws_home[n - 1] = parts[1];
+                if (n < 1 || n > WS_MAX)
+                    continue;
+                cfg.ws_home[n - 1] = parts[1];
+                for (size_t i = 2; i < parts.size(); i++)
+                    if (parts[i].rfind("layout=", 0) == 0)
+                        if (std::optional<Layout> l = parse_layout(trim(parts[i].substr(7))))
+                            ws_layout[n - 1] = l;
                 continue;
             }
 
@@ -387,7 +421,15 @@ namespace fenriz {
                 cfg.zoom_max = parse_float(val, cfg.zoom_max, 1.0f, 10.0f);
             else if (key == "zoom_step")
                 cfg.zoom_step = parse_float(val, cfg.zoom_step, 0.01f, 1.0f);
+            else if (key == "layout")
+                cfg.layout = parse_layout(val).value_or(cfg.layout);
+            else if (key == "column_width")
+                cfg.column_width = parse_float(val, cfg.column_width, 0.1f, 1.0f);
+            else if (key == "scroll_swipe_fingers")
+                cfg.scroll_swipe_fingers = parse_int(val, cfg.scroll_swipe_fingers, 0, 5);
         }
+        for (int i = 0; i < WS_MAX; i++)
+            cfg.ws_layout[i] = ws_layout[i].value_or(cfg.layout);
         return cfg;
     }
 

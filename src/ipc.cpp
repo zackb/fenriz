@@ -87,6 +87,9 @@ namespace fenriz::ipc {
                 s += "{\"name\":\"";
                 json_escape(s, output::name_of(o).c_str());
                 s += "\",\"active\":" + std::to_string(o->active_ws + 1);
+                const bool scrolling =
+                    o->active_ws >= 0 && server.workspaces[o->active_ws].layout == Layout::Scrolling;
+                s += ",\"layout\":\"" + std::string(scrolling ? "scrolling" : "dwindle") + "\"";
                 s += ",\"focused\":" + std::string(o == focus ? "true" : "false");
                 s += ",\"x\":" + std::to_string(box.x);
                 s += ",\"y\":" + std::to_string(box.y);

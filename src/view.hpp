@@ -138,8 +138,9 @@ namespace fenriz {
     void view_set_fullscreen(View* view, bool on);
     void view_close(View* view); // ask the client to close (kill-active keybind)
     // Tell the client its on-screen geometry: xdg gets a size, X gets an absolute-coords
-    // configure (position + size). Computed from view->box minus the border.
-    void view_configure(View* view);
+    // configure (position + size). Computed from view->box minus the border. `if_resized`
+    // skips an xdg configure whose size is already the scheduled one.
+    void view_configure(View* view, bool if_resized = false);
 
     // Route seat keyboard input to a surface (notify_enter with the current keyboard
     // state). Used by focus_view and by layer surfaces that grab the keyboard.
@@ -192,6 +193,10 @@ namespace fenriz {
     // {-1,0,1}: left (-1,0), right (1,0), up (0,-1), down (0,1). No-op if none.
     void focus_direction(Server& server, int dx, int dy);
 
+    // The on-screen view a geometric move from `cur` in direction (dx,dy) lands on, or null.
+    // Prefers reversing the last directional jump (Server::nav_return).
+    View* direction_target(Server& server, View* cur, int dx, int dy);
+
     // (re)start the slide-into-place ease
     inline void anim_slide(View* v, int dx, int dy) {
         v->anim_ox += dx;
@@ -205,6 +210,14 @@ namespace fenriz {
     // output that workspace lives on. A workspace on no output (all screens gone) shows
     // nothing — its windows and tree are still there, just not rendered.
     bool view_visible(const Server& server, const View* view);
+
+    // The part of view->box on its own output. Equal to box except on a scrolling workspace,
+    // where a column can run off its monitor and over the next; width 0 = scrolled off.
+    // Hit tests and geometric navigation use this, not box.
+    View::Box view_shown(const Server& server, const View* view);
+
+    // view_visible, and not scrolled entirely off its output.
+    bool view_on_screen(const Server& server, const View* view);
 
     // The output the view's workspace currently lives on, or null if homeless.
     output::Output* view_output(const Server& server, const View* view);

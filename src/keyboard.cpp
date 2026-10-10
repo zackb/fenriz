@@ -390,6 +390,34 @@ namespace fenriz {
         case Action::FlipUnpair:
             flip::unpair(server);
             break;
+        case Action::ToggleLayout:
+            if (output::Output* o = output::focused(server); o && o->active_ws >= 0)
+                tiling::toggle_layout(server, o->active_ws);
+            break;
+        case Action::MoveLeft:
+            tiling::move(server, server.focused_view, -1, 0);
+            break;
+        case Action::MoveRight:
+            tiling::move(server, server.focused_view, 1, 0);
+            break;
+        case Action::MoveUp:
+            tiling::move(server, server.focused_view, 0, -1);
+            break;
+        case Action::MoveDown:
+            tiling::move(server, server.focused_view, 0, 1);
+            break;
+        case Action::CycleColumnWidth:
+            tiling::cycle_width(server, server.focused_view);
+            break;
+        case Action::MaximizeColumn:
+            tiling::maximize_column(server, server.focused_view);
+            break;
+        case Action::ConsumeOrExpelLeft:
+            tiling::consume_or_expel(server, server.focused_view, -1);
+            break;
+        case Action::ConsumeOrExpelRight:
+            tiling::consume_or_expel(server, server.focused_view, 1);
+            break;
         case Action::Cleaning: {
             if (server.cleaning || b.arg == "off") {
                 cleaning::stop(server);

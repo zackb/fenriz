@@ -671,7 +671,7 @@ namespace fenriz::output {
             origin[i] = ws.origin;
             // A workspace needs a screen if it has windows, or if an output is showing it
             // (an empty workspace you're looking at mustn't be yanked away).
-            needed[i] = ws.root != nullptr || (ws.output && ws.output->active_ws == i);
+            needed[i] = tiling::has_tiles(ws) || (ws.output && ws.output->active_ws == i);
         }
 
         assign_workspaces(home, needed, live, current, origin, count);
@@ -690,7 +690,7 @@ namespace fenriz::output {
         WsSlot wss[WS_MAX];
         for (int i = 0; i < count; i++) {
             const Workspace& ws = server.workspaces[i];
-            wss[i] = {ws.home, name_of(ws.output), ws.root != nullptr};
+            wss[i] = {ws.home, name_of(ws.output), tiling::has_tiles(ws)};
         }
 
         View* f = server.focused_view;
@@ -826,8 +826,12 @@ namespace fenriz::output {
     }
 
     void apply_config(Server& server) {
-        for (int i = 0; i < WS_MAX; i++)
+        for (int i = 0; i < WS_MAX; i++) {
             server.workspaces[i].home = server.config.ws_home[i];
+            // A populated workspace keeps its layout until togglelayout converts it.
+            if (!tiling::has_tiles(server.workspaces[i]))
+                server.workspaces[i].layout = server.config.ws_layout[i];
+        }
         // set_enabled re-applies mode/scale/position whether or not the enable state changed,
         // so an edited `output = ...` line lands live.
         for (Output* o : server.outputs)

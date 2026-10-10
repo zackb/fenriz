@@ -8,6 +8,7 @@
 
 #include "config.hpp"
 #include "output.hpp"
+#include "scrolling.hpp"
 
 struct wlr_backend;
 struct wlr_session;
@@ -46,11 +47,9 @@ namespace fenriz {
     class Server;
     class View;
     struct LayerSurface;
-    namespace tiling {
-        struct Node;
-    }
 
-    // A workspace: a dwindle BSP tree (tiling.hpp) plus which output it lives on.
+    // A workspace: its tiles (a dwindle BSP tree, tiling.hpp, or a scrolling strip,
+    // scrolling.hpp) plus which output it lives on.
     //
     // `output` is where the workspace currently *lives*; the output shows it only if it is
     // that output's Output::active_ws. `home` is the output name it's configured to prefer
@@ -60,10 +59,12 @@ namespace fenriz {
     // away with this workspace on it, and honored (then cleared) when that screen returns. It
     // is what makes a lid cycle round-trip with no config at all; see assign_workspaces.
     //
-    // Output events only ever reassign `output`/`origin`. `root` and the views' workspace
+    // Output events only ever reassign `output`/`origin`. The tiles and the views' workspace
     // index are invariant across hotplug/lid — that's what makes a layout survive a lid close.
     struct Workspace {
-        tiling::Node* root = nullptr;
+        Layout layout = Layout::Dwindle;
+        tiling::Node* root = nullptr; // dwindle tiles
+        scrolling::Strip strip;       // scrolling tiles; only one of root/strip is ever populated
         output::Output* output = nullptr; // null = unassigned (no screen); tree is kept
         View* last_focused = nullptr;     // restored on workspace return; cleared when it dies
         std::string home;                 // configured output name; empty = no preference

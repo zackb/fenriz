@@ -48,8 +48,7 @@ namespace fenriz::flip {
             if (!back)
                 return;
             if (!front->floating)
-                if (tiling::Node* leaf = tiling::find_leaf(server.workspaces[front->workspace].root, front))
-                    leaf->view = back;
+                tiling::replace(server, front, back);
             back->box = front->box;
             back->flip_back = false;
             front->flip_back = true;
@@ -157,8 +156,7 @@ namespace fenriz::flip {
         split(view);
         // survivor keeps the tile
         if (was_front && !peer->floating)
-            if (tiling::Node* leaf = tiling::find_leaf(server.workspaces[view->workspace].root, view))
-                leaf->view = peer;
+            tiling::replace(server, view, peer);
         peer->box = view->box;
         view_configure(peer);
     }
