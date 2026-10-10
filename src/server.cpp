@@ -587,8 +587,10 @@ namespace fenriz {
 
         // Seed workspace homes before any output shows up, so the first monitor to appear
         // already claims the workspaces configured for it.
-        for (int i = 0; i < WS_MAX; i++)
+        for (int i = 0; i < WS_MAX; i++) {
             workspaces[i].home = config.ws_home[i];
+            workspaces[i].layout = config.ws_layout[i];
+        }
 
         output::register_handlers(*this);
 

@@ -246,6 +246,38 @@ things you hold, like volume.
 | `flippair` | attach the focused window as the back of the marked front |
 | `flip` | turn the focused window's pair over |
 | `flipunpair` | split the focused window's pair |
+| `moveleft` / `moveright` / `moveup` / `movedown` | move the focused window (see [Scrolling layout](#scrolling-layout)) |
+| `togglelayout` | convert the focused workspace between dwindle and scrolling |
+| `cyclecolumnwidth` / `maximizecolumn` | scrolling: column width 1/3 → 1/2 → 2/3 / full width and back |
+| `consumeorexpelleft` / `consumeorexpelright` | scrolling: stack the window into the neighbouring column, or pop it out into its own |
+
+### Scrolling layout
+
+The default layout, dwindle, splits the focused window for each new one. The scrolling layout
+(as in niri) lays windows out as columns on a strip that runs off the side of the screen. A new
+window opens as a new column to the right and nothing else shrinks; focusing a column scrolls
+it into view.
+
+```
+layout = scrolling                       # every workspace
+workspace = 2, , layout=scrolling        # or just one
+column_width = 0.5                       # new columns: half the screen
+```
+
+`SUPER` + `Y` converts the current workspace either way and keeps its windows.
+
+| Default bind | On a scrolling workspace |
+|---|---|
+| `SUPER` + `H` `L` / `J` `K` | focus the next column / the next window in the column |
+| `SUPER CTRL` + `H` `L` / `J` `K` | move the column / move the window within its column |
+| `SUPER` + `[` / `]` | stack the window into the column on that side, or pop it out into a new column |
+| `SUPER` + `R` | column width 1/3 → 1/2 → 2/3 |
+| `SUPER` + `M` | column full width, and back |
+| `SUPER` + scroll | step through the columns |
+| 3-finger swipe | scroll the columns; lifting off settles on the nearest one (`scroll_swipe_fingers`, 0 = off) |
+
+`SUPER` + `SHIFT` + drag resizes the column width and the split between stacked windows. On a
+dwindle workspace the `SUPER CTRL` binds swap the window with its neighbour.
 
 ### Flip pairs
 
@@ -375,6 +407,8 @@ The defaults give you:
 | `SUPER SHIFT` + `Q` | quit fenriz |
 | `SUPER` + `H` `J` `K` `L` (or the arrows) | move focus |
 | `SUPER` + `F` / `V` / `P` / `T` | fullscreen / float / pin / toggle split |
+| `SUPER CTRL` + `H` `J` `K` `L` (or the arrows) | move the focused window |
+| `SUPER` + `Y` | switch the workspace between dwindle and [scrolling](#scrolling-layout) |
 | `SUPER` + `1`…`0` | switch workspace (`SUPER SHIFT` sends the window there) |
 | `SUPER` + `Space` / `SUPER SHIFT` + `L` / `SUPER` + `W` | fenriz-desktop launcher / lock / wallpaper |
 | `SUPER SHIFT CTRL` + `C` | keyboard cleaning mode: input off for 60 seconds |

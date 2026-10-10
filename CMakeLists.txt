@@ -196,6 +196,9 @@ target_compile_definitions(fenriz_config_test PRIVATE
 add_executable(fenriz_tiling_test src/test_tiling.cpp)
 target_include_directories(fenriz_tiling_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+add_executable(fenriz_scrolling_test src/test_scrolling.cpp)
+target_include_directories(fenriz_scrolling_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
 add_executable(fenriz_output_test src/output_policy.cpp src/test_output.cpp)
 target_include_directories(fenriz_output_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(fenriz_output_test PRIVATE PkgConfig::WAYLAND)
@@ -224,13 +227,14 @@ target_include_directories(fenriz-test PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 # xkbcommon: the headless backend has no input devices
 target_link_libraries(fenriz-test PRIVATE PkgConfig::WAYLAND_CLIENT PkgConfig::XKBCOMMON rt)
 
-foreach(t fenriz_config_test fenriz_tiling_test fenriz_keybind_test fenriz_output_test fenrizctl_test fenriz_ipc_test fenriz-test)
+foreach(t fenriz_config_test fenriz_tiling_test fenriz_scrolling_test fenriz_keybind_test fenriz_output_test fenrizctl_test fenriz_ipc_test fenriz-test)
     target_compile_options(${t} PRIVATE -UNDEBUG)
 endforeach()
 
 enable_testing()
 add_test(NAME config  COMMAND fenriz_config_test)
 add_test(NAME tiling  COMMAND fenriz_tiling_test)
+add_test(NAME scrolling COMMAND fenriz_scrolling_test)
 add_test(NAME keybind COMMAND fenriz_keybind_test)
 add_test(NAME output  COMMAND fenriz_output_test)
 add_test(NAME ctl     COMMAND fenrizctl_test)

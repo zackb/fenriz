@@ -39,6 +39,8 @@ namespace fenriz::cursor {
             wl_listener swipe_begin, swipe_update, swipe_end;
             wl_listener pinch_begin, pinch_update, pinch_end;
             wl_listener hold_begin, hold_end;
+            bool swipe_scroll = false;
+            double column_acc = 0;
 
             wlr_virtual_pointer_manager_v1* virtual_pointers;
             wl_listener new_virtual_pointer;
@@ -133,9 +135,9 @@ namespace fenriz::cursor {
             View* best = nullptr;
             for (auto it = server.views.rbegin(); it != server.views.rend(); ++it) {
                 View* v = *it;
-                if (!view_visible(server, v) || (best && layer(v) <= layer(best)))
+                if (!view_on_screen(server, v) || (best && layer(v) <= layer(best)))
                     continue;
-                const auto& b = v->box;
+                const View::Box b = view_shown(server, v);
                 if (lx >= b.x && lx < b.x + b.width && ly >= b.y && ly < b.y + b.height)
                     best = v;
             }
@@ -227,6 +229,11 @@ namespace fenriz::cursor {
         void schedule_frame_at_cursor(Cursor* c) {
             if (wlr_output* o = wlr_output_layout_output_at(c->server->output_layout, c->cursor->x, c->cursor->y))
                 wlr_output_schedule_frame(o);
+        }
+
+        output::Output* output_at_cursor(Cursor* c) {
+            return output::by_handle(*c->server,
+                                     wlr_output_layout_output_at(c->server->output_layout, c->cursor->x, c->cursor->y));
         }
 
         void on_constraint_destroy(wl_listener* listener, void* data);
@@ -495,9 +502,11 @@ namespace fenriz::cursor {
                 if (event->button == BTN_LEFT && (mods & WLR_MODIFIER_LOGO)) {
                     View* v = view_box_at(server, c->cursor->x, c->cursor->y);
                     if (v && !v->fullscreen) {
-                        focus_view(server, v);
+                        focus_view(server, v); // may scroll a strip: v's slot moves away from the cursor
                         raise_view(server, v);
                         const bool resize = mods & WLR_MODIFIER_SHIFT;
+                        // Where v is drawn right now: its slot plus the slide still under way.
+                        const double vx = v->box.x + v->anim_ox, vy = v->box.y + v->anim_oy;
                         c->grabbed = v;
                         c->grab = v->floating ? (resize ? Grab::ResizeFloat : Grab::MoveFloat)
                                               : (resize ? Grab::ResizeTile : Grab::Swap);
@@ -507,14 +516,16 @@ namespace fenriz::cursor {
                             if (v->scene_tree)
                                 wlr_scene_node_raise_to_top(&v->scene_tree->node);
                             c->grab_home = v->box; // dragging back over here reverts the preview
-                            c->grab_fx = v->box.width > 0 ? (c->cursor->x - v->box.x) / v->box.width : 0.5;
-                            c->grab_fy = v->box.height > 0 ? (c->cursor->y - v->box.y) / v->box.height : 0.5;
+                            c->grab_fx =
+                                v->box.width > 0 ? std::clamp((c->cursor->x - vx) / v->box.width, 0.0, 1.0) : 0.5;
+                            c->grab_fy =
+                                v->box.height > 0 ? std::clamp((c->cursor->y - vy) / v->box.height, 0.0, 1.0) : 0.5;
                         }
                         // Resize the corner nearest the grab point
                         const char* rc = "grabbing";
                         if (resize) {
-                            const bool left = c->cursor->x < v->box.x + v->box.width / 2.0;
-                            const bool top = c->cursor->y < v->box.y + v->box.height / 2.0;
+                            const bool left = c->cursor->x < vx + v->box.width / 2.0;
+                            const bool top = c->cursor->y < vy + v->box.height / 2.0;
                             c->resize_edges =
                                 (left ? WLR_EDGE_LEFT : WLR_EDGE_RIGHT) | (top ? WLR_EDGE_TOP : WLR_EDGE_BOTTOM);
                             rc = top ? (left ? "nw-resize" : "ne-resize") : (left ? "sw-resize" : "se-resize");
@@ -578,6 +589,24 @@ namespace fenriz::cursor {
                 return;
             }
 
+            // SUPER + scroll on a scrolling strip steps focus one column per wheel notch (15
+            // units; a touchpad accumulates the same distance). Down/right = next column.
+            View* f = server.focused_view;
+            if (mods == WLR_MODIFIER_LOGO && f && event->delta != 0 && !shortcuts_inhibited(server) &&
+                (tiling::neighbor(server, f, 1, 0) || tiling::neighbor(server, f, -1, 0))) {
+                double delta = event->delta;
+                if (device_natural_scroll(&event->pointer->base))
+                    delta = -delta;
+                c->column_acc += delta;
+                while (std::abs(c->column_acc) >= 15) {
+                    const int dir = c->column_acc > 0 ? 1 : -1;
+                    c->column_acc -= 15 * dir;
+                    if (View* n = tiling::neighbor(server, server.focused_view, dir, 0))
+                        focus_view(server, n);
+                }
+                return;
+            }
+
             wlr_seat_pointer_notify_axis(c->server->seat,
                                          event->time_msec,
                                          event->orientation,
@@ -602,6 +631,12 @@ namespace fenriz::cursor {
             auto* e = static_cast<wlr_pointer_swipe_begin_event*>(data);
             if (c->server->cleaning)
                 return;
+
+            const int fingers = c->server->config.scroll_swipe_fingers;
+            c->swipe_scroll = fingers > 0 && (int)e->fingers == fingers && !c->server->locked &&
+                              tiling::shows_strip(*c->server, output_at_cursor(c));
+            if (c->swipe_scroll)
+                return;
             wlr_pointer_gestures_v1_send_swipe_begin(c->gestures, c->server->seat, e->time_msec, e->fingers);
         }
 
@@ -610,6 +645,10 @@ namespace fenriz::cursor {
             auto* e = static_cast<wlr_pointer_swipe_update_event*>(data);
             if (c->server->cleaning)
                 return;
+            if (c->swipe_scroll) {
+                tiling::scroll_by(*c->server, output_at_cursor(c), e->dx);
+                return;
+            }
             wlr_pointer_gestures_v1_send_swipe_update(c->gestures, c->server->seat, e->time_msec, e->dx, e->dy);
         }
 
@@ -618,6 +657,12 @@ namespace fenriz::cursor {
             auto* e = static_cast<wlr_pointer_swipe_end_event*>(data);
             if (c->server->cleaning)
                 return;
+            if (c->swipe_scroll) {
+                c->swipe_scroll = false;
+                if (View* v = tiling::snap(*c->server, output_at_cursor(c)))
+                    focus_view(*c->server, v);
+                return;
+            }
             wlr_pointer_gestures_v1_send_swipe_end(c->gestures, c->server->seat, e->time_msec, e->cancelled);
         }
 

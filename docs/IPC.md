@@ -73,7 +73,7 @@ workspace switch. Identical consecutive snapshots are suppressed, so a line alwa
 means something changed.
 
 ```json
-{"outputs":[{"name":"eDP-1","active":1,"focused":true,"x":0,"y":0,"width":2560,"height":1600,"scale":2.0,"internal":true}],
+{"outputs":[{"name":"eDP-1","active":1,"layout":"dwindle","focused":true,"x":0,"y":0,"width":2560,"height":1600,"scale":2.0,"internal":true}],
  "lid":"open",
  "cursor":{"x":100,"y":200},
  "workspaces":{"active":1,"occupied":[1,2,4],"urgent":[4]},
@@ -86,6 +86,7 @@ means something changed.
 | `outputs` | object[] | Enabled outputs. A disabled screen has no `wl_output` either, so it's absent here too. |
 | `outputs[].name` | string | Connector name, e.g. `eDP-1`. |
 | `outputs[].active` | int | The workspace this output is showing, 1-indexed. |
+| `outputs[].layout` | string | That workspace's layout: `dwindle` or `scrolling`. |
 | `outputs[].focused` | bool | Whether this is the output receiving new windows. Exactly one is true. |
 | `outputs[].x/y/width/height` | int | Layout geometry, in layout coordinates. |
 | `outputs[].scale` | float | Effective scale for this output. |
@@ -206,7 +207,12 @@ Runs a keybind action by name using the same names the config's `bind =` lines t
 | `pin` | Toggle pin (a float shown on every workspace of its output). |
 | `togglesplit` | Flip the focused window's split between side-by-side and stacked. |
 | `focusnext` / `focusprev` | Cycle focus through the workspace's windows. |
-| `focusleft` / `focusright` / `focusup` / `focusdown` | Move focus geometrically. |
+| `focusleft` / `focusright` / `focusup` / `focusdown` | Move focus geometrically. On a scrolling workspace: to the next column / row, then on to the next monitor. |
+| `moveleft` / `moveright` / `moveup` / `movedown` | Dwindle: swap the focused window with its neighbour. Scrolling: move its column left/right, or the window up/down within its column. |
+| `togglelayout` | Convert the focused workspace between dwindle and scrolling, keeping its windows. |
+| `cyclecolumnwidth` | Scrolling: step the focused column through 1/3, 1/2, 2/3 of the screen. |
+| `maximizecolumn` | Scrolling: toggle the focused column between full width and its previous width. |
+| `consumeorexpelleft` / `consumeorexpelright` | Scrolling: a window alone in its column joins the column on that side; a window sharing a column leaves it into a new column on that side. |
 | `workspace` | `arg` = 1–10. Same as `{"cmd":"workspace"}`. |
 | `movetoworkspace` | `arg` = 1–10. Send the focused window there. |
 | `exec` | `arg` = a shell command, run detached. |

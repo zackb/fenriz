@@ -7,6 +7,10 @@ namespace fenriz {
 
     class Server;
     class View;
+    struct Workspace;
+    namespace output {
+        struct Output;
+    }
 
     namespace tiling {
 
@@ -178,9 +182,38 @@ namespace fenriz {
                 v->ratio = std::clamp(v->ratio + dy / v->rect.h, 0.1, 0.9);
         }
 
-        // Insert/remove a view in the tree for its own workspace (server.ws_roots).
+        // Insert/remove a view in its own workspace's tiles (dwindle tree or scrolling strip).
+        // remove() returns who focus should pass to if `v` had it (scrolling only; else null).
         void insert(Server& server, View* v, View* focus);
-        void remove(Server& server, View* v);
+        View* remove(Server& server, View* v);
+
+        // Put `nu` in `old`'s tile, in place. No-op if `old` isn't tiled.
+        void replace(Server& server, View* old, View* nu);
+
+        // Whether the workspace holds any tiled window.
+        bool has_tiles(const Workspace& ws);
+
+        // Convert workspace `n` between dwindle and scrolling, keeping its windows.
+        void toggle_layout(Server& server, int n);
+
+        // Move `v` one step in direction (dx,dy): scrolling moves its column (dx) or its row
+        // within the column (dy); dwindle swaps it with the neighbouring tile.
+        void move(Server& server, View* v, int dx, int dy);
+
+        // Scrolling-only; no-ops for a float or a dwindle workspace.
+        View* neighbor(Server& server, View* v, int dx, int dy); // see scrolling::neighbor
+        bool reveal(Server& server, View* v);                    // scroll `v` into view; true if the strip moved
+        void cycle_width(Server& server, View* v);
+        void maximize_column(Server& server, View* v);
+        void consume_or_expel(Server& server, View* v, int dir);
+
+        // Whether the workspace `out` shows is a scrolling one.
+        bool shows_strip(Server& server, output::Output* out);
+        // Free-scroll the strip on the workspace `out` shows by dx px (content follows the
+        // fingers). False if that workspace isn't scrolling.
+        bool scroll_by(Server& server, output::Output* out, double dx);
+        // Snap that strip to its nearest column edge; returns the column's window, or null.
+        View* snap(Server& server, output::Output* out);
 
         // Trade two tiled views' positions in place (swaps the leaves' view pointers),
         // then re-arrange. No-op if either view isn't a leaf on the active workspace.
@@ -193,7 +226,7 @@ namespace fenriz {
         // handler re-arranges once per frame rather than once per motion event.
         void resize_split(Server& server, View* v, double dx, double dy);
 
-        // Apply the dwindle layout to server.views on the active workspace, setting each
+        // Lay out the workspace each output shows (dwindle or scrolling), setting each
         // View::box and requesting the toplevel resize. `animate` feeds the position delta
         // into the slide-into-place offset; pass false for changes that must land instantly
         // (an interactive resize tracks the cursor 1:1; a workspace switch appears in place).

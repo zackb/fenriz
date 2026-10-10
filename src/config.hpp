@@ -32,7 +32,19 @@ namespace fenriz {
         FlipPair,        // attach the focused window as the back of the marked front
         Flip,            // turn the focused window's pair over
         FlipUnpair,      // split the focused window's pair
+        ToggleLayout,    // convert the current workspace dwindle <-> scrolling
+        MoveLeft,        // scrolling: move the column; dwindle: swap with the neighbour
+        MoveRight,
+        MoveUp, // scrolling: move within the column; dwindle: swap with the neighbour
+        MoveDown,
+        CycleColumnWidth,   // scrolling: step the column through 1/3, 1/2, 2/3
+        MaximizeColumn,     // scrolling: toggle the column to full width
+        ConsumeOrExpelLeft, // scrolling: join the left column, or leave a shared one leftward
+        ConsumeOrExpelRight,
     };
+
+    // How a workspace tiles: a dwindle BSP tree, or a niri-style scrolling strip of columns.
+    enum class Layout { Dwindle, Scrolling };
 
     struct Bind {
         uint32_t mods = 0; // mask of WLR_MODIFIER_* bit values
@@ -120,6 +132,12 @@ namespace fenriz {
         int workspaces = 10;
         // Each workspace's preferred output name (`workspace = 1, eDP-1`); empty = no preference.
         std::string ws_home[WS_MAX];
+        // Default tiling layout (`layout =`), resolved per workspace with any
+        // `workspace = N, OUTPUT, layout=…` override applied.
+        Layout layout = Layout::Dwindle;
+        Layout ws_layout[WS_MAX] = {};
+        float column_width = 0.5f;    // scrolling: new column width, fraction of the usable width
+        int scroll_swipe_fingers = 3; // scrolling: touchpad swipe that scrolls the strip; 0 = off
 
         // The file this config came from, empty if neither existed.
         std::string source;
