@@ -202,7 +202,7 @@ namespace fenriz {
 
         // Scrolling-only; no-ops for a float or a dwindle workspace.
         View* neighbor(Server& server, View* v, int dx, int dy); // see scrolling::neighbor
-        bool reveal(Server& server, View* v); // scroll `v` into view; true if the strip moved
+        bool reveal(Server& server, View* v);                    // scroll `v` into view; true if the strip moved
         void cycle_width(Server& server, View* v);
         void maximize_column(Server& server, View* v);
         void consume_or_expel(Server& server, View* v, int dir);

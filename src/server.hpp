@@ -63,8 +63,8 @@ namespace fenriz {
     // index are invariant across hotplug/lid — that's what makes a layout survive a lid close.
     struct Workspace {
         Layout layout = Layout::Dwindle;
-        tiling::Node* root = nullptr; // dwindle tiles
-        scrolling::Strip strip;       // scrolling tiles; only one of root/strip is ever populated
+        tiling::Node* root = nullptr;     // dwindle tiles
+        scrolling::Strip strip;           // scrolling tiles; only one of root/strip is ever populated
         output::Output* output = nullptr; // null = unassigned (no screen); tree is kept
         View* last_focused = nullptr;     // restored on workspace return; cleared when it dies
         std::string home;                 // configured output name; empty = no preference
