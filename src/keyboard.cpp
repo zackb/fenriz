@@ -181,10 +181,12 @@ namespace fenriz {
             bool handled = false;
             if (!server.locked && !shortcuts_inhibited(server) && event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
                 handled = for_each_bind_sym(kb->xkb_state, keycode, [&](xkb_keysym_t sym) {
-                    const Bind* b = handle_keybind(server, mods, sym);
+                    const Bind* b = find_bind(server, mods, sym);
                     if (!b)
                         return false;
+                    // a focus change inside it must not report this key as held
                     server.bound_keys.insert({kb, event->keycode});
+                    execute_bind(server, *b);
                     // A repeating bind arms the timer; any other bind cancels a stale repeat.
                     if (b->repeat)
                         start_repeat(server, *b, keycode);
@@ -453,13 +455,6 @@ namespace fenriz {
             if (b.mods == mods && b.sym == sym)
                 return &b;
         return nullptr;
-    }
-
-    const Bind* handle_keybind(Server& server, uint32_t mods, xkb_keysym_t sym) {
-        const Bind* b = find_bind(server, mods, sym);
-        if (b)
-            execute_bind(server, *b);
-        return b;
     }
 
 } // namespace fenriz

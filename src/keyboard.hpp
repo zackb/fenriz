@@ -43,10 +43,6 @@ namespace fenriz {
     struct Bind;
     const Bind* find_bind(Server& server, uint32_t mods, xkb_keysym_t sym);
 
-    // find_bind plus running the action. Returns the matched bind (key consumed) or
-    // nullptr to forward to the client.
-    const Bind* handle_keybind(Server& server, uint32_t mods, xkb_keysym_t sym);
-
     // Run a bind's action.
     void execute_bind(Server& server, const Bind& b);
 
