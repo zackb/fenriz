@@ -134,11 +134,11 @@ namespace fenriz {
                 if (const wlr_alpha_modifier_surface_v1_state* am =
                         wlr_alpha_modifier_v1_get_surface_state(ss->surface))
                     alpha *= (float)am->multiplier;
+            // A turning window is drawn by its flip strips. Hidden by opacity rather than disabled, so it keeps
+            // getting frame callbacks and the strips show live content.
+            if (v->flip_tree)
+                alpha = 0.0f;
             wlr_scene_buffer_set_opacity(buf, alpha);
-
-            if (v->flip_w > 0 && ss && ss->surface == view_surface(v))
-                wlr_scene_buffer_set_dest_size(
-                    buf, std::max(1, (int)std::lround(v->flip_w * flip::squash(v->flip_t))), std::max(1, v->flip_h));
         }
 
         // Tell a toplevel it's tiled on all edges (or none). Advertising the tiled state is
@@ -293,6 +293,7 @@ namespace fenriz {
                 view->scene_tree = nullptr;
                 view->surface_tree = nullptr;
                 view->popup_tree = nullptr;
+                view->flip_tree = nullptr;
                 view->border = nullptr;
                 view->shadow = nullptr;
                 for (wlr_scene_rect*& corner : view->grad_corner)
@@ -1090,21 +1091,6 @@ namespace fenriz {
         }
     } // namespace
 
-    void view_flip_capture(View* view) {
-        if (wlr_scene_buffer* buf = own_buffer(view)) {
-            view->flip_w = buf->dst_width;
-            view->flip_h = buf->dst_height;
-        }
-    }
-
-    void view_flip_release(View* view) {
-        if (view->flip_w <= 0)
-            return;
-        if (wlr_scene_buffer* buf = own_buffer(view))
-            wlr_scene_buffer_set_dest_size(buf, view->flip_w, view->flip_h);
-        view->flip_w = view->flip_h = 0;
-    }
-
     void view_adopt_float_size(View* view) {
 
         const bool xdg = view->kind == View::Kind::Xdg;
@@ -1158,6 +1144,108 @@ namespace fenriz {
         return view->acked;
     }
 
+    namespace {
+        void drop_flip_strips(View* view) {
+            if (!view->flip_tree)
+                return;
+            wlr_scene_node_destroy(&view->flip_tree->node);
+            view->flip_tree = nullptr;
+        }
+
+        // Draw a turning window as vertical strips of its own buffer, each placed and sized by flip::project, over
+        // matching strips of border. `full` is the flat frame; the scene tree sits at the projected `box`.
+        // ponytail: only the main surface turns; subsurfaces and blur are hidden until the turn ends.
+        void place_flip_strips(View* view, const View::Box& full, const View::Box& box, int bw) {
+            Server& server = *view->server;
+            wlr_scene_buffer* own = own_buffer(view);
+            if (!own || !own->buffer || full.width <= 2 * bw || full.height <= 2 * bw) {
+                drop_flip_strips(view);
+                return;
+            }
+            if (!view->flip_tree) {
+                view->flip_tree = wlr_scene_tree_create(view->scene_tree);
+                if (!view->flip_tree)
+                    return;
+                const float none[4] = {0, 0, 0, 0};
+                for (int i = 0; i < flip::STRIPS; i++) // all edges first, so no strip's border covers a neighbour
+                    view->flip_edge[i] = wlr_scene_rect_create(view->flip_tree, 0, 0, none);
+                for (int i = 0; i < flip::STRIPS; i++)
+                    view->flip_strip[i] = wlr_scene_buffer_create(view->flip_tree, nullptr);
+            }
+
+            const wlr_fbox src = wlr_fbox_empty(&own->src_box)
+                                     ? wlr_fbox{0, 0, (double)own->buffer->width, (double)own->buffer->height}
+                                     : own->src_box;
+            const int W = full.width, H = full.height, inner_w = W - 2 * bw, inner_h = H - 2 * bw;
+            const double hw = W / 2.0;
+            const double cx = full.x + hw - box.x; // frame centre, tree-local
+            const int r = server.config.rounding, rc = std::max(0, r - bw);
+
+            // Border colour runs from border_active to border_gradient across the window.
+            const bool focused = view == server.focused_view;
+            const uint32_t from = focused ? server.config.border_active : server.config.border_inactive;
+            const uint32_t to = focused && server.config.border_gradient ? server.config.border_gradient : from;
+            float c0[4], c1[4];
+            u32_color(from, c0);
+            u32_color(to, c1);
+
+            for (int i = 0; i < flip::STRIPS; i++) {
+                const double x0 = -1.0 + 2.0 * i / flip::STRIPS, x1 = -1.0 + 2.0 * (i + 1) / flip::STRIPS;
+                const flip::Projected p0 = flip::project(view->flip_t, x0, view->flip_rev);
+                const flip::Projected p1 = flip::project(view->flip_t, x1, view->flip_rev);
+                const double sx0 = cx + p0.x * hw, sx1 = cx + p1.x * hw;
+                const double scale = (p0.scale + p1.scale) / 2;
+                const bool first = i == 0, last = i == flip::STRIPS - 1;
+
+                wlr_scene_rect* e = view->flip_edge[i];
+                const int X0 = (int)std::lround(sx0), X1 = (int)std::lround(sx1);
+                const bool edge = e && bw > 0 && X1 > X0;
+                if (e)
+                    wlr_scene_node_set_enabled(&e->node, edge);
+                if (edge) {
+                    const int h = std::max(1, (int)std::lround(H * scale));
+                    wlr_scene_node_set_position(&e->node, X0, (H - h) / 2);
+                    wlr_scene_rect_set_size(e, X1 - X0, h);
+                    const int er = std::min({(int)std::lround(r * scale), X1 - X0, h / 2});
+                    wlr_scene_rect_set_corner_radii(
+                        e, corner_radii_new(first ? er : 0, last ? er : 0, last ? er : 0, first ? er : 0));
+                    const float f = (i + 0.5f) / flip::STRIPS;
+                    float col[4];
+                    for (int k = 0; k < 4; k++)
+                        col[k] = c0[k] + (c1[k] - c0[k]) * f;
+                    wlr_scene_rect_set_color(e, col);
+                }
+
+                // The part of this strip's frame columns inside the border.
+                wlr_scene_buffer* b = view->flip_strip[i];
+                if (!b)
+                    continue;
+                const double f0 = hw * (1 + x0), f1 = hw * (1 + x1);
+                const double lo = std::max(f0, (double)bw), hi = std::min(f1, (double)(W - bw));
+                const auto at = [&](double f) { return (int)std::lround(sx0 + (f - f0) / (f1 - f0) * (sx1 - sx0)); };
+                const int CX0 = at(lo), CX1 = at(hi);
+                const bool content = hi > lo && CX1 > CX0;
+                wlr_scene_node_set_enabled(&b->node, content);
+                if (!content)
+                    continue;
+                if (b->buffer != own->buffer)
+                    wlr_scene_buffer_set_buffer(b, own->buffer);
+                const int ch = std::max(1, (int)std::lround(inner_h * scale));
+                wlr_scene_node_set_position(&b->node, CX0, (H - ch) / 2);
+                wlr_scene_buffer_set_dest_size(b, CX1 - CX0, ch);
+                const double u0 = (lo - bw) / inner_w, u1 = (hi - bw) / inner_w;
+                const wlr_fbox sb = {src.x + src.width * u0, src.y, src.width * (u1 - u0), src.height};
+                wlr_scene_buffer_set_source_box(b, &sb);
+                const bool left = lo <= bw, right = hi >= W - bw;
+                const int cr = std::min({(int)std::lround(rc * scale), CX1 - CX0, ch / 2});
+                wlr_scene_buffer_set_corner_radii(
+                    b, corner_radii_new(left ? cr : 0, right ? cr : 0, right ? cr : 0, left ? cr : 0));
+                wlr_scene_buffer_set_opacity(b, server.config.opacity);
+                wlr_scene_buffer_set_filter_mode(b, WLR_SCALE_FILTER_BILINEAR);
+            }
+        }
+    } // namespace
+
     void place_view_nodes(View* view) {
         if (!view->scene_tree)
             return; // not mapped yet
@@ -1167,6 +1255,7 @@ namespace fenriz {
         wlr_scene_node_set_enabled(&view->scene_tree->node, vis);
         if (!vis) {
             release_gradient(view);
+            drop_flip_strips(view);
             return;
         }
 
@@ -1195,11 +1284,14 @@ namespace fenriz {
 
         // The frame the client was sized to
         const View::Box full = box;
-        const double squash = flip::squash(view->flip_t);
-        if (view->flip_t < 1.0) {
-            const int w = std::max(1, (int)std::lround(box.width * squash));
-            box.x += (box.width - w) / 2;
-            box.width = w;
+        const bool turning = view->flip_t < 1.0;
+        if (turning) {
+            // The frame shrinks to the turning window's projected extent.
+            const double hw = box.width / 2.0;
+            const int l = (int)std::lround(hw + hw * flip::project(view->flip_t, -1.0, view->flip_rev).x);
+            const int r = (int)std::lround(hw + hw * flip::project(view->flip_t, 1.0, view->flip_rev).x);
+            box.x += l;
+            box.width = std::max(1, r - l);
         }
 
         // Scrolling: a column part-way off its output is cut at the output edge, or it would
@@ -1236,10 +1328,10 @@ namespace fenriz {
                                &view->surface_tree->node,
                                bw - geo.x,
                                bw - geo.y,
-                               {geo.x + hide_l, geo.y, std::max(0, geo.width - hide_l - hide_r), geo.height},
+                               turning ? wlr_box{}
+                                       : wlr_box{geo.x + hide_l, geo.y, std::max(0, geo.width - hide_l - hide_r), geo.height},
                                view->fullscreen ? 0 : std::max(0, server.config.rounding - bw),
-                               view->blur,
-                               squash);
+                               view->blur);
 
         // Crop the client to its window geometry so CSD shadow margins (Firefox/GTK/
         // Chromium ship a buffer bigger than the geometry) don't draw over the border
@@ -1264,7 +1356,7 @@ namespace fenriz {
 
         // The gradient ring replaces the flat rect rather than tinting it, so border_active and
         // border_gradient read as the two ends of one border instead of stacking alphas.
-        const bool show_border = bw > 0;
+        const bool show_border = bw > 0 && !turning; // a turning window draws its border as strips
         const int W = box.width, H = box.height;
 
         // clip those per band if a peeking column ever needs them.
@@ -1351,7 +1443,7 @@ namespace fenriz {
         }
 
         // glow
-        const bool glow = server.config.shadow && !view->fullscreen && view == server.focused_view && !cut;
+        const bool glow = server.config.shadow && !view->fullscreen && view == server.focused_view && !cut && !turning;
         wlr_scene_node_set_enabled(&view->shadow->node, glow);
         if (glow) {
             const uint32_t glow_rgba = server.config.border_gradient
@@ -1366,6 +1458,11 @@ namespace fenriz {
             wlr_scene_shadow_set_corner_radius(view->shadow, server.config.rounding);
             wlr_scene_shadow_set_clipped_region(view->shadow, hole);
         }
+
+        if (turning)
+            place_flip_strips(view, full, box, bw);
+        else
+            drop_flip_strips(view);
     }
 
     void set_workspace(Server& server, int n) {

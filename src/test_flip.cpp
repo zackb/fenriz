@@ -18,21 +18,34 @@ namespace {
 } // namespace
 
 int main() {
-    // The squash is full width at either end and pinched to nothing in the middle.
-    assert(near(squash(0.0), 1.0));
-    assert(near(squash(0.5), 0.0));
-    assert(near(squash(1.0), 1.0));
-
-    // Symmetric about the pinch: that's what lets turn() reverse by mirroring progress
-    // without the frame jumping width.
-    for (int i = 0; i <= 50; i++) {
-        const double t = i / 100.0;
-        assert(near(squash(t), squash(1.0 - t)));
+    // Flat at either end: every point where it started, at full height.
+    for (double x : {-1.0, -0.3, 0.0, 1.0}) {
+        assert(near(project(0.0, x).x, x) && near(project(0.0, x).scale, 1.0));
+        assert(near(project(1.0, x).x, x) && near(project(1.0, x).scale, 1.0));
     }
+    // Edge-on at the pinch.
+    assert(std::fabs(project(0.5, 1.0).x) < 1e-9 && std::fabs(project(0.5, -1.0).x) < 1e-9);
 
-    // Monotonic on each side of the pinch, so the turn never stutters.
-    for (int i = 0; i < 50; i++)
-        assert(squash(i / 100.0) > squash((i + 1) / 100.0));
+    for (int i = 1; i < 50; i++) {
+        const double t = i / 100.0;
+        // The front turns its right edge away; after the pinch the back turns in with its left edge away.
+        assert(project(t, 1.0).scale < 1.0 && near(project(t, -1.0).scale, 1.0));
+        assert(project(1.0 - t, -1.0).scale < 1.0 && near(project(1.0 - t, 1.0).scale, 1.0));
+        // A reversed turn at 1-t is the same picture as the forward turn at t, so reversing never jumps.
+        for (double x : {-1.0, -0.5, 0.5, 1.0}) {
+            assert(near(project(1.0 - t, x, true).x, project(t, x).x));
+            assert(near(project(1.0 - t, x, true).scale, project(t, x).scale));
+        }
+        // Never outside the flat frame, and left stays left.
+        for (int k = -10; k < 10; k++) {
+            const Projected a = project(t, k / 10.0), b = project(t, (k + 1) / 10.0);
+            assert(a.x < b.x && std::fabs(a.x) <= 1.0 && a.scale <= 1.0);
+        }
+        // Narrows monotonically toward the pinch.
+        const double w = project(t, 1.0).x - project(t, -1.0).x;
+        const double w2 = project(t + 0.01, 1.0).x - project(t + 0.01, -1.0).x;
+        assert(w2 < w);
+    }
 
     // The pinch fires exactly once per turn, on the step that crosses the midpoint.
     {

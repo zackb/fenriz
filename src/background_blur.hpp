@@ -30,8 +30,7 @@ namespace fenriz {
                    int oy,
                    const wlr_box& content,
                    int radius,
-                   wlr_scene_blur* nodes[RECTS_MAX],
-                   double squash = 1.0);
+                   wlr_scene_blur* nodes[RECTS_MAX]);
 
         // Forget the nodes without destroying them.
         void forget(wlr_scene_blur* nodes[RECTS_MAX]);

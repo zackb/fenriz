@@ -1,6 +1,7 @@
 #pragma once
 
 #include "background_blur.hpp"
+#include "flip.hpp"
 
 #include <wayland-server-core.h>
 
@@ -71,7 +72,10 @@ namespace fenriz {
         View* flip_peer = nullptr;
         bool flip_back = false;
         double flip_t = 1.0;
-        int flip_w = 0, flip_h = 0;
+        bool flip_rev = false;                // the running turn was reversed; see flip::project
+        wlr_scene_tree* flip_tree = nullptr;  // the turning window, drawn as strips; null when no turn runs
+        wlr_scene_rect* flip_edge[flip::STRIPS] = {};     // border behind each strip
+        wlr_scene_buffer* flip_strip[flip::STRIPS] = {};  // a column of the client's buffer
 
         // wlr-foreign-toplevel handle (taskbar/window-list protocol); live while mapped.
         wlr_foreign_toplevel_handle_v1* foreign_handle = nullptr;
@@ -242,9 +246,6 @@ namespace fenriz {
     // client sizes itself (see View::float_self_sized) and once more when a float resize grab
     // ends (the client may have refused our size on a step/cell boundary).
     void view_adopt_float_size(View* view);
-
-    void view_flip_capture(View* view);
-    void view_flip_release(View* view);
 
     // (Re)apply SceneFX content effects (opacity + corner radius) to a view's surface buffers.
     // Call from the output frame handler before rendering — see the definition for why it can't

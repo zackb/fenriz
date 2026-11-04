@@ -35,10 +35,12 @@ namespace fenriz::flip {
             v->flip_peer = nullptr;
             v->flip_back = false;
             v->flip_t = 1.0;
+            v->flip_rev = false;
             if (peer) {
                 peer->flip_peer = nullptr;
                 peer->flip_back = false;
                 peer->flip_t = 1.0;
+                peer->flip_rev = false;
             }
         }
 
@@ -53,8 +55,9 @@ namespace fenriz::flip {
             back->flip_back = false;
             front->flip_back = true;
             back->flip_t = front->flip_t;
+            back->flip_rev = front->flip_rev;
             front->flip_t = 1.0;
-            view_flip_release(front); // it is hidden now give buffer back
+            front->flip_rev = false;
             Workspace& ws = server.workspaces[front->workspace];
             if (ws.last_focused == front)
                 ws.last_focused = back;
@@ -62,8 +65,6 @@ namespace fenriz::flip {
             const bool had_focus = server.focused_view == front;
             place_view_nodes(front);
             place_view_nodes(back);
-            if (back->flip_t < 1.0)
-                view_flip_capture(back);
             if (had_focus)
                 focus_view(server, back);
             ipc::publish(server);
@@ -115,11 +116,8 @@ namespace fenriz::flip {
             tiling::arrange(server);
             return;
         }
-        if (front->flip_t >= 1.0) {  // starting a turn
-            place_view_nodes(front); // re-run the content clip
-            view_flip_capture(front);
-        }
-        // Re-pressing mid-turn swaps progress
+        // Re-pressing mid-turn runs the same turn backwards.
+        front->flip_rev = front->flip_t < 1.0 && !front->flip_rev;
         front->flip_t = front->flip_t >= 1.0 ? 0.0 : 1.0 - front->flip_t;
         schedule(server, front);
     }
@@ -130,8 +128,6 @@ namespace fenriz::flip {
             return;
         View* back = front->flip_peer;
         const bool floating = front->floating;
-        view_flip_release(front);
-        view_flip_release(back);
         split(front);
         if (floating) {
             back->box.x += 32;
@@ -151,8 +147,6 @@ namespace fenriz::flip {
         if (!peer)
             return;
         const bool was_front = !view->flip_back;
-        view_flip_release(view);
-        view_flip_release(peer);
         split(view);
         // survivor keeps the tile
         if (was_front && !peer->floating)
@@ -174,12 +168,12 @@ namespace fenriz::flip {
             v->flip_t = std::min(1.0, v->flip_t + step);
             if (v->flip_t < 1.0)
                 animating = true;
+            if (v->flip_t >= 1.0)
+                v->flip_rev = false;
             if (past_pinch(prev, v->flip_t)) {
                 pinched.push_back(v);
                 continue;
             }
-            if (v->flip_t >= 1.0)
-                view_flip_release(v);
             place_view_nodes(v);
         }
         for (View* v : pinched)

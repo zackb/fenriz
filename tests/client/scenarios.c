@@ -3877,6 +3877,89 @@ static void s_flip_blur(struct wlc* c) {
     wlc_roundtrip(c);
 }
 
+// --- flip-persp ------------------------------------------------------------------------
+//
+// A turn is drawn in perspective: the receding edge is shorter than the near one. The front
+// turns its right edge away; after the pinch the back turns in with its left edge away.
+
+#define FP_RED 0xffff0000u
+#define FP_BLUE 0xff0000ffu
+#define FP_BG 0xff19191fu // the compositor's backdrop
+
+// Height of the run of `color` pixels in column x.
+static int fp_column(const struct wlc_shot* s, int x, uint32_t color) {
+    int n = 0;
+    for (int y = 0; y < s->height; y++)
+        if (wlc_color_near(wlc_pixel(s, x, y), color, 24))
+            n++;
+    return n;
+}
+
+static void s_flip_persp(struct wlc* c) {
+    const int W = c->out_w, H = c->out_h;
+    struct win* a = wlc_toplevel(c, W, H, "fenriz-test persp-a");
+    wlc_map(a, FP_RED);
+    struct win* b = wlc_toplevel(c, W, H, "fenriz-test persp-b");
+    wlc_map(b, FP_BLUE);
+    wlc_pump(c, 300);
+
+    wlc_phase("pairing them");
+    fl_focus(c, "persp-a");
+    ipc_send("{\"cmd\":\"dispatch\",\"action\":\"flipmark\"}");
+    wlc_pump(c, 120);
+    fl_focus(c, "persp-b");
+    ipc_send("{\"cmd\":\"dispatch\",\"action\":\"flippair\"}");
+    wlc_pump(c, 300);
+    wlc_paint(a, FP_RED);
+    wlc_paint(b, FP_BLUE);
+    wlc_roundtrip(c);
+    wlc_pump(c, 300);
+
+    wlc_phase("sampling the turn");
+    ipc_send("{\"cmd\":\"dispatch\",\"action\":\"flip\"}");
+    bool front_seen = false, back_seen = false;
+    for (int i = 0; i < 40 && !(front_seen && back_seen); i++) {
+        wlc_pump(c, 80);
+        struct wlc_shot* s = wlc_capture(c, 0);
+        const int y = s->height / 2;
+        int lo = -1, hi = -1;
+        for (int x = 0; x < s->width; x++)
+            if (!wlc_color_near(wlc_pixel(s, x, y), FP_BG, 8)) {
+                if (lo < 0)
+                    lo = x;
+                hi = x;
+            }
+        if (lo < 0 || hi - lo > W * 4 / 5 || hi - lo < 40) { // flat, or too thin to measure
+            wlc_shot_free(s);
+            continue;
+        }
+        const uint32_t col = wlc_pixel(s, (lo + hi) / 2, y);
+        const bool red = wlc_color_near(col, FP_RED, 24), blue = wlc_color_near(col, FP_BLUE, 24);
+        const int hl = fp_column(s, lo + 4, red ? FP_RED : FP_BLUE);
+        const int hr = fp_column(s, hi - 4, red ? FP_RED : FP_BLUE);
+        wlc_shot_free(s);
+        wlc_log("%s face %d..%d: left edge %dpx tall, right edge %dpx", red ? "front" : "back", lo, hi, hl, hr);
+        if (red && hr < hl - 20)
+            front_seen = true;
+        else if (blue && hl < hr - 20)
+            back_seen = true;
+        else if (red || blue)
+            wlc_die("the %s face is %dpx tall at its left edge and %dpx at its right: not turning in perspective",
+                    red ? "front" : "back",
+                    hl,
+                    hr);
+    }
+    if (!front_seen || !back_seen)
+        wlc_die("the turn was never caught part way on both faces (front %d, back %d)", front_seen, back_seen);
+    wlc_log("both faces turned in perspective");
+
+    wlc_pump(c, 3500);
+    fl_expect_role("persp-b", "front");
+    wlc_hold_point(c);
+    wlc_destroy(b);
+    wlc_destroy(a);
+}
+
 // --- ws-fade --------------------------------------------------------------------------
 
 #define WF_RED 0xffff0000u
@@ -3975,6 +4058,7 @@ const struct scenario scenarios[] = {
     {"evil", s_evil, "stale acks, commits between configures, self-resize, destroy/recreate"},
     {"flip", s_flip, "flip pairs: a paired half is drawn at its own scale, before, during and after a turn"},
     {"flip-blur", s_flip_blur, "flip pairs: a blurred window's blur narrows with it through the turn"},
+    {"flip-persp", s_flip_persp, "flip pairs: a turn is drawn in perspective, the receding edge shorter"},
     {"ws-fade", s_ws_fade, "workspace switch crossfades the outgoing frame into the incoming one"},
     {NULL, NULL, NULL},
 };
