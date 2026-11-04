@@ -34,21 +34,6 @@ namespace fenriz {
             out[3] = a;
         }
 
-        // Scale a color's opacity. Every component moves: the RGB is premultiplied, so touching only alpha would leave
-        // the color over-bright.
-        void fade_color(float c[4], float fade) {
-            for (int i = 0; i < 4; i++)
-                c[i] *= fade;
-        }
-
-        // Alpha multiplier for the workspace-switch fade. Fading a pinned float just looks broken.
-        float ws_fade(const Server& server, const View* view) {
-            if (view->pinned)
-                return 1.0f;
-            const output::Output* o = view_output(server, view);
-            return o ? (float)o->ws_fade : 1.0f;
-        }
-
         // ramp resolution
         constexpr int GRAD_N = 17;
 
@@ -149,7 +134,6 @@ namespace fenriz {
                 if (const wlr_alpha_modifier_surface_v1_state* am =
                         wlr_alpha_modifier_v1_get_surface_state(ss->surface))
                     alpha *= (float)am->multiplier;
-            alpha *= ws_fade(s, v);
             wlr_scene_buffer_set_opacity(buf, alpha);
 
             if (v->flip_w > 0 && ss && ss->surface == view_surface(v))
@@ -1186,10 +1170,6 @@ namespace fenriz {
             return;
         }
 
-        // Decorations fade with the content, or they'd pop in at full strength in front of a window that isn't there
-        // yet.
-        const float fade = ws_fade(server, view);
-
         const int bw = view->fullscreen ? 0 : server.config.border_width;
 
         // The tile, plus the (decaying) slide-animation offset. Only the position animates:
@@ -1306,7 +1286,6 @@ namespace fenriz {
             wlr_scene_rect_set_clipped_region(view->border, border_hole);
             float col[4];
             u32_color(view == server.focused_view ? server.config.border_active : server.config.border_inactive, col);
-            fade_color(col, fade);
             wlr_scene_rect_set_color(view->border, col);
         }
 
@@ -1340,7 +1319,6 @@ namespace fenriz {
                      .corners = hole.corners});
                 float col[4];
                 u32_color(corner_rgba[i], col);
-                fade_color(col, fade);
                 wlr_scene_rect_set_color(n, col);
             }
 
@@ -1362,7 +1340,6 @@ namespace fenriz {
                 }
                 if (band[i].width <= 0 || band[i].height <= 0)
                     continue;
-                wlr_scene_buffer_set_opacity(n, fade);
                 wlr_scene_node_set_position(&n->node, band[i].x, band[i].y);
                 wlr_scene_buffer_set_dest_size(n, band[i].width, band[i].height);
                 const wlr_fbox src = grad_src(band[i].x, band[i].y, band[i].width, band[i].height, W, H);
@@ -1383,7 +1360,6 @@ namespace fenriz {
             float scol[4];
             u32_color(glow_rgba, scol);
             scol[3] = (server.config.shadow_color & 0xff) / 255.0f;
-            fade_color(scol, fade);
             wlr_scene_shadow_set_color(view->shadow, scol);
             wlr_scene_shadow_set_blur_sigma(view->shadow, (float)server.config.shadow_blur);
             wlr_scene_shadow_set_size(view->shadow, box.width, box.height);
@@ -1415,12 +1391,9 @@ namespace fenriz {
         const bool switched = o->active_ws != n;
         o->active_ws = n;
 
-        // Fade the incoming workspace up rather than swapping it in between two frames.
-        if (switched && server.config.workspace_animation_ms > 0) {
-            o->ws_fade = 0.0;
-            o->ws_fade_t = 0.0;
-            wlr_output_schedule_frame(o->handle);
-        }
+        // Crossfade from a snapshot of the outgoing frame rather than swapping between two frames.
+        if (switched && server.config.workspace_animation_ms > 0)
+            output::begin_workspace_fade(o);
 
         // Pinned floats follow the output to whatever workspace it now shows.
         for (View* v : server.views)

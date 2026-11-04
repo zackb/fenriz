@@ -3877,6 +3877,70 @@ static void s_flip_blur(struct wlc* c) {
     wlc_roundtrip(c);
 }
 
+// --- ws-fade --------------------------------------------------------------------------
+
+#define WF_RED 0xffff0000u
+#define WF_BLUE 0xff0000ffu
+
+static void wf_switch(int n) {
+    char cmd[64];
+    snprintf(cmd, sizeof cmd, "{\"cmd\":\"workspace\",\"n\":%d}", n);
+    ipc_send(cmd);
+}
+
+static uint32_t wf_centre(struct wlc* c, int output) {
+    struct wlc_shot* s = wlc_capture(c, output);
+    const uint32_t px = wlc_pixel(s, s->width / 2, s->height / 2);
+    wlc_shot_free(s);
+    return px;
+}
+
+static void s_ws_fade(struct wlc* c) {
+    // Two headless outputs each show their own workspace. The far one has never been shown, so
+    // switching to it pulls it onto the output under focus instead of moving focus elsewhere.
+    const int home = ws_ipc_active();
+    const int away = 9;
+
+    wlc_phase("a red window on workspace %d, a blue one on %d", home, away);
+    struct win* red = wlc_toplevel(c, c->out_w, c->out_h, "fenriz-test ws-fade-red");
+    wlc_map(red, WF_RED);
+    wlc_pump(c, 300);
+    const int out = wlc_color_near(wf_centre(c, 0), WF_RED, 4) ? 0 : 1;
+    if (!wlc_color_near(wf_centre(c, out), WF_RED, 4))
+        wlc_die("the red window is not centred on either output");
+    wf_switch(away);
+    wlc_pump(c, 1200); // outlast the fade this switch started
+    struct win* blue = wlc_toplevel(c, c->out_w, c->out_h, "fenriz-test ws-fade-blue");
+    wlc_map(blue, WF_BLUE);
+    wlc_pump(c, 300);
+    if (!wlc_color_near(wf_centre(c, out), WF_BLUE, 4))
+        wlc_die("before the switch back the centre is %08x, not the blue window", wf_centre(c, out));
+
+    // A crossfade blends whole frames, so mid-way the centre is red AND blue. Fading only the
+    // incoming windows up over the desktop would show red over a dark backdrop, never blue.
+    wlc_phase("switching back and sampling the fade");
+    wf_switch(home);
+    bool blended = false;
+    for (int i = 0; i < 12 && !blended; i++) {
+        wlc_pump(c, 50);
+        const uint32_t px = wf_centre(c, out);
+        blended = ((px >> 16) & 0xff) >= 64 && (px & 0xff) >= 64;
+        wlc_log("t+%dms centre %08x", (i + 1) * 50, px);
+    }
+    if (!blended)
+        wlc_die("the centre never showed a red/blue blend; the switch did not crossfade");
+
+    wlc_pump(c, 1200);
+    const uint32_t end = wf_centre(c, out);
+    if (!wlc_color_near(end, WF_RED, 4))
+        wlc_die("after the fade the centre is %08x, not the red window", end);
+    wlc_log("crossfade blended both frames and settled on the new workspace");
+
+    wlc_hold_point(c);
+    wlc_destroy(blue);
+    wlc_destroy(red);
+}
+
 const struct scenario scenarios[] = {
     {"popup", s_popup, "toplevel -> popup -> nested popup, grab, reposition, off-screen anchor"},
     {"layer-popup", s_layer_popup, "corner-anchored popup and submenu on a full-output layer surface"},
@@ -3911,5 +3975,6 @@ const struct scenario scenarios[] = {
     {"evil", s_evil, "stale acks, commits between configures, self-resize, destroy/recreate"},
     {"flip", s_flip, "flip pairs: a paired half is drawn at its own scale, before, during and after a turn"},
     {"flip-blur", s_flip_blur, "flip pairs: a blurred window's blur narrows with it through the turn"},
+    {"ws-fade", s_ws_fade, "workspace switch crossfades the outgoing frame into the incoming one"},
     {NULL, NULL, NULL},
 };

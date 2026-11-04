@@ -565,6 +565,7 @@ namespace fenriz {
         scene_unmanaged = wlr_scene_tree_create(&scene->tree);
         scene_overlay = wlr_scene_tree_create(&scene->tree);
         scene_layer_popups = wlr_scene_tree_create(&scene->tree);
+        scene_ws_fade = wlr_scene_tree_create(&scene->tree);
         scene_lock = wlr_scene_tree_create(&scene->tree);
 
         // linux-dmabuf lets GPU clients (QtQuick/quickshell, browsers) share their GPU

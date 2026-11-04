@@ -65,16 +65,17 @@ namespace fenriz::output {
                 }
             }
 
-            // Ease the workspace-switch fade up to full.
-            if (output->ws_fade_t < 1.0) {
+            // Fade the outgoing workspace's snapshot away, uncovering the live scene beneath.
+            if (output->ws_snapshot) {
                 const double ws_step = dt / (std::max(1, server.config.workspace_animation_ms) / 1000.0);
                 output->ws_fade_t = std::min(1.0, output->ws_fade_t + ws_step);
-                output->ws_fade = ease_out(output->ws_fade_t);
-                if (output->ws_fade_t < 1.0)
+                if (output->ws_fade_t < 1.0) {
+                    wlr_scene_buffer_set_opacity(output->ws_snapshot, 1.0f - (float)ease_out(output->ws_fade_t));
                     animating = true;
-                for (View* view : server.views)
-                    if (view_visible(server, view) && view_output(server, view) == output)
-                        place_view_nodes(view);
+                } else {
+                    wlr_scene_node_destroy(&output->ws_snapshot->node);
+                    output->ws_snapshot = nullptr;
+                }
             }
 
             if (flip::tick(server, output, dt))
@@ -123,6 +124,14 @@ namespace fenriz::output {
                                       server.tearing_control, surface) == WP_TEARING_CONTROL_V1_PRESENTATION_HINT_ASYNC;
             }
             return false;
+        }
+
+        // (Re)apply SceneFX per-window effects right before rendering. scenefx re-syncs each surface buffer during
+        // its own commit handling (after our commit handler), resetting opacity to 1.0
+        void apply_effects(Server& server, Output* output) {
+            for (View* view : server.views)
+                if (view_visible(server, view) && view_output(server, view) == output)
+                    apply_view_effects(view);
         }
 
         // Zoomed render: draw the whole scene into an offscreen buffer, then blit a
@@ -224,14 +233,8 @@ namespace fenriz::output {
 
             // Only commit when the scene needs a repaint, a gamma LUT change is pending, or a
             // zoom is active/animating/just-ended here. An idle, unchanged output commits nothing.
-            if (wlr_scene_output_needs_frame(so) || output->gamma_dirty || zoomed || zoom_animating || exiting_zoom ||
-                output->ws_fade_t < 1.0) {
-                // (Re)apply SceneFX per-window effects right before rendering. scenefx re-syncs
-                // each surface buffer during its own commit handling (after our commit handler), resetting opacity
-                // to 1.0
-                for (View* view : server.views)
-                    if (view_visible(server, view) && view_output(server, view) == output)
-                        apply_view_effects(view);
+            if (wlr_scene_output_needs_frame(so) || output->gamma_dirty || zoomed || zoom_animating || exiting_zoom) {
+                apply_effects(server, output);
 
                 if (zoomed) {
                     render_zoomed(output, so, &now);
@@ -316,6 +319,10 @@ namespace fenriz::output {
             close_layer_surfaces(server, output->handle);
             if (output->zoom_swapchain)
                 wlr_swapchain_destroy(output->zoom_swapchain);
+            if (output->ws_snapshot)
+                wlr_scene_node_destroy(&output->ws_snapshot->node);
+            if (output->ws_swapchain)
+                wlr_swapchain_destroy(output->ws_swapchain);
             if (output->bg)
                 wlr_scene_node_destroy(&output->bg->node); // backdrop lives in the session-long tree
 
@@ -647,6 +654,48 @@ namespace fenriz::output {
             if (o->enabled)
                 return o;
         return nullptr;
+    }
+
+    // Render the output's current frame into a buffer and lay it over the scene at full opacity. Whole frames are
+    // blended, so overlapping windows, blur and shadows crossfade correctly. A fade already running is captured
+    // mid-way, so rapid switches stay continuous.
+    void begin_workspace_fade(Output* o) {
+        Server& server = *o->server;
+        wlr_output* handle = o->handle;
+        wlr_scene_output* so = wlr_scene_get_scene_output(server.scene, handle);
+        if (!so || !o->enabled || !handle->enabled)
+            return;
+        if (!wlr_output_configure_primary_swapchain(handle, nullptr, &o->ws_swapchain))
+            return;
+
+        apply_effects(server, o);
+        wlr_output_state state;
+        wlr_output_state_init(&state);
+        wlr_scene_output_state_options opts = {};
+        opts.swapchain = o->ws_swapchain;
+        if (!wlr_scene_output_build_state(so, &state, &opts) || !state.buffer) {
+            wlr_output_state_finish(&state);
+            return;
+        }
+
+        if (o->ws_snapshot)
+            wlr_scene_node_destroy(&o->ws_snapshot->node);
+        o->ws_snapshot = wlr_scene_buffer_create(server.scene_ws_fade, state.buffer); // takes its own buffer lock
+        wlr_output_state_finish(&state);
+        if (!o->ws_snapshot)
+            return;
+
+        // The buffer is in the output's physical orientation and pixel size; map it back onto the layout box.
+        wlr_box lb;
+        wlr_output_layout_get_box(server.output_layout, handle, &lb);
+        wlr_scene_buffer_set_transform(o->ws_snapshot, handle->transform);
+        wlr_scene_buffer_set_dest_size(o->ws_snapshot, lb.width, lb.height);
+        wlr_scene_node_set_position(&o->ws_snapshot->node, lb.x, lb.y);
+        o->ws_fade_t = 0.0;
+
+        // Rendering offscreen consumed the scene's damage without it ever reaching the screen.
+        wlr_damage_ring_add_whole(&so->damage_ring);
+        wlr_output_schedule_frame(handle);
     }
 
     void apply_layout(Server& server) {
