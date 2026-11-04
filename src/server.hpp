@@ -217,8 +217,8 @@ namespace fenriz {
         wlr_scene_tree* scene_overlay = nullptr;
         wlr_scene_tree* scene_layer_popups = nullptr;
         wlr_scene_tree* scene_ws_fade = nullptr; // workspace-switch snapshots, over everything but the lock
-        wlr_scene_tree* scene_lock = nullptr; // ext-session-lock, above everything
-        wlr_scene_tree* drag_icon = nullptr;  // active DnD icon node; NULL when no drag
+        wlr_scene_tree* scene_lock = nullptr;    // ext-session-lock, above everything
+        wlr_scene_tree* drag_icon = nullptr;     // active DnD icon node; NULL when no drag
 
         SignalListener l_new_output;
         SignalListener l_new_xwayland_surface;
