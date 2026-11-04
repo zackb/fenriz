@@ -8,6 +8,7 @@
 #include "config.hpp" // WS_MAX
 
 struct wlr_output;
+struct wlr_scene_buffer;
 struct wlr_scene_rect;
 struct wlr_swapchain;
 
@@ -62,9 +63,11 @@ namespace fenriz {
             timespec last_frame{};      // for frame-rate-independent animation decay
             bool was_animating = false; // did the previous frame advance an animation
 
-            // Workspace-switch fade. ws_fade is the alpha multiplier this output's windows render with
-            double ws_fade = 1.0;
+            // Workspace-switch crossfade: the outgoing frame, drawn over the live scene and faded out.
+            // Null when no fade is running.
+            wlr_scene_buffer* ws_snapshot = nullptr;
             double ws_fade_t = 1.0;
+            wlr_swapchain* ws_swapchain = nullptr; // offscreen buffers the snapshot is rendered into
 
             // Offscreen buffers the scene renders into while this output is zoomed; the frame
             // is then blitted scaled to fill the output. Null unless zoom is/was active here.
@@ -217,6 +220,10 @@ namespace fenriz {
         // output, else the one under the cursor, else the first. Derived, never stored — one
         // less piece of state to go stale.
         Output* focused(Server& server);
+
+        // Start a workspace-switch crossfade: snapshot what `o` shows now, to fade out over the new workspace.
+        // Call before the switch changes the scene.
+        void begin_workspace_fade(Output* o);
 
         // Power an output off/on (DPMS). Backs the wlr-output-power-management protocol and
         // the IPC `dpms` command. Null output = all outputs.
