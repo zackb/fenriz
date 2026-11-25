@@ -325,7 +325,7 @@ Not configurable:
 ### Window rules
 
 ```
-windowrule = class=REGEX, title=REGEX, tag=REGEX, float=true, center=true, no_focus=true
+windowrule = class=REGEX, title=REGEX, tag=REGEX, float=true, center=true, size=WxH, position=XxY, no_focus=true
 ```
 
 Fields are `name=value`, comma-separated, any order. All matching rules stack.
@@ -337,6 +337,8 @@ Fields are `name=value`, comma-separated, any order. All matching rules stack.
 | `tag` | regex on the tag the client set for the window (xdg-toplevel-tag-v1); `^$` matches untagged |
 | `float` | open floating |
 | `center` | center on screen (pair with `float`) |
+| `size` | open at `WxH` px, borders excluded (floating only) |
+| `position` | open at `XxY` px from the top-left of the screen's usable area (floating only; overrides `center`) |
 | `no_focus` | don't focus when it opens |
 | `name` | a label for you; ignored by the compositor |
 
@@ -345,6 +347,7 @@ comma inside a regex quantifier (`{2,4}`) won't work.
 
 ```
 windowrule = class=^(org\.pulseaudio\.pavucontrol)$, float=true, center=true
+windowrule = class=^mpv$, float=true, size=800x450, position=40x40
 ```
 
 ## Screen sharing

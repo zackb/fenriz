@@ -82,6 +82,21 @@ namespace fenriz {
             }
         }
 
+        // "AxB" -> a, b, each >= lo; false (outputs untouched) when malformed.
+        bool parse_pair(const std::string& s, int lo, int& a, int& b) {
+            const size_t sep = s.find('x');
+            if (sep == std::string::npos)
+                return false;
+            const std::string sa = trim(s.substr(0, sep)), sb = trim(s.substr(sep + 1));
+            const int va = parse_int(sa, INT_MIN), vb = parse_int(sb, INT_MIN);
+            if (sa.find_first_not_of("0123456789") != std::string::npos ||
+                sb.find_first_not_of("0123456789") != std::string::npos || va < lo || vb < lo)
+                return false;
+            a = va;
+            b = vb;
+            return true;
+        }
+
         bool parse_bool(const std::string& s, bool fallback) {
             if (s == "true" || s == "1" || s == "on" || s == "yes")
                 return true;
@@ -138,6 +153,14 @@ namespace fenriz {
             out.floating |= r.floating;
             out.center |= r.center;
             out.no_focus |= r.no_focus;
+            if (r.w > 0) {
+                out.w = r.w;
+                out.h = r.h;
+            }
+            if (r.x >= 0) {
+                out.x = r.x;
+                out.y = r.y;
+            }
         }
         return out;
     }
@@ -283,7 +306,8 @@ namespace fenriz {
 
             if (key == "windowrule") {
                 // name=value fields, comma-separated, any order: class/app_id, title, tag
-                // (regexes), float/center/no_focus (bools), name (label, ignored).
+                // (regexes), float/center/no_focus (bools), size/position (WxH, XxY px),
+                // name (label, ignored).
                 // ponytail: split on ',' — a regex with a comma in a quantifier ({2,4})
                 // would break; the common cases don't, upgrade to a smarter tokenizer if needed.
                 WindowRule r;
@@ -305,6 +329,10 @@ namespace fenriz {
                         r.center = parse_bool(v, false);
                     else if (k == "no_focus")
                         r.no_focus = parse_bool(v, false);
+                    else if (k == "size")
+                        parse_pair(v, 1, r.w, r.h);
+                    else if (k == "position")
+                        parse_pair(v, 0, r.x, r.y);
                     // `name` and unknown fields: ignored (label only).
                 }
                 if (!r.app_id.empty() || !r.title.empty() || !r.tag.empty())

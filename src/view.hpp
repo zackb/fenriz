@@ -53,6 +53,9 @@ namespace fenriz {
         bool floating = false;    // escaped the BSP tree; free move/resize, drawn above tiles
         bool pinned = false;      // floating window shown on every workspace of its output
         bool want_center = false; // window-rule center: applied once the float has real size
+        bool want_pos = false;    // window-rule position (rule_x/y), same timing; beats center
+        int rule_x = 0, rule_y = 0;
+        int rule_w = 0, rule_h = 0; // window-rule size; 0 = client picks
         bool float_self_sized = true;
         bool urgent = false; // asked to be activated while unfocused; cleared on focus
 
@@ -182,9 +185,13 @@ namespace fenriz {
     void toggle_pin(Server& server);
 
     // Apply matching `windowrule` config to a just-mapped view (before it's tiled/focused):
-    // sets view->floating / view->want_center from every rule whose app_id/title regex
+    // sets view->floating / want_center / want_pos / rule size from every rule whose regexes
     // matches. Returns true if a rule asked for no_focus (caller skips focusing it).
     bool apply_window_rules(Server& server, View* view);
+
+    // Configure a rule-floated view to its window-rule `size` and place it.
+    // No-op without a size rule. Workspace must be set.
+    void apply_rule_size(Server& server, View* view);
 
     // Center a floating view on its output's usable area (from its current box size).
     void center_view(Server& server, View* view);
