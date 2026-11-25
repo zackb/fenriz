@@ -320,6 +320,24 @@ int main() {
         assert(!match_rules(rules, "chat", "", "composer").no_focus);
     }
 
+    // size/position: WxH / XxY px; malformed values leave the field unset; last match wins.
+    {
+        Config g = Config::parse("windowrule = class=a, float=true, size=800x600, position=10x20\n"
+                                 "windowrule = class=a, size=0x600, position=-5x3\n"
+                                 "windowrule = class=a, size=800, position=1x2y\n"
+                                 "windowrule = class=a, size=640 x 480\n");
+        assert(g.window_rules.size() == 4);
+        assert(g.window_rules[0].w == 800 && g.window_rules[0].h == 600);
+        assert(g.window_rules[0].x == 10 && g.window_rules[0].y == 20);
+        for (int i = 1; i < 3; ++i)
+            assert(g.window_rules[i].w == 0 && g.window_rules[i].x == -1);
+        assert(g.window_rules[3].w == 640 && g.window_rules[3].h == 480);
+        const RuleResult r = match_rules(g.window_rules, "a", "", "");
+        assert(r.w == 640 && r.h == 480); // later size wins
+        assert(r.x == 10 && r.y == 20);   // unset later positions don't clear it
+        assert(match_rules(g.window_rules, "b", "", "").w == 0);
+    }
+
     // A null app_id/title reads as "" so `^$` can deliberately target unset identity —
     // XWayland windows routinely map before they set WM_CLASS.
     {

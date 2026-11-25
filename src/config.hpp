@@ -65,6 +65,8 @@ namespace fenriz {
         bool floating = false;
         bool center = false;
         bool no_focus = false; // don't take focus when it maps
+        int w = 0, h = 0;      // `size=WxH`: client area px for a float; 0 = unset
+        int x = -1, y = -1;    // `position=XxY`: px from the usable area's top-left; -1 = unset
     };
 
     // One `output = NAME, mode, position, scale` entry. Unset fields keep their default and
@@ -161,6 +163,8 @@ namespace fenriz {
         bool floating = false;
         bool center = false;
         bool no_focus = false;
+        int w = 0, h = 0;   // last matching rule's size wins
+        int x = -1, y = -1; // last matching rule's position wins
     };
 
     // Run `rules` in order against a window's identity. A pattern matches when it is empty

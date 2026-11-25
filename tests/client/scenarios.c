@@ -3941,6 +3941,53 @@ static void s_ws_fade(struct wlc* c) {
     wlc_destroy(red);
 }
 
+// --- rule-geom ------------------------------------------------------------------------
+// windowrule size= and position=: the float opens at the rule's size, not its own, with its
+// top-left at the rule's offset (position beats center). Checked by screenshot.
+
+static void s_rule_geom(struct wlc* c) {
+    if (c->out_w <= 0 || c->out_h <= 0)
+        wlc_die("no output mode; nothing to compute expected coordinates from");
+    const int W = c->out_w, H = c->out_h;
+    struct win* bg = wlc_toplevel(c, W, H, "fenriz-test rule-geom-bg");
+    wlc_map(bg, RED);
+
+    wlc_phase("floating a 300x220 window that a rule sizes to 400x200 at 100,50");
+    struct win* top = wlc_toplevel(c, 300, 220, "fenriz-test rule-geom-float");
+    wlc_map(top, BLUE);
+    if (top->cfg_width != 400 || top->cfg_height != 200)
+        wlc_die("rule size not configured: got %dx%d, expected 400x200", top->cfg_width, top->cfg_height);
+    wlc_paint(top, BLUE);
+    wlc_roundtrip(c);
+    wlc_pump(c, 200);
+
+    struct wlc_shot* shot = wlc_capture(c, 0);
+    const struct {
+        int x, y;
+        uint32_t want;
+    } probes[] = {
+        {102, 52, BLUE},  // just inside the top-left corner
+        {497, 247, BLUE}, // just inside the bottom-right corner
+        {97, 100, RED},   // left of it
+        {200, 47, RED},   // above it
+        {503, 100, RED},  // right of it
+        {200, 253, RED},  // below it
+    };
+    for (size_t i = 0; i < sizeof probes / sizeof probes[0]; i++) {
+        const uint32_t px = wlc_pixel(shot, probes[i].x, probes[i].y);
+        if (!wlc_color_near(px, probes[i].want, 4))
+            wlc_die("pixel %d,%d is %s, expected %s",
+                    probes[i].x,
+                    probes[i].y,
+                    wlc_color_str(px),
+                    wlc_color_str(probes[i].want));
+    }
+    wlc_shot_free(shot);
+    wlc_log("float is 400x200 at 100,50");
+    wlc_destroy(top);
+    wlc_destroy(bg);
+}
+
 const struct scenario scenarios[] = {
     {"popup", s_popup, "toplevel -> popup -> nested popup, grab, reposition, off-screen anchor"},
     {"layer-popup", s_layer_popup, "corner-anchored popup and submenu on a full-output layer surface"},
@@ -3976,5 +4023,6 @@ const struct scenario scenarios[] = {
     {"flip", s_flip, "flip pairs: a paired half is drawn at its own scale, before, during and after a turn"},
     {"flip-blur", s_flip_blur, "flip pairs: a blurred window's blur narrows with it through the turn"},
     {"ws-fade", s_ws_fade, "workspace switch crossfades the outgoing frame into the incoming one"},
+    {"rule-geom", s_rule_geom, "windowrule size= and position= place a float by screenshot"},
     {NULL, NULL, NULL},
 };

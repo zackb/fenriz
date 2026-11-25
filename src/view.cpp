@@ -265,6 +265,7 @@ namespace fenriz {
             // HiDPI: announce the view's own output + that output's scale, so it renders a
             // native-resolution buffer. Also re-run whenever it migrates between screens.
             view_update_output(server, view);
+            apply_rule_size(server, view);
 
             // Tiled windows honor our sizing; a floated one sizes itself and draws above tiles.
             if (view->floating)
@@ -910,7 +911,47 @@ namespace fenriz {
             view->floating = true;
         if (r.center)
             view->want_center = true;
+        if (r.x >= 0) {
+            view->want_pos = true;
+            view->rule_x = r.x;
+            view->rule_y = r.y;
+        }
+        view->rule_w = r.w;
+        view->rule_h = r.h;
         return r.no_focus;
+    }
+
+    // Window-rule placement, once the float's size is known: position wins over center.
+    static void place_by_rule(Server& server, View* view) {
+        if (view->want_pos) {
+            if (const wlr_box a = view_area(server, view); a.width > 0) {
+                view->box.x = std::clamp(a.x + view->rule_x, a.x, std::max(a.x, a.x + a.width - view->box.width));
+                view->box.y = std::clamp(a.y + view->rule_y, a.y, std::max(a.y, a.y + a.height - view->box.height));
+                place_view_nodes(view);
+            }
+        } else if (view->want_center) {
+            center_view(server, view);
+        }
+        view->want_pos = view->want_center = false;
+    }
+
+    void apply_rule_size(Server& server, View* view) {
+        if (!view->floating || view->rule_w <= 0)
+            return;
+        const wlr_box a = view_area(server, view);
+        if (a.width <= 0)
+            return;
+        int min_w, min_h, max_w, max_h;
+        view_min_size(view, min_w, min_h);
+        view_max_size(view, max_w, max_h);
+        const int bw = server.config.border_width;
+        const int w = tiling::clamp_size(std::min(view->rule_w, a.width - 2 * bw), min_w, max_w);
+        const int h = tiling::clamp_size(std::min(view->rule_h, a.height - 2 * bw), min_h, max_h);
+        view->box.width = w + 2 * bw;
+        view->box.height = h + 2 * bw;
+        view->float_self_sized = false; // keep the rule's size, not the client's first pick
+        place_by_rule(server, view);
+        view_configure(view);
     }
 
     void center_view(Server& server, View* view) {
@@ -1132,11 +1173,8 @@ namespace fenriz {
                     view_configure(view);
                 }
             }
-            // A window-rule center can only run once the float has its real size (now).
-            if (view->want_center) {
-                center_view(*view->server, view);
-                view->want_center = false;
-            }
+            // A window-rule center/position can only run once the float has its real size (now).
+            place_by_rule(server, view);
         }
         // Re-sync the scene nodes so the inset stays correct. No-op until the nodes exist.
         place_view_nodes(view);
